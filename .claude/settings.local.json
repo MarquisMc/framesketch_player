@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter run:*)",
+      "Bash(timeout /t 10)",
+      "Bash(flutter pub run build_runner build:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(del \"d:\\\\Projects\\\\framesketch_player\\\\lib\\\\features\\\\settings\\\\providers\\\\keyboard_shortcuts_provider.dart\")",
+      "Bash(flutter pub get:*)",
+      "Bash(flutter clean:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(flutter create:*)",
+      "Bash(flutter build:*)",
+      "Bash(start framesketch_player.exe)",
+      "Bash(wmic datafile where name=\"d:\\\\Projects\\\\framesketch_player\\\\build\\\\windows\\\\x64\\\\runner\\\\Debug\\\\framesketch_player.exe\" get Description,Version)"
+    ]
+  }
+}

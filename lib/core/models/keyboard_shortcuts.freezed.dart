@@ -1,0 +1,715 @@
+// coverage:ignore-file
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint
+// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+part of 'keyboard_shortcuts.dart';
+
+// **************************************************************************
+// FreezedGenerator
+// **************************************************************************
+
+T _$identity<T>(T value) => value;
+
+final _privateConstructorUsedError = UnsupportedError(
+  'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models',
+);
+
+KeyboardShortcut _$KeyboardShortcutFromJson(Map<String, dynamic> json) {
+  return _KeyboardShortcut.fromJson(json);
+}
+
+/// @nodoc
+mixin _$KeyboardShortcut {
+  @LogicalKeyboardKeyConverter()
+  LogicalKeyboardKey get key => throw _privateConstructorUsedError;
+  bool get ctrlPressed => throw _privateConstructorUsedError;
+  bool get shiftPressed => throw _privateConstructorUsedError;
+  bool get altPressed => throw _privateConstructorUsedError;
+
+  /// Serializes this KeyboardShortcut to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
+
+  /// Create a copy of KeyboardShortcut
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  $KeyboardShortcutCopyWith<KeyboardShortcut> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $KeyboardShortcutCopyWith<$Res> {
+  factory $KeyboardShortcutCopyWith(
+    KeyboardShortcut value,
+    $Res Function(KeyboardShortcut) then,
+  ) = _$KeyboardShortcutCopyWithImpl<$Res, KeyboardShortcut>;
+  @useResult
+  $Res call({
+    @LogicalKeyboardKeyConverter() LogicalKeyboardKey key,
+    bool ctrlPressed,
+    bool shiftPressed,
+    bool altPressed,
+  });
+}
+
+/// @nodoc
+class _$KeyboardShortcutCopyWithImpl<$Res, $Val extends KeyboardShortcut>
+    implements $KeyboardShortcutCopyWith<$Res> {
+  _$KeyboardShortcutCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of KeyboardShortcut
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? key = null,
+    Object? ctrlPressed = null,
+    Object? shiftPressed = null,
+    Object? altPressed = null,
+  }) {
+    return _then(
+      _value.copyWith(
+            key: null == key
+                ? _value.key
+                : key // ignore: cast_nullable_to_non_nullable
+                      as LogicalKeyboardKey,
+            ctrlPressed: null == ctrlPressed
+                ? _value.ctrlPressed
+                : ctrlPressed // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            shiftPressed: null == shiftPressed
+                ? _value.shiftPressed
+                : shiftPressed // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            altPressed: null == altPressed
+                ? _value.altPressed
+                : altPressed // ignore: cast_nullable_to_non_nullable
+                      as bool,
+          )
+          as $Val,
+    );
+  }
+}
+
+/// @nodoc
+abstract class _$$KeyboardShortcutImplCopyWith<$Res>
+    implements $KeyboardShortcutCopyWith<$Res> {
+  factory _$$KeyboardShortcutImplCopyWith(
+    _$KeyboardShortcutImpl value,
+    $Res Function(_$KeyboardShortcutImpl) then,
+  ) = __$$KeyboardShortcutImplCopyWithImpl<$Res>;
+  @override
+  @useResult
+  $Res call({
+    @LogicalKeyboardKeyConverter() LogicalKeyboardKey key,
+    bool ctrlPressed,
+    bool shiftPressed,
+    bool altPressed,
+  });
+}
+
+/// @nodoc
+class __$$KeyboardShortcutImplCopyWithImpl<$Res>
+    extends _$KeyboardShortcutCopyWithImpl<$Res, _$KeyboardShortcutImpl>
+    implements _$$KeyboardShortcutImplCopyWith<$Res> {
+  __$$KeyboardShortcutImplCopyWithImpl(
+    _$KeyboardShortcutImpl _value,
+    $Res Function(_$KeyboardShortcutImpl) _then,
+  ) : super(_value, _then);
+
+  /// Create a copy of KeyboardShortcut
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? key = null,
+    Object? ctrlPressed = null,
+    Object? shiftPressed = null,
+    Object? altPressed = null,
+  }) {
+    return _then(
+      _$KeyboardShortcutImpl(
+        key: null == key
+            ? _value.key
+            : key // ignore: cast_nullable_to_non_nullable
+                  as LogicalKeyboardKey,
+        ctrlPressed: null == ctrlPressed
+            ? _value.ctrlPressed
+            : ctrlPressed // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        shiftPressed: null == shiftPressed
+            ? _value.shiftPressed
+            : shiftPressed // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        altPressed: null == altPressed
+            ? _value.altPressed
+            : altPressed // ignore: cast_nullable_to_non_nullable
+                  as bool,
+      ),
+    );
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _$KeyboardShortcutImpl implements _KeyboardShortcut {
+  const _$KeyboardShortcutImpl({
+    @LogicalKeyboardKeyConverter() required this.key,
+    this.ctrlPressed = false,
+    this.shiftPressed = false,
+    this.altPressed = false,
+  });
+
+  factory _$KeyboardShortcutImpl.fromJson(Map<String, dynamic> json) =>
+      _$$KeyboardShortcutImplFromJson(json);
+
+  @override
+  @LogicalKeyboardKeyConverter()
+  final LogicalKeyboardKey key;
+  @override
+  @JsonKey()
+  final bool ctrlPressed;
+  @override
+  @JsonKey()
+  final bool shiftPressed;
+  @override
+  @JsonKey()
+  final bool altPressed;
+
+  @override
+  String toString() {
+    return 'KeyboardShortcut(key: $key, ctrlPressed: $ctrlPressed, shiftPressed: $shiftPressed, altPressed: $altPressed)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$KeyboardShortcutImpl &&
+            (identical(other.key, key) || other.key == key) &&
+            (identical(other.ctrlPressed, ctrlPressed) ||
+                other.ctrlPressed == ctrlPressed) &&
+            (identical(other.shiftPressed, shiftPressed) ||
+                other.shiftPressed == shiftPressed) &&
+            (identical(other.altPressed, altPressed) ||
+                other.altPressed == altPressed));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode =>
+      Object.hash(runtimeType, key, ctrlPressed, shiftPressed, altPressed);
+
+  /// Create a copy of KeyboardShortcut
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$KeyboardShortcutImplCopyWith<_$KeyboardShortcutImpl> get copyWith =>
+      __$$KeyboardShortcutImplCopyWithImpl<_$KeyboardShortcutImpl>(
+        this,
+        _$identity,
+      );
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$KeyboardShortcutImplToJson(this);
+  }
+}
+
+abstract class _KeyboardShortcut implements KeyboardShortcut {
+  const factory _KeyboardShortcut({
+    @LogicalKeyboardKeyConverter() required final LogicalKeyboardKey key,
+    final bool ctrlPressed,
+    final bool shiftPressed,
+    final bool altPressed,
+  }) = _$KeyboardShortcutImpl;
+
+  factory _KeyboardShortcut.fromJson(Map<String, dynamic> json) =
+      _$KeyboardShortcutImpl.fromJson;
+
+  @override
+  @LogicalKeyboardKeyConverter()
+  LogicalKeyboardKey get key;
+  @override
+  bool get ctrlPressed;
+  @override
+  bool get shiftPressed;
+  @override
+  bool get altPressed;
+
+  /// Create a copy of KeyboardShortcut
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$KeyboardShortcutImplCopyWith<_$KeyboardShortcutImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+KeyboardShortcuts _$KeyboardShortcutsFromJson(Map<String, dynamic> json) {
+  return _KeyboardShortcuts.fromJson(json);
+}
+
+/// @nodoc
+mixin _$KeyboardShortcuts {
+  KeyboardShortcut get nextFrame => throw _privateConstructorUsedError;
+  KeyboardShortcut get previousFrame => throw _privateConstructorUsedError;
+  KeyboardShortcut get playPause => throw _privateConstructorUsedError;
+  KeyboardShortcut get jumpForward => throw _privateConstructorUsedError;
+  KeyboardShortcut get jumpBackward => throw _privateConstructorUsedError;
+  KeyboardShortcut get openFile => throw _privateConstructorUsedError;
+  KeyboardShortcut get saveAnnotations => throw _privateConstructorUsedError;
+  KeyboardShortcut get undo => throw _privateConstructorUsedError;
+  KeyboardShortcut get redo => throw _privateConstructorUsedError;
+
+  /// Serializes this KeyboardShortcuts to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  $KeyboardShortcutsCopyWith<KeyboardShortcuts> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $KeyboardShortcutsCopyWith<$Res> {
+  factory $KeyboardShortcutsCopyWith(
+    KeyboardShortcuts value,
+    $Res Function(KeyboardShortcuts) then,
+  ) = _$KeyboardShortcutsCopyWithImpl<$Res, KeyboardShortcuts>;
+  @useResult
+  $Res call({
+    KeyboardShortcut nextFrame,
+    KeyboardShortcut previousFrame,
+    KeyboardShortcut playPause,
+    KeyboardShortcut jumpForward,
+    KeyboardShortcut jumpBackward,
+    KeyboardShortcut openFile,
+    KeyboardShortcut saveAnnotations,
+    KeyboardShortcut undo,
+    KeyboardShortcut redo,
+  });
+
+  $KeyboardShortcutCopyWith<$Res> get nextFrame;
+  $KeyboardShortcutCopyWith<$Res> get previousFrame;
+  $KeyboardShortcutCopyWith<$Res> get playPause;
+  $KeyboardShortcutCopyWith<$Res> get jumpForward;
+  $KeyboardShortcutCopyWith<$Res> get jumpBackward;
+  $KeyboardShortcutCopyWith<$Res> get openFile;
+  $KeyboardShortcutCopyWith<$Res> get saveAnnotations;
+  $KeyboardShortcutCopyWith<$Res> get undo;
+  $KeyboardShortcutCopyWith<$Res> get redo;
+}
+
+/// @nodoc
+class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
+    implements $KeyboardShortcutsCopyWith<$Res> {
+  _$KeyboardShortcutsCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? nextFrame = null,
+    Object? previousFrame = null,
+    Object? playPause = null,
+    Object? jumpForward = null,
+    Object? jumpBackward = null,
+    Object? openFile = null,
+    Object? saveAnnotations = null,
+    Object? undo = null,
+    Object? redo = null,
+  }) {
+    return _then(
+      _value.copyWith(
+            nextFrame: null == nextFrame
+                ? _value.nextFrame
+                : nextFrame // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            previousFrame: null == previousFrame
+                ? _value.previousFrame
+                : previousFrame // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            playPause: null == playPause
+                ? _value.playPause
+                : playPause // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            jumpForward: null == jumpForward
+                ? _value.jumpForward
+                : jumpForward // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            jumpBackward: null == jumpBackward
+                ? _value.jumpBackward
+                : jumpBackward // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            openFile: null == openFile
+                ? _value.openFile
+                : openFile // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            saveAnnotations: null == saveAnnotations
+                ? _value.saveAnnotations
+                : saveAnnotations // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            undo: null == undo
+                ? _value.undo
+                : undo // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            redo: null == redo
+                ? _value.redo
+                : redo // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+          )
+          as $Val,
+    );
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get nextFrame {
+    return $KeyboardShortcutCopyWith<$Res>(_value.nextFrame, (value) {
+      return _then(_value.copyWith(nextFrame: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get previousFrame {
+    return $KeyboardShortcutCopyWith<$Res>(_value.previousFrame, (value) {
+      return _then(_value.copyWith(previousFrame: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get playPause {
+    return $KeyboardShortcutCopyWith<$Res>(_value.playPause, (value) {
+      return _then(_value.copyWith(playPause: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get jumpForward {
+    return $KeyboardShortcutCopyWith<$Res>(_value.jumpForward, (value) {
+      return _then(_value.copyWith(jumpForward: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get jumpBackward {
+    return $KeyboardShortcutCopyWith<$Res>(_value.jumpBackward, (value) {
+      return _then(_value.copyWith(jumpBackward: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get openFile {
+    return $KeyboardShortcutCopyWith<$Res>(_value.openFile, (value) {
+      return _then(_value.copyWith(openFile: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get saveAnnotations {
+    return $KeyboardShortcutCopyWith<$Res>(_value.saveAnnotations, (value) {
+      return _then(_value.copyWith(saveAnnotations: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get undo {
+    return $KeyboardShortcutCopyWith<$Res>(_value.undo, (value) {
+      return _then(_value.copyWith(undo: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get redo {
+    return $KeyboardShortcutCopyWith<$Res>(_value.redo, (value) {
+      return _then(_value.copyWith(redo: value) as $Val);
+    });
+  }
+}
+
+/// @nodoc
+abstract class _$$KeyboardShortcutsImplCopyWith<$Res>
+    implements $KeyboardShortcutsCopyWith<$Res> {
+  factory _$$KeyboardShortcutsImplCopyWith(
+    _$KeyboardShortcutsImpl value,
+    $Res Function(_$KeyboardShortcutsImpl) then,
+  ) = __$$KeyboardShortcutsImplCopyWithImpl<$Res>;
+  @override
+  @useResult
+  $Res call({
+    KeyboardShortcut nextFrame,
+    KeyboardShortcut previousFrame,
+    KeyboardShortcut playPause,
+    KeyboardShortcut jumpForward,
+    KeyboardShortcut jumpBackward,
+    KeyboardShortcut openFile,
+    KeyboardShortcut saveAnnotations,
+    KeyboardShortcut undo,
+    KeyboardShortcut redo,
+  });
+
+  @override
+  $KeyboardShortcutCopyWith<$Res> get nextFrame;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get previousFrame;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get playPause;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get jumpForward;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get jumpBackward;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get openFile;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get saveAnnotations;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get undo;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get redo;
+}
+
+/// @nodoc
+class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
+    extends _$KeyboardShortcutsCopyWithImpl<$Res, _$KeyboardShortcutsImpl>
+    implements _$$KeyboardShortcutsImplCopyWith<$Res> {
+  __$$KeyboardShortcutsImplCopyWithImpl(
+    _$KeyboardShortcutsImpl _value,
+    $Res Function(_$KeyboardShortcutsImpl) _then,
+  ) : super(_value, _then);
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? nextFrame = null,
+    Object? previousFrame = null,
+    Object? playPause = null,
+    Object? jumpForward = null,
+    Object? jumpBackward = null,
+    Object? openFile = null,
+    Object? saveAnnotations = null,
+    Object? undo = null,
+    Object? redo = null,
+  }) {
+    return _then(
+      _$KeyboardShortcutsImpl(
+        nextFrame: null == nextFrame
+            ? _value.nextFrame
+            : nextFrame // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        previousFrame: null == previousFrame
+            ? _value.previousFrame
+            : previousFrame // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        playPause: null == playPause
+            ? _value.playPause
+            : playPause // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        jumpForward: null == jumpForward
+            ? _value.jumpForward
+            : jumpForward // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        jumpBackward: null == jumpBackward
+            ? _value.jumpBackward
+            : jumpBackward // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        openFile: null == openFile
+            ? _value.openFile
+            : openFile // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        saveAnnotations: null == saveAnnotations
+            ? _value.saveAnnotations
+            : saveAnnotations // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        undo: null == undo
+            ? _value.undo
+            : undo // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        redo: null == redo
+            ? _value.redo
+            : redo // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+      ),
+    );
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
+  const _$KeyboardShortcutsImpl({
+    required this.nextFrame,
+    required this.previousFrame,
+    required this.playPause,
+    required this.jumpForward,
+    required this.jumpBackward,
+    required this.openFile,
+    required this.saveAnnotations,
+    required this.undo,
+    required this.redo,
+  });
+
+  factory _$KeyboardShortcutsImpl.fromJson(Map<String, dynamic> json) =>
+      _$$KeyboardShortcutsImplFromJson(json);
+
+  @override
+  final KeyboardShortcut nextFrame;
+  @override
+  final KeyboardShortcut previousFrame;
+  @override
+  final KeyboardShortcut playPause;
+  @override
+  final KeyboardShortcut jumpForward;
+  @override
+  final KeyboardShortcut jumpBackward;
+  @override
+  final KeyboardShortcut openFile;
+  @override
+  final KeyboardShortcut saveAnnotations;
+  @override
+  final KeyboardShortcut undo;
+  @override
+  final KeyboardShortcut redo;
+
+  @override
+  String toString() {
+    return 'KeyboardShortcuts(nextFrame: $nextFrame, previousFrame: $previousFrame, playPause: $playPause, jumpForward: $jumpForward, jumpBackward: $jumpBackward, openFile: $openFile, saveAnnotations: $saveAnnotations, undo: $undo, redo: $redo)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$KeyboardShortcutsImpl &&
+            (identical(other.nextFrame, nextFrame) ||
+                other.nextFrame == nextFrame) &&
+            (identical(other.previousFrame, previousFrame) ||
+                other.previousFrame == previousFrame) &&
+            (identical(other.playPause, playPause) ||
+                other.playPause == playPause) &&
+            (identical(other.jumpForward, jumpForward) ||
+                other.jumpForward == jumpForward) &&
+            (identical(other.jumpBackward, jumpBackward) ||
+                other.jumpBackward == jumpBackward) &&
+            (identical(other.openFile, openFile) ||
+                other.openFile == openFile) &&
+            (identical(other.saveAnnotations, saveAnnotations) ||
+                other.saveAnnotations == saveAnnotations) &&
+            (identical(other.undo, undo) || other.undo == undo) &&
+            (identical(other.redo, redo) || other.redo == redo));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(
+    runtimeType,
+    nextFrame,
+    previousFrame,
+    playPause,
+    jumpForward,
+    jumpBackward,
+    openFile,
+    saveAnnotations,
+    undo,
+    redo,
+  );
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$KeyboardShortcutsImplCopyWith<_$KeyboardShortcutsImpl> get copyWith =>
+      __$$KeyboardShortcutsImplCopyWithImpl<_$KeyboardShortcutsImpl>(
+        this,
+        _$identity,
+      );
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$KeyboardShortcutsImplToJson(this);
+  }
+}
+
+abstract class _KeyboardShortcuts implements KeyboardShortcuts {
+  const factory _KeyboardShortcuts({
+    required final KeyboardShortcut nextFrame,
+    required final KeyboardShortcut previousFrame,
+    required final KeyboardShortcut playPause,
+    required final KeyboardShortcut jumpForward,
+    required final KeyboardShortcut jumpBackward,
+    required final KeyboardShortcut openFile,
+    required final KeyboardShortcut saveAnnotations,
+    required final KeyboardShortcut undo,
+    required final KeyboardShortcut redo,
+  }) = _$KeyboardShortcutsImpl;
+
+  factory _KeyboardShortcuts.fromJson(Map<String, dynamic> json) =
+      _$KeyboardShortcutsImpl.fromJson;
+
+  @override
+  KeyboardShortcut get nextFrame;
+  @override
+  KeyboardShortcut get previousFrame;
+  @override
+  KeyboardShortcut get playPause;
+  @override
+  KeyboardShortcut get jumpForward;
+  @override
+  KeyboardShortcut get jumpBackward;
+  @override
+  KeyboardShortcut get openFile;
+  @override
+  KeyboardShortcut get saveAnnotations;
+  @override
+  KeyboardShortcut get undo;
+  @override
+  KeyboardShortcut get redo;
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$KeyboardShortcutsImplCopyWith<_$KeyboardShortcutsImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}

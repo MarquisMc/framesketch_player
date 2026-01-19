@@ -1,0 +1,65 @@
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'keyboard_shortcuts.dart';
+
+// **************************************************************************
+// JsonSerializableGenerator
+// **************************************************************************
+
+_$KeyboardShortcutImpl _$$KeyboardShortcutImplFromJson(
+  Map<String, dynamic> json,
+) => _$KeyboardShortcutImpl(
+  key: const LogicalKeyboardKeyConverter().fromJson(json['key'] as String),
+  ctrlPressed: json['ctrlPressed'] as bool? ?? false,
+  shiftPressed: json['shiftPressed'] as bool? ?? false,
+  altPressed: json['altPressed'] as bool? ?? false,
+);
+
+Map<String, dynamic> _$$KeyboardShortcutImplToJson(
+  _$KeyboardShortcutImpl instance,
+) => <String, dynamic>{
+  'key': const LogicalKeyboardKeyConverter().toJson(instance.key),
+  'ctrlPressed': instance.ctrlPressed,
+  'shiftPressed': instance.shiftPressed,
+  'altPressed': instance.altPressed,
+};
+
+_$KeyboardShortcutsImpl _$$KeyboardShortcutsImplFromJson(
+  Map<String, dynamic> json,
+) => _$KeyboardShortcutsImpl(
+  nextFrame: KeyboardShortcut.fromJson(
+    json['nextFrame'] as Map<String, dynamic>,
+  ),
+  previousFrame: KeyboardShortcut.fromJson(
+    json['previousFrame'] as Map<String, dynamic>,
+  ),
+  playPause: KeyboardShortcut.fromJson(
+    json['playPause'] as Map<String, dynamic>,
+  ),
+  jumpForward: KeyboardShortcut.fromJson(
+    json['jumpForward'] as Map<String, dynamic>,
+  ),
+  jumpBackward: KeyboardShortcut.fromJson(
+    json['jumpBackward'] as Map<String, dynamic>,
+  ),
+  openFile: KeyboardShortcut.fromJson(json['openFile'] as Map<String, dynamic>),
+  saveAnnotations: KeyboardShortcut.fromJson(
+    json['saveAnnotations'] as Map<String, dynamic>,
+  ),
+  undo: KeyboardShortcut.fromJson(json['undo'] as Map<String, dynamic>),
+  redo: KeyboardShortcut.fromJson(json['redo'] as Map<String, dynamic>),
+);
+
+Map<String, dynamic> _$$KeyboardShortcutsImplToJson(
+  _$KeyboardShortcutsImpl instance,
+) => <String, dynamic>{
+  'nextFrame': instance.nextFrame,
+  'previousFrame': instance.previousFrame,
+  'playPause': instance.playPause,
+  'jumpForward': instance.jumpForward,
+  'jumpBackward': instance.jumpBackward,
+  'openFile': instance.openFile,
+  'saveAnnotations': instance.saveAnnotations,
+  'undo': instance.undo,
+  'redo': instance.redo,
+};
