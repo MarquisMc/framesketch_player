@@ -17,11 +17,14 @@ import 'features/settings/widgets/settings_dialog.dart';
 import 'features/loop/providers/loop_provider.dart';
 import 'features/crop/providers/crop_provider.dart';
 import 'features/crop/widgets/crop_controls.dart';
-import 'features/crop/widgets/crop_overlay.dart';
+import 'core/services/file_association_service.dart';
+import 'dart:io' show Platform;
 
 /// Main application widget
 class FrameSketchPlayerApp extends ConsumerStatefulWidget {
-  const FrameSketchPlayerApp({super.key});
+  final String? initialVideoPath;
+
+  const FrameSketchPlayerApp({super.key, this.initialVideoPath});
 
   @override
   ConsumerState<FrameSketchPlayerApp> createState() => _FrameSketchPlayerAppState();
@@ -41,6 +44,10 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     // Request focus on startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
+      // Auto-load video if provided via command-line
+      if (widget.initialVideoPath != null) {
+        _loadInitialVideo(widget.initialVideoPath!);
+      }
     });
   }
 
@@ -121,6 +128,45 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                   onPressed: () => _openSettings(context),
                   tooltip: 'Keyboard Shortcuts',
                 ),
+                // File associations menu (Windows only)
+                if (Platform.isWindows)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    tooltip: 'More Options',
+                    onSelected: (value) => _handleMenuAction(value, context),
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'register',
+                        child: Row(
+                          children: [
+                            Icon(Icons.check_circle_outline),
+                            SizedBox(width: 8),
+                            Text('Set as Default Video Player'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'unregister',
+                        child: Row(
+                          children: [
+                            Icon(Icons.cancel_outlined),
+                            SizedBox(width: 8),
+                            Text('Remove File Associations'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'check',
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline),
+                            SizedBox(width: 8),
+                            Text('Check Registration Status'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 const SizedBox(width: 8),
               ],
             ),
@@ -312,6 +358,41 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     return KeyEventResult.ignored;
   }
 
+  Future<void> _loadInitialVideo(String filePath) async {
+    try {
+      // Load video
+      final playerNotifier = ref.read(playerProvider.notifier);
+      await playerNotifier.loadVideo(filePath);
+
+      // Check if video loaded successfully
+      final playerState = ref.read(playerProvider);
+      if (playerState.metadata == null) {
+        if (mounted) {
+          _showErrorDialog('Failed to load video. The video file may be corrupted or in an unsupported format.');
+        }
+        return;
+      }
+
+      // Initialize annotations
+      final annotationNotifier = ref.read(annotationProvider.notifier);
+      await annotationNotifier.initializeForVideo(
+        filePath,
+        playerState.metadata!.fps,
+      );
+
+      // Add to recent files
+      final storageService = AnnotationStorageService();
+      await storageService.addToRecentFiles(filePath);
+
+      // Refocus
+      _focusNode.requestFocus();
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Error opening file: $e');
+      }
+    }
+  }
+
   Future<void> _openFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -408,16 +489,112 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     }
   }
 
-  void _showErrorDialog(String message) {
+  Future<void> _handleMenuAction(String action, BuildContext context) async {
+    final service = FileAssociationService();
+
+    switch (action) {
+      case 'register':
+        try {
+          final success = await service.registerFileAssociations();
+          if (mounted) {
+            if (success) {
+              _showInfoDialog(
+                'File Associations Registered',
+                'FrameSketch Player has been registered as a video player.\n\n'
+                'To set it as default:\n'
+                '1. Right-click any video file\n'
+                '2. Select "Open with" → "Choose another app"\n'
+                '3. Select "FrameSketch Player"\n'
+                '4. Check "Always use this app"',
+              );
+            } else {
+              _showErrorDialog('Failed to register file associations. Please try running as administrator.');
+            }
+          }
+        } catch (e) {
+          if (mounted) {
+            _showErrorDialog('Error registering file associations: $e');
+          }
+        }
+        break;
+
+      case 'unregister':
+        try {
+          final success = await service.unregisterFileAssociations();
+          if (mounted) {
+            if (success) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('File associations removed successfully'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            } else {
+              _showErrorDialog('Failed to remove file associations.');
+            }
+          }
+        } catch (e) {
+          if (mounted) {
+            _showErrorDialog('Error removing file associations: $e');
+          }
+        }
+        break;
+
+      case 'check':
+        try {
+          final isRegistered = await service.isRegistered();
+          if (mounted) {
+            _showInfoDialog(
+              'Registration Status',
+              isRegistered
+                  ? 'FrameSketch Player is currently registered as a video player.'
+                  : 'FrameSketch Player is not registered.\n\nUse "Set as Default Video Player" to register it.',
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            _showErrorDialog('Error checking registration status: $e');
+          }
+        }
+        break;
+    }
+  }
+
+  void _showInfoDialog(String title, String message) {
+    if (!mounted) return;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _focusNode.requestFocus();
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showErrorDialog(String message) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Error'),
         content: Text(message),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.of(context).pop();
+              Navigator.of(dialogContext).pop();
               _focusNode.requestFocus();
             },
             child: const Text('OK'),

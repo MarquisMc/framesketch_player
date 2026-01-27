@@ -167,9 +167,33 @@ Executable will be in: `build\windows\x64\runner\Release\framesketch_player.exe`
 ## Usage Guide
 
 ### Opening a Video
+
+**Method 1: Using File Dialog**
 1. Click the folder icon in the toolbar or press `Ctrl+O`
 2. Select a video file (supports mp4, mov, mkv, avi, webm, flv, m4v)
 3. Video will load and metadata will be extracted via FFprobe
+
+**Method 2: Command-Line / Default Video Player**
+1. Pass video path as argument: `framesketch_player.exe "path/to/video.mp4"`
+2. Or set as default player (see below) and double-click video files
+
+### Setting as Default Video Player
+
+**Windows - Built-in Registration (Recommended):**
+1. Open FrameSketch Player
+2. Click the menu icon (⋮) in the top-right corner
+3. Select "Set as Default Video Player"
+4. Right-click any video file → "Open with" → "FrameSketch Player"
+5. Check "Always use this app" to set as default
+
+**Manual Registration:**
+1. Right-click a video file → "Open with" → "Choose another app"
+2. Click "More apps" → "Look for another app on this PC"
+3. Navigate to `framesketch_player.exe`
+4. Select and check "Always use this app"
+
+**Check Status or Unregister:**
+Click the menu icon (⋮) for options to check registration status or remove file associations.
 
 ### Playback Controls
 - Use the play/pause button or press `Space`

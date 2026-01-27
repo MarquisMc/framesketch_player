@@ -35,6 +35,8 @@ dependencies:
 
   # Utils
   equatable: ^2.0.7
+  win32: ^5.5.0  # Windows API for file associations and system integration
+  ffi: ^2.1.0    # Foreign Function Interface for Windows API calls
 
 dev_dependencies:
   flutter_test:
