@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../providers/player_provider.dart';
 import '../../annotations/widgets/annotation_overlay.dart';
+import '../../crop/providers/crop_provider.dart';
+import '../../crop/widgets/crop_overlay.dart';
 
 /// Video viewport with annotation overlay
 class VideoViewport extends ConsumerWidget {
@@ -30,20 +32,29 @@ class VideoViewport extends ConsumerWidget {
   Widget _buildPlayer(VideoController controller) {
     return Container(
       color: Colors.black,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Video player layer
-          RepaintBoundary(
-            child: Video(
-              controller: controller,
-              controls: null, // No built-in controls
-            ),
-          ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              // Video player layer
+              RepaintBoundary(
+                child: Video(
+                  controller: controller,
+                  controls: null, // No built-in controls
+                ),
+              ),
 
-          // Annotation overlay layer
-          const AnnotationOverlay(),
-        ],
+              // Annotation overlay layer
+              const AnnotationOverlay(),
+
+              // Crop overlay layer (on top of annotations)
+              CropOverlay(
+                viewportSize: Size(constraints.maxWidth, constraints.maxHeight),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

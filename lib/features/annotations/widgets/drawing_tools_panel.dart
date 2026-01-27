@@ -15,9 +15,10 @@ class DrawingToolsPanel extends ConsumerWidget {
     return Container(
       width: 250,
       color: Colors.grey[850],
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           // Header
           Container(
             padding: const EdgeInsets.all(16),
@@ -228,6 +229,7 @@ class DrawingToolsPanel extends ConsumerWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }

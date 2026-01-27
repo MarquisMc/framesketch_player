@@ -14,7 +14,8 @@
       "Bash(flutter create:*)",
       "Bash(flutter build:*)",
       "Bash(start framesketch_player.exe)",
-      "Bash(wmic datafile where name=\"d:\\\\Projects\\\\framesketch_player\\\\build\\\\windows\\\\x64\\\\runner\\\\Debug\\\\framesketch_player.exe\" get Description,Version)"
+      "Bash(wmic datafile where name=\"d:\\\\Projects\\\\framesketch_player\\\\build\\\\windows\\\\x64\\\\runner\\\\Debug\\\\framesketch_player.exe\" get Description,Version)",
+      "Bash(dart run build_runner build:*)"
     ]
   }
 }

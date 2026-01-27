@@ -48,6 +48,21 @@ _$KeyboardShortcutsImpl _$$KeyboardShortcutsImplFromJson(
   ),
   undo: KeyboardShortcut.fromJson(json['undo'] as Map<String, dynamic>),
   redo: KeyboardShortcut.fromJson(json['redo'] as Map<String, dynamic>),
+  toggleFullLoop: KeyboardShortcut.fromJson(
+    json['toggleFullLoop'] as Map<String, dynamic>,
+  ),
+  setLoopStart: KeyboardShortcut.fromJson(
+    json['setLoopStart'] as Map<String, dynamic>,
+  ),
+  setLoopEnd: KeyboardShortcut.fromJson(
+    json['setLoopEnd'] as Map<String, dynamic>,
+  ),
+  toggleSectionLoop: KeyboardShortcut.fromJson(
+    json['toggleSectionLoop'] as Map<String, dynamic>,
+  ),
+  toggleCropMode: KeyboardShortcut.fromJson(
+    json['toggleCropMode'] as Map<String, dynamic>,
+  ),
 );
 
 Map<String, dynamic> _$$KeyboardShortcutsImplToJson(
@@ -62,4 +77,9 @@ Map<String, dynamic> _$$KeyboardShortcutsImplToJson(
   'saveAnnotations': instance.saveAnnotations,
   'undo': instance.undo,
   'redo': instance.redo,
+  'toggleFullLoop': instance.toggleFullLoop,
+  'setLoopStart': instance.setLoopStart,
+  'setLoopEnd': instance.setLoopEnd,
+  'toggleSectionLoop': instance.toggleSectionLoop,
+  'toggleCropMode': instance.toggleCropMode,
 };

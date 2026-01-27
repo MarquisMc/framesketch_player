@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../../../core/models/video_metadata.dart';
+import '../../loop/providers/loop_provider.dart';
+import '../../crop/providers/crop_provider.dart';
 
 /// Player state
 class PlayerState {
@@ -55,11 +57,12 @@ class PlayerState {
 
 /// Player provider with media_kit integration
 class PlayerNotifier extends StateNotifier<PlayerState> {
+  final Ref _ref;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<bool>? _playingSubscription;
 
-  PlayerNotifier() : super(const PlayerState());
+  PlayerNotifier(this._ref) : super(const PlayerState());
 
   /// Initialize media_kit (call once at app startup)
   static void initializeMediaKit() {
@@ -71,6 +74,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     try {
       state = state.copyWith(isLoading: true, error: null);
 
+      // Reset loop state for new video
+      _ref.read(loopProvider.notifier).onVideoChanged();
+
+      // Reset crop state for new video
+      _ref.read(cropProvider.notifier).onVideoChanged();
+
       // Dispose existing player if any
       await _disposePlayer();
 
@@ -78,9 +87,26 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       final player = Player();
       final videoController = VideoController(player);
 
-      // Listen to streams immediately
+      // Listen to streams immediately with loop boundary checking
       _positionSubscription = player.stream.position.listen((position) {
         state = state.copyWith(position: position);
+
+        // Check loop boundaries and seek if needed
+        final loopNotifier = _ref.read(loopProvider.notifier);
+        final seekPosition = loopNotifier.checkLoopBoundary(position);
+        if (seekPosition != null) {
+          final wasPlaying = state.isPlaying;
+          // Use Future.microtask to avoid state update during build
+          Future.microtask(() async {
+            await seek(seekPosition);
+            // Resume playback if it was playing before the loop
+            if (wasPlaying) {
+              await play();
+              // Ensure state reflects playing status
+              state = state.copyWith(isPlaying: true);
+            }
+          });
+        }
       });
 
       _durationSubscription = player.stream.duration.listen((duration) {
@@ -275,5 +301,5 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
 /// Player provider instance
 final playerProvider = StateNotifierProvider<PlayerNotifier, PlayerState>((ref) {
-  return PlayerNotifier();
+  return PlayerNotifier(ref);
 });

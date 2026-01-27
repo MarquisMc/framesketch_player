@@ -48,6 +48,13 @@ class KeyboardShortcuts with _$KeyboardShortcuts {
     required KeyboardShortcut saveAnnotations,
     required KeyboardShortcut undo,
     required KeyboardShortcut redo,
+    // Loop shortcuts
+    required KeyboardShortcut toggleFullLoop,
+    required KeyboardShortcut setLoopStart,
+    required KeyboardShortcut setLoopEnd,
+    required KeyboardShortcut toggleSectionLoop,
+    // Crop shortcuts
+    required KeyboardShortcut toggleCropMode,
   }) = _KeyboardShortcuts;
 
   factory KeyboardShortcuts.fromJson(Map<String, dynamic> json) =>
@@ -83,4 +90,11 @@ final defaultKeyboardShortcuts = KeyboardShortcuts(
     key: LogicalKeyboardKey.keyY,
     ctrlPressed: true,
   ),
+  // Loop shortcuts
+  toggleFullLoop: const KeyboardShortcut(key: LogicalKeyboardKey.keyL),
+  setLoopStart: const KeyboardShortcut(key: LogicalKeyboardKey.keyI),
+  setLoopEnd: const KeyboardShortcut(key: LogicalKeyboardKey.keyO),
+  toggleSectionLoop: const KeyboardShortcut(key: LogicalKeyboardKey.bracketLeft),
+  // Crop shortcuts
+  toggleCropMode: const KeyboardShortcut(key: LogicalKeyboardKey.keyC),
 );

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/player_provider.dart';
 import '../../../core/utils/timecode_formatter.dart';
+import '../../loop/widgets/loop_controls.dart';
 
 /// Button that repeats action when held down
 class _HoldableButton extends StatefulWidget {
@@ -205,6 +206,9 @@ class PlaybackControls extends ConsumerWidget {
                 ),
               ),
             ),
+
+          // Loop controls
+          const LoopControls(),
 
           const Spacer(),
 

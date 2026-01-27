@@ -265,7 +265,14 @@ mixin _$KeyboardShortcuts {
   KeyboardShortcut get openFile => throw _privateConstructorUsedError;
   KeyboardShortcut get saveAnnotations => throw _privateConstructorUsedError;
   KeyboardShortcut get undo => throw _privateConstructorUsedError;
-  KeyboardShortcut get redo => throw _privateConstructorUsedError;
+  KeyboardShortcut get redo =>
+      throw _privateConstructorUsedError; // Loop shortcuts
+  KeyboardShortcut get toggleFullLoop => throw _privateConstructorUsedError;
+  KeyboardShortcut get setLoopStart => throw _privateConstructorUsedError;
+  KeyboardShortcut get setLoopEnd => throw _privateConstructorUsedError;
+  KeyboardShortcut get toggleSectionLoop =>
+      throw _privateConstructorUsedError; // Crop shortcuts
+  KeyboardShortcut get toggleCropMode => throw _privateConstructorUsedError;
 
   /// Serializes this KeyboardShortcuts to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -294,6 +301,11 @@ abstract class $KeyboardShortcutsCopyWith<$Res> {
     KeyboardShortcut saveAnnotations,
     KeyboardShortcut undo,
     KeyboardShortcut redo,
+    KeyboardShortcut toggleFullLoop,
+    KeyboardShortcut setLoopStart,
+    KeyboardShortcut setLoopEnd,
+    KeyboardShortcut toggleSectionLoop,
+    KeyboardShortcut toggleCropMode,
   });
 
   $KeyboardShortcutCopyWith<$Res> get nextFrame;
@@ -305,6 +317,11 @@ abstract class $KeyboardShortcutsCopyWith<$Res> {
   $KeyboardShortcutCopyWith<$Res> get saveAnnotations;
   $KeyboardShortcutCopyWith<$Res> get undo;
   $KeyboardShortcutCopyWith<$Res> get redo;
+  $KeyboardShortcutCopyWith<$Res> get toggleFullLoop;
+  $KeyboardShortcutCopyWith<$Res> get setLoopStart;
+  $KeyboardShortcutCopyWith<$Res> get setLoopEnd;
+  $KeyboardShortcutCopyWith<$Res> get toggleSectionLoop;
+  $KeyboardShortcutCopyWith<$Res> get toggleCropMode;
 }
 
 /// @nodoc
@@ -331,6 +348,11 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
     Object? saveAnnotations = null,
     Object? undo = null,
     Object? redo = null,
+    Object? toggleFullLoop = null,
+    Object? setLoopStart = null,
+    Object? setLoopEnd = null,
+    Object? toggleSectionLoop = null,
+    Object? toggleCropMode = null,
   }) {
     return _then(
       _value.copyWith(
@@ -369,6 +391,26 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
             redo: null == redo
                 ? _value.redo
                 : redo // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            toggleFullLoop: null == toggleFullLoop
+                ? _value.toggleFullLoop
+                : toggleFullLoop // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            setLoopStart: null == setLoopStart
+                ? _value.setLoopStart
+                : setLoopStart // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            setLoopEnd: null == setLoopEnd
+                ? _value.setLoopEnd
+                : setLoopEnd // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            toggleSectionLoop: null == toggleSectionLoop
+                ? _value.toggleSectionLoop
+                : toggleSectionLoop // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            toggleCropMode: null == toggleCropMode
+                ? _value.toggleCropMode
+                : toggleCropMode // ignore: cast_nullable_to_non_nullable
                       as KeyboardShortcut,
           )
           as $Val,
@@ -464,6 +506,56 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
       return _then(_value.copyWith(redo: value) as $Val);
     });
   }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get toggleFullLoop {
+    return $KeyboardShortcutCopyWith<$Res>(_value.toggleFullLoop, (value) {
+      return _then(_value.copyWith(toggleFullLoop: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get setLoopStart {
+    return $KeyboardShortcutCopyWith<$Res>(_value.setLoopStart, (value) {
+      return _then(_value.copyWith(setLoopStart: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get setLoopEnd {
+    return $KeyboardShortcutCopyWith<$Res>(_value.setLoopEnd, (value) {
+      return _then(_value.copyWith(setLoopEnd: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get toggleSectionLoop {
+    return $KeyboardShortcutCopyWith<$Res>(_value.toggleSectionLoop, (value) {
+      return _then(_value.copyWith(toggleSectionLoop: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get toggleCropMode {
+    return $KeyboardShortcutCopyWith<$Res>(_value.toggleCropMode, (value) {
+      return _then(_value.copyWith(toggleCropMode: value) as $Val);
+    });
+  }
 }
 
 /// @nodoc
@@ -485,6 +577,11 @@ abstract class _$$KeyboardShortcutsImplCopyWith<$Res>
     KeyboardShortcut saveAnnotations,
     KeyboardShortcut undo,
     KeyboardShortcut redo,
+    KeyboardShortcut toggleFullLoop,
+    KeyboardShortcut setLoopStart,
+    KeyboardShortcut setLoopEnd,
+    KeyboardShortcut toggleSectionLoop,
+    KeyboardShortcut toggleCropMode,
   });
 
   @override
@@ -505,6 +602,16 @@ abstract class _$$KeyboardShortcutsImplCopyWith<$Res>
   $KeyboardShortcutCopyWith<$Res> get undo;
   @override
   $KeyboardShortcutCopyWith<$Res> get redo;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get toggleFullLoop;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get setLoopStart;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get setLoopEnd;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get toggleSectionLoop;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get toggleCropMode;
 }
 
 /// @nodoc
@@ -530,6 +637,11 @@ class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
     Object? saveAnnotations = null,
     Object? undo = null,
     Object? redo = null,
+    Object? toggleFullLoop = null,
+    Object? setLoopStart = null,
+    Object? setLoopEnd = null,
+    Object? toggleSectionLoop = null,
+    Object? toggleCropMode = null,
   }) {
     return _then(
       _$KeyboardShortcutsImpl(
@@ -569,6 +681,26 @@ class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
             ? _value.redo
             : redo // ignore: cast_nullable_to_non_nullable
                   as KeyboardShortcut,
+        toggleFullLoop: null == toggleFullLoop
+            ? _value.toggleFullLoop
+            : toggleFullLoop // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        setLoopStart: null == setLoopStart
+            ? _value.setLoopStart
+            : setLoopStart // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        setLoopEnd: null == setLoopEnd
+            ? _value.setLoopEnd
+            : setLoopEnd // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        toggleSectionLoop: null == toggleSectionLoop
+            ? _value.toggleSectionLoop
+            : toggleSectionLoop // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        toggleCropMode: null == toggleCropMode
+            ? _value.toggleCropMode
+            : toggleCropMode // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
       ),
     );
   }
@@ -587,6 +719,11 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
     required this.saveAnnotations,
     required this.undo,
     required this.redo,
+    required this.toggleFullLoop,
+    required this.setLoopStart,
+    required this.setLoopEnd,
+    required this.toggleSectionLoop,
+    required this.toggleCropMode,
   });
 
   factory _$KeyboardShortcutsImpl.fromJson(Map<String, dynamic> json) =>
@@ -610,10 +747,22 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
   final KeyboardShortcut undo;
   @override
   final KeyboardShortcut redo;
+  // Loop shortcuts
+  @override
+  final KeyboardShortcut toggleFullLoop;
+  @override
+  final KeyboardShortcut setLoopStart;
+  @override
+  final KeyboardShortcut setLoopEnd;
+  @override
+  final KeyboardShortcut toggleSectionLoop;
+  // Crop shortcuts
+  @override
+  final KeyboardShortcut toggleCropMode;
 
   @override
   String toString() {
-    return 'KeyboardShortcuts(nextFrame: $nextFrame, previousFrame: $previousFrame, playPause: $playPause, jumpForward: $jumpForward, jumpBackward: $jumpBackward, openFile: $openFile, saveAnnotations: $saveAnnotations, undo: $undo, redo: $redo)';
+    return 'KeyboardShortcuts(nextFrame: $nextFrame, previousFrame: $previousFrame, playPause: $playPause, jumpForward: $jumpForward, jumpBackward: $jumpBackward, openFile: $openFile, saveAnnotations: $saveAnnotations, undo: $undo, redo: $redo, toggleFullLoop: $toggleFullLoop, setLoopStart: $setLoopStart, setLoopEnd: $setLoopEnd, toggleSectionLoop: $toggleSectionLoop, toggleCropMode: $toggleCropMode)';
   }
 
   @override
@@ -636,7 +785,17 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
             (identical(other.saveAnnotations, saveAnnotations) ||
                 other.saveAnnotations == saveAnnotations) &&
             (identical(other.undo, undo) || other.undo == undo) &&
-            (identical(other.redo, redo) || other.redo == redo));
+            (identical(other.redo, redo) || other.redo == redo) &&
+            (identical(other.toggleFullLoop, toggleFullLoop) ||
+                other.toggleFullLoop == toggleFullLoop) &&
+            (identical(other.setLoopStart, setLoopStart) ||
+                other.setLoopStart == setLoopStart) &&
+            (identical(other.setLoopEnd, setLoopEnd) ||
+                other.setLoopEnd == setLoopEnd) &&
+            (identical(other.toggleSectionLoop, toggleSectionLoop) ||
+                other.toggleSectionLoop == toggleSectionLoop) &&
+            (identical(other.toggleCropMode, toggleCropMode) ||
+                other.toggleCropMode == toggleCropMode));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -652,6 +811,11 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
     saveAnnotations,
     undo,
     redo,
+    toggleFullLoop,
+    setLoopStart,
+    setLoopEnd,
+    toggleSectionLoop,
+    toggleCropMode,
   );
 
   /// Create a copy of KeyboardShortcuts
@@ -682,6 +846,11 @@ abstract class _KeyboardShortcuts implements KeyboardShortcuts {
     required final KeyboardShortcut saveAnnotations,
     required final KeyboardShortcut undo,
     required final KeyboardShortcut redo,
+    required final KeyboardShortcut toggleFullLoop,
+    required final KeyboardShortcut setLoopStart,
+    required final KeyboardShortcut setLoopEnd,
+    required final KeyboardShortcut toggleSectionLoop,
+    required final KeyboardShortcut toggleCropMode,
   }) = _$KeyboardShortcutsImpl;
 
   factory _KeyboardShortcuts.fromJson(Map<String, dynamic> json) =
@@ -704,7 +873,17 @@ abstract class _KeyboardShortcuts implements KeyboardShortcuts {
   @override
   KeyboardShortcut get undo;
   @override
-  KeyboardShortcut get redo;
+  KeyboardShortcut get redo; // Loop shortcuts
+  @override
+  KeyboardShortcut get toggleFullLoop;
+  @override
+  KeyboardShortcut get setLoopStart;
+  @override
+  KeyboardShortcut get setLoopEnd;
+  @override
+  KeyboardShortcut get toggleSectionLoop; // Crop shortcuts
+  @override
+  KeyboardShortcut get toggleCropMode;
 
   /// Create a copy of KeyboardShortcuts
   /// with the given fields replaced by the non-null parameter values.

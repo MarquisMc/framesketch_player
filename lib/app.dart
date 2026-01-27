@@ -14,6 +14,10 @@ import 'features/annotations/providers/annotation_provider.dart';
 import 'core/services/annotation_storage_service.dart';
 import 'core/models/keyboard_shortcuts.dart';
 import 'features/settings/widgets/settings_dialog.dart';
+import 'features/loop/providers/loop_provider.dart';
+import 'features/crop/providers/crop_provider.dart';
+import 'features/crop/widgets/crop_controls.dart';
+import 'features/crop/widgets/crop_overlay.dart';
 
 /// Main application widget
 class FrameSketchPlayerApp extends ConsumerStatefulWidget {
@@ -108,6 +112,10 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                   onPressed: _saveAnnotations,
                   tooltip: 'Save Annotations (Ctrl+S)',
                 ),
+                const SizedBox(width: 8),
+                // Crop mode toggle button
+                const CropModeToggleButton(),
+                const SizedBox(width: 8),
                 IconButton(
                   icon: const Icon(Icons.settings),
                   onPressed: () => _openSettings(context),
@@ -133,6 +141,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                 ),
               ),
 
+              // Crop controls panel (shows when crop mode is active)
+              const CropControlsPanel(),
+
               // Timeline scrubber
               const TimelineScrubber(),
 
@@ -149,6 +160,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   KeyEventResult _handleKeyEvent(KeyEvent event) {
     final playerNotifier = ref.read(playerProvider.notifier);
     final annotationNotifier = ref.read(annotationProvider.notifier);
+    final loopNotifier = ref.read(loopProvider.notifier);
+    final cropNotifier = ref.read(cropProvider.notifier);
 
     // Check for modifiers
     final isCtrl = HardwareKeyboard.instance.isControlPressed;
@@ -253,6 +266,45 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     if (matchesShortcut(_shortcuts.redo)) {
       if (annotationNotifier.canRedo) {
         annotationNotifier.redo();
+        return KeyEventResult.handled;
+      }
+    }
+
+    // Toggle full video loop (no repeat)
+    if (matchesShortcut(_shortcuts.toggleFullLoop)) {
+      loopNotifier.toggleFullVideoLoop();
+      return KeyEventResult.handled;
+    }
+
+    // Set loop start point (A) (no repeat)
+    if (matchesShortcut(_shortcuts.setLoopStart)) {
+      loopNotifier.setAPoint();
+      return KeyEventResult.handled;
+    }
+
+    // Set loop end point (B) (no repeat)
+    if (matchesShortcut(_shortcuts.setLoopEnd)) {
+      loopNotifier.setBPoint();
+      return KeyEventResult.handled;
+    }
+
+    // Toggle section loop (A-B) (no repeat)
+    if (matchesShortcut(_shortcuts.toggleSectionLoop)) {
+      loopNotifier.toggleSectionLoop();
+      return KeyEventResult.handled;
+    }
+
+    // Toggle crop mode (no repeat)
+    if (matchesShortcut(_shortcuts.toggleCropMode)) {
+      cropNotifier.toggleCropMode();
+      return KeyEventResult.handled;
+    }
+
+    // Escape key - exit crop mode
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      final cropState = ref.read(cropProvider);
+      if (cropState.isCropModeActive) {
+        cropNotifier.exitCropMode();
         return KeyEventResult.handled;
       }
     }
