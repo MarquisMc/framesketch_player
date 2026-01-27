@@ -9,25 +9,13 @@ class CropOverlay extends ConsumerStatefulWidget {
   /// Size of the video viewport
   final Size viewportSize;
 
-  const CropOverlay({
-    super.key,
-    required this.viewportSize,
-  });
+  const CropOverlay({super.key, required this.viewportSize});
 
   @override
   ConsumerState<CropOverlay> createState() => _CropOverlayState();
 }
 
 class _CropOverlayState extends ConsumerState<CropOverlay> {
-  /// Size of corner handles
-  static const double _handleSize = 24.0;
-
-  /// Size of edge handles (invisible hit area)
-  static const double _edgeHitSize = 16.0;
-
-  /// Minimum distance from edge for handle detection
-  static const double _handleHitRadius = 12.0;
-
   @override
   Widget build(BuildContext context) {
     final cropState = ref.watch(cropProvider);
@@ -145,14 +133,19 @@ class _DarkenedOverlayPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     // Create a path for the entire area
-    final fullPath = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    final fullPath = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
 
     // Create path for the crop area (to exclude)
     final cropPath = Path()
       ..addRect(Rect.fromLTRB(cropLeft, cropTop, cropRight, cropBottom));
 
     // Combine paths to create the darkened region
-    final combinedPath = Path.combine(PathOperation.difference, fullPath, cropPath);
+    final combinedPath = Path.combine(
+      PathOperation.difference,
+      fullPath,
+      cropPath,
+    );
 
     canvas.drawPath(combinedPath, paint);
   }
@@ -196,10 +189,7 @@ class _CropRectangle extends StatelessWidget {
         Positioned.fill(
           child: Container(
             decoration: BoxDecoration(
-              border: Border.all(
-                color: Colors.white,
-                width: 2,
-              ),
+              border: Border.all(color: Colors.white, width: 2),
             ),
           ),
         ),
@@ -359,7 +349,8 @@ class _DragHandle extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onPanStart: (_) => onDragStart(handle),
-        onPanUpdate: (details) => onDragUpdate(details.delta.dx, details.delta.dy),
+        onPanUpdate: (details) =>
+            onDragUpdate(details.delta.dx, details.delta.dy),
         onPanEnd: (_) => onDragEnd(),
         child: child,
       ),
@@ -409,10 +400,7 @@ class _CornerHandle extends StatelessWidget {
         height: 24,
         decoration: BoxDecoration(
           color: isActive ? Colors.white : Colors.white.withAlpha(200),
-          border: Border.all(
-            color: Colors.black54,
-            width: 1,
-          ),
+          border: Border.all(color: Colors.black54, width: 1),
           borderRadius: BorderRadius.circular(4),
           boxShadow: [
             BoxShadow(
@@ -457,9 +445,7 @@ class _EdgeHandle extends StatelessWidget {
       onDragStart: onDragStart,
       onDragUpdate: onDragUpdate,
       onDragEnd: onDragEnd,
-      child: Container(
-        color: Colors.transparent,
-      ),
+      child: Container(color: Colors.transparent),
     );
   }
 }

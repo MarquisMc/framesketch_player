@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../providers/player_provider.dart';
 import '../../annotations/widgets/annotation_overlay.dart';
-import '../../crop/providers/crop_provider.dart';
 import '../../crop/widgets/crop_overlay.dart';
 
 /// Video viewport with annotation overlay
@@ -66,26 +65,16 @@ class VideoViewport extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.video_library,
-              size: 64,
-              color: Colors.white54,
-            ),
+            Icon(Icons.video_library, size: 64, color: Colors.white54),
             SizedBox(height: 16),
             Text(
               'No video loaded',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 18,
-              ),
+              style: TextStyle(color: Colors.white70, fontSize: 18),
             ),
             SizedBox(height: 8),
             Text(
               'Press Ctrl+O to open a video file',
-              style: TextStyle(
-                color: Colors.white54,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Colors.white54, fontSize: 14),
             ),
           ],
         ),
@@ -104,10 +93,7 @@ class VideoViewport extends ConsumerWidget {
             SizedBox(height: 16),
             Text(
               'Loading video...',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 16,
-              ),
+              style: TextStyle(color: Colors.white70, fontSize: 16),
             ),
           ],
         ),
@@ -122,11 +108,7 @@ class VideoViewport extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Colors.red,
-            ),
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
             const SizedBox(height: 16),
             Text(
               'Error loading video',
@@ -142,10 +124,7 @@ class VideoViewport extends ConsumerWidget {
               child: Text(
                 error,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                ),
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
               ),
             ),
           ],

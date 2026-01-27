@@ -4,13 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/models/keyboard_shortcuts.dart';
 
 /// Manages keyboard shortcuts preferences
-class KeyboardShortcutsNotifier
-    extends StateNotifier<KeyboardShortcuts> {
+class KeyboardShortcutsNotifier extends StateNotifier<KeyboardShortcuts> {
   static const String _storageKey = 'keyboard_shortcuts';
   final SharedPreferences _prefs;
 
-  KeyboardShortcutsNotifier(this._prefs)
-      : super(defaultKeyboardShortcuts) {
+  KeyboardShortcutsNotifier(this._prefs) : super(defaultKeyboardShortcuts) {
     _loadShortcuts();
   }
 
@@ -33,10 +31,7 @@ class KeyboardShortcutsNotifier
   /// Save shortcuts to storage
   Future<void> _saveShortcuts(KeyboardShortcuts shortcuts) async {
     try {
-      await _prefs.setString(
-        _storageKey,
-        jsonEncode(shortcuts.toJson()),
-      );
+      await _prefs.setString(_storageKey, jsonEncode(shortcuts.toJson()));
     } catch (e) {
       print('Error saving keyboard shortcuts: $e');
     }
@@ -86,20 +81,18 @@ class KeyboardShortcutsNotifier
 
 /// Keyboard shortcuts provider
 final keyboardShortcutsProvider =
-    StateNotifierProvider<KeyboardShortcutsNotifier, KeyboardShortcuts>(
-  (ref) {
-    throw UnimplementedError(
-      'keyboardShortcutsProvider must be initialized with SharedPreferences',
-    );
-  },
-);
+    StateNotifierProvider<KeyboardShortcutsNotifier, KeyboardShortcuts>((ref) {
+      throw UnimplementedError(
+        'keyboardShortcutsProvider must be initialized with SharedPreferences',
+      );
+    });
 
 /// Provider for initializing keyboard shortcuts with SharedPreferences
-final keyboardShortcutsInitProvider = FutureProvider<KeyboardShortcuts>(
-  (ref) async {
-    final prefs = await SharedPreferences.getInstance();
-    final notifier = KeyboardShortcutsNotifier(prefs);
-    ref.read(keyboardShortcutsProvider.notifier);
-    return notifier.state;
-  },
-);
+final keyboardShortcutsInitProvider = FutureProvider<KeyboardShortcuts>((
+  ref,
+) async {
+  final prefs = await SharedPreferences.getInstance();
+  final notifier = KeyboardShortcutsNotifier(prefs);
+  await notifier._loadShortcuts();
+  return defaultKeyboardShortcuts;
+});

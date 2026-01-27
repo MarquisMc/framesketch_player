@@ -18,12 +18,7 @@ class StrokePoint with _$StrokePoint {
 }
 
 /// Drawing tool types
-enum DrawingTool {
-  pen,
-  eraser,
-  rectangle,
-  arrow,
-}
+enum DrawingTool { pen, eraser, rectangle, arrow }
 
 /// A complete stroke (pen path or shape)
 @freezed
@@ -31,15 +26,16 @@ class Stroke with _$Stroke {
   const factory Stroke({
     required String id,
     required DrawingTool tool,
-    @JsonKey(fromJson: _colorFromJson, toJson: _colorToJson) required Color color,
+    // ignore: invalid_annotation_target
+    @JsonKey(fromJson: _colorFromJson, toJson: _colorToJson)
+    required Color color,
     required double strokeWidth,
     required List<StrokePoint> points,
     @Default(0) int startTimeMs,
     @Default(0) int endTimeMs,
   }) = _Stroke;
 
-  factory Stroke.fromJson(Map<String, dynamic> json) =>
-      _$StrokeFromJson(json);
+  factory Stroke.fromJson(Map<String, dynamic> json) => _$StrokeFromJson(json);
 }
 
 // Color serialization helpers

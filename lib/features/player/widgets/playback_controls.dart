@@ -27,12 +27,9 @@ class _HoldableButton extends StatefulWidget {
 
 class _HoldableButtonState extends State<_HoldableButton> {
   Timer? _timer;
-  bool _isPressed = false;
 
   void _startHolding() {
     if (widget.onPressed == null) return;
-
-    setState(() => _isPressed = true);
 
     // Execute immediately
     widget.onPressed!();
@@ -48,7 +45,6 @@ class _HoldableButtonState extends State<_HoldableButton> {
   }
 
   void _stopHolding() {
-    setState(() => _isPressed = false);
     _timer?.cancel();
     _timer = null;
   }
