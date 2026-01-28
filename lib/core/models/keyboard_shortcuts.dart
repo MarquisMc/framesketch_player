@@ -48,6 +48,14 @@ class KeyboardShortcuts with _$KeyboardShortcuts {
     required KeyboardShortcut saveAnnotations,
     required KeyboardShortcut undo,
     required KeyboardShortcut redo,
+    // Annotation tools
+    required KeyboardShortcut selectSelectionTool,
+    required KeyboardShortcut selectPenTool,
+    required KeyboardShortcut selectEraserTool,
+    required KeyboardShortcut selectRectangleTool,
+    required KeyboardShortcut selectCircleTool,
+    required KeyboardShortcut selectLineTool,
+    required KeyboardShortcut selectArrowTool,
     // Loop shortcuts
     required KeyboardShortcut toggleFullLoop,
     required KeyboardShortcut setLoopStart,
@@ -90,6 +98,14 @@ final defaultKeyboardShortcuts = KeyboardShortcuts(
     key: LogicalKeyboardKey.keyY,
     ctrlPressed: true,
   ),
+  // Annotation tools
+  selectSelectionTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyV),
+  selectPenTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyP),
+  selectEraserTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyE),
+  selectRectangleTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyR),
+  selectCircleTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyO, shiftPressed: true),
+  selectLineTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyL, shiftPressed: true),
+  selectArrowTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyA),
   // Loop shortcuts
   toggleFullLoop: const KeyboardShortcut(key: LogicalKeyboardKey.keyL),
   setLoopStart: const KeyboardShortcut(key: LogicalKeyboardKey.keyI),

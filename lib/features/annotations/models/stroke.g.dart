@@ -47,5 +47,8 @@ const _$DrawingToolEnumMap = {
   DrawingTool.pen: 'pen',
   DrawingTool.eraser: 'eraser',
   DrawingTool.rectangle: 'rectangle',
+  DrawingTool.circle: 'circle',
+  DrawingTool.line: 'line',
   DrawingTool.arrow: 'arrow',
+  DrawingTool.select: 'select',
 };

@@ -130,6 +130,156 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                   });
                 },
               ),
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'Annotation Tools',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Select Selection Tool',
+                shortcut: _shortcuts.selectSelectionTool,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(selectSelectionTool: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Select Pen Tool',
+                shortcut: _shortcuts.selectPenTool,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(selectPenTool: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Select Eraser Tool',
+                shortcut: _shortcuts.selectEraserTool,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(selectEraserTool: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Select Rectangle Tool',
+                shortcut: _shortcuts.selectRectangleTool,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(selectRectangleTool: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Select Circle Tool',
+                shortcut: _shortcuts.selectCircleTool,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(selectCircleTool: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Select Line Tool',
+                shortcut: _shortcuts.selectLineTool,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(selectLineTool: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Select Arrow Tool',
+                shortcut: _shortcuts.selectArrowTool,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(selectArrowTool: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'Loop Controls',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Toggle Full Video Loop',
+                shortcut: _shortcuts.toggleFullLoop,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(toggleFullLoop: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Set Loop Start (A Point)',
+                shortcut: _shortcuts.setLoopStart,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(setLoopStart: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Set Loop End (B Point)',
+                shortcut: _shortcuts.setLoopEnd,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(setLoopEnd: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Toggle Section Loop (A-B)',
+                shortcut: _shortcuts.toggleSectionLoop,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(toggleSectionLoop: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'Crop Controls',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Toggle Crop Mode',
+                shortcut: _shortcuts.toggleCropMode,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(toggleCropMode: shortcut);
+                  });
+                },
+              ),
             ],
           ),
         ),
@@ -301,6 +451,15 @@ class _ShortcutRowState extends State<_ShortcutRow> {
     if (key == LogicalKeyboardKey.keyS) return 'S';
     if (key == LogicalKeyboardKey.keyO) return 'O';
     if (key == LogicalKeyboardKey.keyY) return 'Y';
+    if (key == LogicalKeyboardKey.keyV) return 'V';
+    if (key == LogicalKeyboardKey.keyP) return 'P';
+    if (key == LogicalKeyboardKey.keyE) return 'E';
+    if (key == LogicalKeyboardKey.keyR) return 'R';
+    if (key == LogicalKeyboardKey.keyA) return 'A';
+    if (key == LogicalKeyboardKey.keyL) return 'L';
+    if (key == LogicalKeyboardKey.keyI) return 'I';
+    if (key == LogicalKeyboardKey.keyC) return 'C';
+    if (key == LogicalKeyboardKey.bracketLeft) return '[';
 
     final debugName = key.debugName;
     if (debugName != null) {

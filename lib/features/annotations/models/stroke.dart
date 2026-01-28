@@ -18,7 +18,7 @@ class StrokePoint with _$StrokePoint {
 }
 
 /// Drawing tool types
-enum DrawingTool { pen, eraser, rectangle, arrow }
+enum DrawingTool { pen, eraser, rectangle, circle, line, arrow, select }
 
 /// A complete stroke (pen path or shape)
 @freezed

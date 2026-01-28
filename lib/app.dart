@@ -11,6 +11,7 @@ import 'features/player/widgets/playback_controls.dart';
 import 'features/timeline/widgets/timeline_scrubber.dart';
 import 'features/annotations/widgets/drawing_tools_panel.dart';
 import 'features/annotations/providers/annotation_provider.dart';
+import 'features/annotations/models/stroke.dart';
 import 'core/services/annotation_storage_service.dart';
 import 'core/models/keyboard_shortcuts.dart';
 import 'features/settings/widgets/settings_dialog.dart';
@@ -32,6 +33,7 @@ class FrameSketchPlayerApp extends ConsumerStatefulWidget {
 
 class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   final FocusNode _focusNode = FocusNode();
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   late KeyboardShortcuts _shortcuts;
   Timer? _keyRepeatTimer;
   LogicalKeyboardKey? _lastPressedKey;
@@ -91,6 +93,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'FrameSketch Player',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(useMaterial3: true).copyWith(
@@ -314,6 +317,48 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         annotationNotifier.redo();
         return KeyEventResult.handled;
       }
+    }
+
+    // Select selection tool (no repeat)
+    if (matchesShortcut(_shortcuts.selectSelectionTool)) {
+      annotationNotifier.setTool(DrawingTool.select);
+      return KeyEventResult.handled;
+    }
+
+    // Select pen tool (no repeat)
+    if (matchesShortcut(_shortcuts.selectPenTool)) {
+      annotationNotifier.setTool(DrawingTool.pen);
+      return KeyEventResult.handled;
+    }
+
+    // Select eraser tool (no repeat)
+    if (matchesShortcut(_shortcuts.selectEraserTool)) {
+      annotationNotifier.setTool(DrawingTool.eraser);
+      return KeyEventResult.handled;
+    }
+
+    // Select rectangle tool (no repeat)
+    if (matchesShortcut(_shortcuts.selectRectangleTool)) {
+      annotationNotifier.setTool(DrawingTool.rectangle);
+      return KeyEventResult.handled;
+    }
+
+    // Select circle tool (no repeat)
+    if (matchesShortcut(_shortcuts.selectCircleTool)) {
+      annotationNotifier.setTool(DrawingTool.circle);
+      return KeyEventResult.handled;
+    }
+
+    // Select line tool (no repeat)
+    if (matchesShortcut(_shortcuts.selectLineTool)) {
+      annotationNotifier.setTool(DrawingTool.line);
+      return KeyEventResult.handled;
+    }
+
+    // Select arrow tool (no repeat)
+    if (matchesShortcut(_shortcuts.selectArrowTool)) {
+      annotationNotifier.setTool(DrawingTool.arrow);
+      return KeyEventResult.handled;
     }
 
     // Toggle full video loop (no repeat)
@@ -561,7 +606,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   }
 
   void _showInfoDialog(String title, String message) {
-    if (!mounted) return;
+    final context = _navigatorKey.currentContext;
+    if (context == null || !mounted) return;
 
     showDialog(
       context: context,
@@ -583,7 +629,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   }
 
   void _showErrorDialog(String message) {
-    if (!mounted) return;
+    final context = _navigatorKey.currentContext;
+    if (context == null || !mounted) return;
 
     showDialog(
       context: context,

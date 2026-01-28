@@ -4,11 +4,18 @@ import '../models/stroke.dart';
 import '../providers/annotation_provider.dart';
 
 /// Drawing tools panel
-class DrawingToolsPanel extends ConsumerWidget {
+class DrawingToolsPanel extends ConsumerStatefulWidget {
   const DrawingToolsPanel({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DrawingToolsPanel> createState() => _DrawingToolsPanelState();
+}
+
+class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
+  bool _showMoreTools = false;
+
+  @override
+  Widget build(BuildContext context) {
     final annotationState = ref.watch(annotationProvider);
     final annotationNotifier = ref.read(annotationProvider.notifier);
 
@@ -50,6 +57,14 @@ class DrawingToolsPanel extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 _buildToolButton(
+                  icon: Icons.near_me,
+                  label: 'Select',
+                  tool: DrawingTool.select,
+                  isSelected: annotationState.currentTool == DrawingTool.select,
+                  onTap: () => annotationNotifier.setTool(DrawingTool.select),
+                ),
+                const SizedBox(height: 8),
+                _buildToolButton(
                   icon: Icons.edit,
                   label: 'Pen',
                   tool: DrawingTool.pen,
@@ -59,11 +74,77 @@ class DrawingToolsPanel extends ConsumerWidget {
                 const SizedBox(height: 8),
                 _buildToolButton(
                   icon: Icons.auto_fix_high,
-                  label: 'Eraser (Coming Soon)',
+                  label: 'Eraser',
                   tool: DrawingTool.eraser,
                   isSelected: annotationState.currentTool == DrawingTool.eraser,
-                  onTap: null, // Disabled for now
+                  onTap: () => annotationNotifier.setTool(DrawingTool.eraser),
                 ),
+                const SizedBox(height: 12),
+                // More Tools expandable section
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      _showMoreTools = !_showMoreTools;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[800],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'More Tools',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Icon(
+                          _showMoreTools ? Icons.expand_less : Icons.expand_more,
+                          color: Colors.white,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_showMoreTools) ...[
+                  const SizedBox(height: 8),
+                  _buildToolButton(
+                    icon: Icons.crop_square,
+                    label: 'Rectangle',
+                    tool: DrawingTool.rectangle,
+                    isSelected: annotationState.currentTool == DrawingTool.rectangle,
+                    onTap: () => annotationNotifier.setTool(DrawingTool.rectangle),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildToolButton(
+                    icon: Icons.circle_outlined,
+                    label: 'Circle',
+                    tool: DrawingTool.circle,
+                    isSelected: annotationState.currentTool == DrawingTool.circle,
+                    onTap: () => annotationNotifier.setTool(DrawingTool.circle),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildToolButton(
+                    icon: Icons.horizontal_rule,
+                    label: 'Line',
+                    tool: DrawingTool.line,
+                    isSelected: annotationState.currentTool == DrawingTool.line,
+                    onTap: () => annotationNotifier.setTool(DrawingTool.line),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildToolButton(
+                    icon: Icons.arrow_forward,
+                    label: 'Arrow',
+                    tool: DrawingTool.arrow,
+                    isSelected: annotationState.currentTool == DrawingTool.arrow,
+                    onTap: () => annotationNotifier.setTool(DrawingTool.arrow),
+                  ),
+                ],
               ],
             ),
           ),

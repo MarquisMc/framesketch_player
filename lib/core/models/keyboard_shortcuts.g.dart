@@ -48,6 +48,27 @@ _$KeyboardShortcutsImpl _$$KeyboardShortcutsImplFromJson(
   ),
   undo: KeyboardShortcut.fromJson(json['undo'] as Map<String, dynamic>),
   redo: KeyboardShortcut.fromJson(json['redo'] as Map<String, dynamic>),
+  selectSelectionTool: KeyboardShortcut.fromJson(
+    json['selectSelectionTool'] as Map<String, dynamic>,
+  ),
+  selectPenTool: KeyboardShortcut.fromJson(
+    json['selectPenTool'] as Map<String, dynamic>,
+  ),
+  selectEraserTool: KeyboardShortcut.fromJson(
+    json['selectEraserTool'] as Map<String, dynamic>,
+  ),
+  selectRectangleTool: KeyboardShortcut.fromJson(
+    json['selectRectangleTool'] as Map<String, dynamic>,
+  ),
+  selectCircleTool: KeyboardShortcut.fromJson(
+    json['selectCircleTool'] as Map<String, dynamic>,
+  ),
+  selectLineTool: KeyboardShortcut.fromJson(
+    json['selectLineTool'] as Map<String, dynamic>,
+  ),
+  selectArrowTool: KeyboardShortcut.fromJson(
+    json['selectArrowTool'] as Map<String, dynamic>,
+  ),
   toggleFullLoop: KeyboardShortcut.fromJson(
     json['toggleFullLoop'] as Map<String, dynamic>,
   ),
@@ -77,6 +98,13 @@ Map<String, dynamic> _$$KeyboardShortcutsImplToJson(
   'saveAnnotations': instance.saveAnnotations,
   'undo': instance.undo,
   'redo': instance.redo,
+  'selectSelectionTool': instance.selectSelectionTool,
+  'selectPenTool': instance.selectPenTool,
+  'selectEraserTool': instance.selectEraserTool,
+  'selectRectangleTool': instance.selectRectangleTool,
+  'selectCircleTool': instance.selectCircleTool,
+  'selectLineTool': instance.selectLineTool,
+  'selectArrowTool': instance.selectArrowTool,
   'toggleFullLoop': instance.toggleFullLoop,
   'setLoopStart': instance.setLoopStart,
   'setLoopEnd': instance.setLoopEnd,

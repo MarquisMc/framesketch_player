@@ -13,6 +13,7 @@ A professional desktop video playback tool with frame-accurate stepping and non-
 
 ### Annotation Tools
 - **Freehand drawing**: Pen tool for marking up video frames
+- **Smart eraser**: Erase specific parts of strokes with stroke splitting
 - **Color selection**: 8 preset colors (red, green, blue, yellow, orange, purple, white, black)
 - **Adjustable stroke width**: 1-10 pixel brush sizes
 - **Undo/Redo**: Full annotation history support
@@ -20,16 +21,49 @@ A professional desktop video playback tool with frame-accurate stepping and non-
 - **Normalized coordinates**: Annotations scale with window resizing
 - **Non-destructive**: Original video files remain untouched
 
+### Loop Controls
+- **Full video loop**: Automatically replay video from start when it reaches the end
+- **Section loop (A-B loop)**: Loop between two specific points in the video
+- **Visual timeline markers**: Draggable A and B markers on the timeline
+- **Highlighted loop region**: Visual indication of the active loop section
+- **Seamless playback**: Continuous playback when looping without pause
+
+### Video Cropping & Export
+- **Interactive crop mode**: Drag and resize crop rectangle on video
+- **Aspect ratio presets**: Free, 16:9, 1:1, 9:16, 4:3, 3:4
+- **Visual crop overlay**: See exactly what will be exported
+- **FFmpeg export**: Export cropped video with progress tracking
+- **Bundled FFmpeg**: No external FFmpeg installation required
+- **Cancellable export**: Stop export at any time
+
 ### Keyboard Shortcuts
+
+**Playback Controls:**
 - **Space**: Play/Pause
-- **Left Arrow**: Previous frame
-- **Right Arrow**: Next frame
-- **Shift + Left Arrow**: Jump back 1 second
+- **.** (Period): Next frame
+- **,** (Comma): Previous frame
 - **Shift + Right Arrow**: Jump forward 1 second
+- **Shift + Left Arrow**: Jump back 1 second
 - **Ctrl + O**: Open video file
 - **Ctrl + S**: Save annotations
+
+**Annotation Tools:**
+- **P**: Select Pen tool
+- **E**: Select Eraser tool
 - **Ctrl + Z**: Undo last stroke
-- **Ctrl + Y / Ctrl + Shift + Z**: Redo stroke
+- **Ctrl + Y**: Redo stroke
+
+**Loop Controls:**
+- **L**: Toggle full video loop
+- **I**: Set loop start point (A)
+- **O**: Set loop end point (B)
+- **[**: Toggle section loop (A-B)
+
+**Crop Controls:**
+- **C**: Toggle crop mode
+- **Escape**: Exit crop mode
+
+*All keyboard shortcuts are customizable via Settings dialog*
 
 ## Technical Architecture
 
@@ -60,6 +94,9 @@ A professional desktop video playback tool with frame-accurate stepping and non-
 - `playerProvider`: Video playback state and controls
 - `timelineProvider`: Scrubbing state with debouncing
 - `annotationProvider`: Drawing tools and stroke management
+- `loopProvider`: Loop mode state and A-B point management
+- `cropProvider`: Crop mode state and FFmpeg export handling
+- `keyboardShortcutsProvider`: Customizable keyboard shortcuts
 
 ### Data Model
 Annotations are stored as JSON files with `.annotations.json` extension:
@@ -100,22 +137,15 @@ Annotations are stored as JSON files with `.annotations.json` extension:
    flutter --version
    ```
 
-2. **FFmpeg & FFprobe** (REQUIRED):
-   - **Windows**:
-     - Download from [ffmpeg.org](https://ffmpeg.org/download.html) or [gyan.dev](https://www.gyan.dev/ffmpeg/builds/)
-     - Extract to `C:\ffmpeg\` (recommended)
-     - Or add to system PATH
+2. **FFmpeg & FFprobe**:
+   - **IMPORTANT**: FFmpeg is now **bundled with the application** via `media_kit_libs_windows_video`
+   - No external installation required for basic playback
+   - Only needed for advanced FFprobe metadata extraction (optional)
 
-   - **macOS**:
-     ```bash
-     brew install ffmpeg
-     ```
-
-   - **Linux**:
-     ```bash
-     sudo apt-get install ffmpeg  # Debian/Ubuntu
-     sudo dnf install ffmpeg       # Fedora
-     ```
+   **Optional External Installation** (for metadata):
+   - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html)
+   - **macOS**: `brew install ffmpeg`
+   - **Linux**: `sudo apt-get install ffmpeg` (Debian/Ubuntu)
 
 3. **Desktop Support Enabled**:
    ```bash
@@ -201,12 +231,36 @@ Click the menu icon (⋮) for options to check registration status or remove fil
 - Scrub by dragging the timeline slider
 
 ### Drawing Annotations
-1. Select the **Pen** tool from the left panel
+1. Select the **Pen** tool from the left panel (or press **P**)
 2. Choose a **color** by clicking a color swatch
 3. Adjust **stroke width** using the slider
 4. Click and drag on the video to draw
-5. Use **Undo** (Ctrl+Z) to remove strokes
-6. Press **Ctrl+S** to save annotations
+5. Switch to **Eraser** tool (or press **E**) to erase parts of strokes
+6. Use **Undo** (Ctrl+Z) to remove strokes
+7. Press **Ctrl+S** to save annotations
+
+### Using Loop Features
+**Full Video Loop:**
+1. Press **L** or click the loop button to enable full video loop
+2. Video will automatically restart from the beginning when it ends
+
+**Section Loop (A-B Loop):**
+1. Play the video to your desired start point
+2. Press **I** to set the loop start point (A marker)
+3. Continue playing to your desired end point
+4. Press **O** to set the loop end point (B marker)
+5. Press **[** to activate section loop
+6. Video will loop between A and B points
+7. Drag the A and B markers on the timeline to adjust loop points
+
+### Cropping and Exporting Video
+1. Press **C** or click the crop icon to enter crop mode
+2. Drag the crop rectangle to position it
+3. Resize by dragging corner handles
+4. Select an aspect ratio preset (16:9, 1:1, etc.) if desired
+5. Click **Export Cropped Video** to save
+6. Choose output location and wait for export to complete
+7. Press **Escape** or **C** to exit crop mode
 
 ### Saving & Loading Annotations
 - **Auto-load**: Annotations are automatically loaded when opening a video with existing `.annotations.json` file
@@ -222,11 +276,13 @@ lib/
 ├── core/
 │   ├── models/
 │   │   ├── video_metadata.dart        # Video file metadata
-│   │   └── annotation_data.dart       # Annotation data model
+│   │   ├── annotation_data.dart       # Annotation data model
+│   │   └── keyboard_shortcuts.dart    # Keyboard shortcut configuration
 │   ├── services/
 │   │   ├── ffprobe_service.dart       # FFprobe integration
 │   │   ├── ffmpeg_service.dart        # FFmpeg operations
-│   │   └── annotation_storage_service.dart  # JSON persistence
+│   │   ├── annotation_storage_service.dart  # JSON persistence
+│   │   └── keyboard_shortcuts_service.dart  # Shortcut persistence
 │   └── utils/
 │       ├── timecode_formatter.dart    # Time formatting utilities
 │       └── coordinate_transformer.dart # Normalized coordinate handling
@@ -241,15 +297,29 @@ lib/
 │   │   ├── providers/
 │   │   │   └── timeline_provider.dart # Scrubbing state
 │   │   └── widgets/
-│   │       └── timeline_scrubber.dart # Seek slider
-│   └── annotations/
-│       ├── models/
-│       │   └── stroke.dart            # Stroke and point data
-│       ├── providers/
-│       │   └── annotation_provider.dart # Drawing state
+│   │       └── timeline_scrubber.dart # Seek slider with loop markers
+│   ├── annotations/
+│   │   ├── models/
+│   │   │   └── stroke.dart            # Stroke and point data
+│   │   ├── providers/
+│   │   │   └── annotation_provider.dart # Drawing state
+│   │   └── widgets/
+│   │       ├── annotation_overlay.dart # CustomPaint overlay
+│   │       └── drawing_tools_panel.dart # Tool selection UI
+│   ├── loop/
+│   │   ├── providers/
+│   │   │   └── loop_provider.dart     # Loop mode state
+│   │   └── widgets/
+│   │       └── loop_controls.dart     # Loop control buttons
+│   ├── crop/
+│   │   ├── providers/
+│   │   │   └── crop_provider.dart     # Crop state & FFmpeg export
+│   │   └── widgets/
+│   │       ├── crop_overlay.dart      # Interactive crop rectangle
+│   │       └── crop_controls.dart     # Crop panel with export
+│   └── settings/
 │       └── widgets/
-│           ├── annotation_overlay.dart # CustomPaint overlay
-│           └── drawing_tools_panel.dart # Tool selection UI
+│           └── settings_dialog.dart   # Keyboard shortcuts editor
 ```
 
 ## Known Limitations & Future Improvements
@@ -257,16 +327,25 @@ lib/
 ### Current Limitations
 
 1. **Variable Frame Rate (VFR) videos**: Frame stepping uses average FPS, which may drift slightly in VFR content
-2. **Export functionality**: Burning annotations into video (FFmpeg filter overlay) is not yet implemented
-3. **Eraser tool**: Currently disabled (pen-only mode)
-4. **Timeline thumbnails**: Preview thumbnails on scrubber not implemented
-5. **Multi-stroke selection**: Cannot select/move/delete individual strokes after drawing
+2. **Annotation export**: Burning annotations into video (FFmpeg filter overlay) is not yet implemented
+3. **Timeline thumbnails**: Preview thumbnails on scrubber not implemented
+4. **Multi-stroke selection**: Cannot select/move/delete individual strokes after drawing
+5. **Crop during playback**: Crop mode currently requires pausing the video
+
+### Completed Features
+
+- [x] Full video loop with seamless playback
+- [x] Section loop (A-B loop) with visual timeline markers
+- [x] Video cropping with interactive overlay
+- [x] FFmpeg-based crop export with progress tracking
+- [x] Smart eraser tool with stroke splitting
+- [x] Customizable keyboard shortcuts
+- [x] Bundled FFmpeg (no external installation required)
 
 ### Planned Features
 
 - [ ] Export annotated video with burned-in strokes (FFmpeg overlay filter)
-- [ ] Eraser tool for removing parts of strokes
-- [ ] Shape tools (rectangle, arrow, circle)
+- [ ] Shape tools (rectangle, arrow, circle, line)
 - [ ] Text annotation support
 - [ ] Timeline thumbnail preview on hover
 - [ ] Recent files menu
@@ -276,6 +355,8 @@ lib/
 - [ ] Timestamp-based annotation visibility (show/hide strokes by time range)
 - [ ] Export annotations as separate image sequence
 - [ ] Annotation templates/presets
+- [ ] Video rotation and flip
+- [ ] Audio waveform visualization
 
 ### Performance Considerations
 
@@ -286,13 +367,20 @@ lib/
 ## Troubleshooting
 
 ### "FFprobe not found" Error
-**Solution**: Install FFmpeg and ensure it's in your system PATH or placed in `C:\ffmpeg\bin\` (Windows).
+**Solution**: FFprobe is optional for metadata extraction. The app will work without it using default FPS values.
 
-**Verify installation**:
+**For enhanced metadata support**, install FFmpeg externally:
 ```bash
 ffprobe -version
 ffmpeg -version
 ```
+
+### Crop Export Fails
+**Check**:
+- Ensure video file is not currently playing
+- Sufficient disk space for output file
+- Write permissions in target directory
+- Console for specific FFmpeg error messages
 
 ### Video Loads but Shows Black Screen
 **Possible causes**:

@@ -211,7 +211,8 @@ Stroke _$StrokeFromJson(Map<String, dynamic> json) {
 /// @nodoc
 mixin _$Stroke {
   String get id => throw _privateConstructorUsedError;
-  DrawingTool get tool => throw _privateConstructorUsedError;
+  DrawingTool get tool =>
+      throw _privateConstructorUsedError; // ignore: invalid_annotation_target
   @JsonKey(fromJson: _colorFromJson, toJson: _colorToJson)
   Color get color => throw _privateConstructorUsedError;
   double get strokeWidth => throw _privateConstructorUsedError;
@@ -400,6 +401,7 @@ class _$StrokeImpl implements _Stroke {
   final String id;
   @override
   final DrawingTool tool;
+  // ignore: invalid_annotation_target
   @override
   @JsonKey(fromJson: _colorFromJson, toJson: _colorToJson)
   final Color color;
@@ -486,7 +488,7 @@ abstract class _Stroke implements Stroke {
   @override
   String get id;
   @override
-  DrawingTool get tool;
+  DrawingTool get tool; // ignore: invalid_annotation_target
   @override
   @JsonKey(fromJson: _colorFromJson, toJson: _colorToJson)
   Color get color;
