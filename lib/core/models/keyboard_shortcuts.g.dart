@@ -69,6 +69,9 @@ _$KeyboardShortcutsImpl _$$KeyboardShortcutsImplFromJson(
   selectArrowTool: KeyboardShortcut.fromJson(
     json['selectArrowTool'] as Map<String, dynamic>,
   ),
+  selectTextTool: KeyboardShortcut.fromJson(
+    json['selectTextTool'] as Map<String, dynamic>,
+  ),
   toggleFullLoop: KeyboardShortcut.fromJson(
     json['toggleFullLoop'] as Map<String, dynamic>,
   ),
@@ -84,6 +87,13 @@ _$KeyboardShortcutsImpl _$$KeyboardShortcutsImplFromJson(
   toggleCropMode: KeyboardShortcut.fromJson(
     json['toggleCropMode'] as Map<String, dynamic>,
   ),
+  generalShortcutsEnabled: json['generalShortcutsEnabled'] as bool? ?? true,
+  annotationToolsShortcutsEnabled:
+      json['annotationToolsShortcutsEnabled'] as bool? ?? true,
+  loopControlsShortcutsEnabled:
+      json['loopControlsShortcutsEnabled'] as bool? ?? true,
+  cropControlsShortcutsEnabled:
+      json['cropControlsShortcutsEnabled'] as bool? ?? true,
 );
 
 Map<String, dynamic> _$$KeyboardShortcutsImplToJson(
@@ -105,9 +115,14 @@ Map<String, dynamic> _$$KeyboardShortcutsImplToJson(
   'selectCircleTool': instance.selectCircleTool,
   'selectLineTool': instance.selectLineTool,
   'selectArrowTool': instance.selectArrowTool,
+  'selectTextTool': instance.selectTextTool,
   'toggleFullLoop': instance.toggleFullLoop,
   'setLoopStart': instance.setLoopStart,
   'setLoopEnd': instance.setLoopEnd,
   'toggleSectionLoop': instance.toggleSectionLoop,
   'toggleCropMode': instance.toggleCropMode,
+  'generalShortcutsEnabled': instance.generalShortcutsEnabled,
+  'annotationToolsShortcutsEnabled': instance.annotationToolsShortcutsEnabled,
+  'loopControlsShortcutsEnabled': instance.loopControlsShortcutsEnabled,
+  'cropControlsShortcutsEnabled': instance.cropControlsShortcutsEnabled,
 };

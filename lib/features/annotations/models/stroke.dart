@@ -18,7 +18,7 @@ class StrokePoint with _$StrokePoint {
 }
 
 /// Drawing tool types
-enum DrawingTool { pen, eraser, rectangle, circle, line, arrow, select }
+enum DrawingTool { pen, eraser, rectangle, circle, line, arrow, text, select }
 
 /// A complete stroke (pen path or shape)
 @freezed
@@ -33,6 +33,9 @@ class Stroke with _$Stroke {
     required List<StrokePoint> points,
     @Default(0) int startTimeMs,
     @Default(0) int endTimeMs,
+    String? text,
+    @Default(16.0) double fontSize,
+    @Default(1.0) double scale,
   }) = _Stroke;
 
   factory Stroke.fromJson(Map<String, dynamic> json) => _$StrokeFromJson(json);

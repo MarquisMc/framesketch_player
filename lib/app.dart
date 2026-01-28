@@ -255,140 +255,167 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     // Only handle key down events for actions
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
-    // Next frame (with repeat)
-    if (matchesShortcut(_shortcuts.nextFrame)) {
-      startKeyRepeat(() => playerNotifier.stepForward());
-      return KeyEventResult.handled;
+    // General shortcuts
+    if (_shortcuts.generalShortcutsEnabled) {
+      // Next frame (with repeat)
+      if (matchesShortcut(_shortcuts.nextFrame)) {
+        startKeyRepeat(() => playerNotifier.stepForward());
+        return KeyEventResult.handled;
+      }
+
+      // Previous frame (with repeat)
+      if (matchesShortcut(_shortcuts.previousFrame)) {
+        startKeyRepeat(() => playerNotifier.stepBackward());
+        return KeyEventResult.handled;
+      }
+
+      // Play/Pause (no repeat)
+      if (matchesShortcut(_shortcuts.playPause)) {
+        playerNotifier.togglePlayPause();
+        return KeyEventResult.handled;
+      }
+
+      // Jump forward (with repeat, slower)
+      if (matchesShortcut(_shortcuts.jumpForward)) {
+        startKeyRepeat(
+          () => playerNotifier.jumpForward(const Duration(seconds: 1)),
+          interval: const Duration(milliseconds: 100),
+        );
+        return KeyEventResult.handled;
+      }
+
+      // Jump backward (with repeat, slower)
+      if (matchesShortcut(_shortcuts.jumpBackward)) {
+        startKeyRepeat(
+          () => playerNotifier.jumpBackward(const Duration(seconds: 1)),
+          interval: const Duration(milliseconds: 100),
+        );
+        return KeyEventResult.handled;
+      }
+
+      // Open file (no repeat)
+      if (matchesShortcut(_shortcuts.openFile)) {
+        _openFile();
+        return KeyEventResult.handled;
+      }
+
+      // Save annotations (no repeat)
+      if (matchesShortcut(_shortcuts.saveAnnotations)) {
+        _saveAnnotations();
+        return KeyEventResult.handled;
+      }
+
+      // Undo (no repeat)
+      if (matchesShortcut(_shortcuts.undo)) {
+        if (annotationNotifier.canUndo) {
+          annotationNotifier.undo();
+          return KeyEventResult.handled;
+        }
+      }
+
+      // Redo (no repeat)
+      if (matchesShortcut(_shortcuts.redo)) {
+        if (annotationNotifier.canRedo) {
+          annotationNotifier.redo();
+          return KeyEventResult.handled;
+        }
+      }
+
+      // Delete selected annotation (no repeat)
+      if (event.logicalKey == LogicalKeyboardKey.delete) {
+        final annotationState = ref.read(annotationProvider);
+        if (annotationState.selectedStrokeId != null) {
+          annotationNotifier.deleteSelectedStroke();
+          return KeyEventResult.handled;
+        }
+      }
     }
 
-    // Previous frame (with repeat)
-    if (matchesShortcut(_shortcuts.previousFrame)) {
-      startKeyRepeat(() => playerNotifier.stepBackward());
-      return KeyEventResult.handled;
-    }
+    // Annotation tools shortcuts
+    if (_shortcuts.annotationToolsShortcutsEnabled) {
+      // Select selection tool (no repeat)
+      if (matchesShortcut(_shortcuts.selectSelectionTool)) {
+        annotationNotifier.setTool(DrawingTool.select);
+        return KeyEventResult.handled;
+      }
 
-    // Play/Pause (no repeat)
-    if (matchesShortcut(_shortcuts.playPause)) {
-      playerNotifier.togglePlayPause();
-      return KeyEventResult.handled;
-    }
+      // Select pen tool (no repeat)
+      if (matchesShortcut(_shortcuts.selectPenTool)) {
+        annotationNotifier.setTool(DrawingTool.pen);
+        return KeyEventResult.handled;
+      }
 
-    // Jump forward (with repeat, slower)
-    if (matchesShortcut(_shortcuts.jumpForward)) {
-      startKeyRepeat(
-        () => playerNotifier.jumpForward(const Duration(seconds: 1)),
-        interval: const Duration(milliseconds: 100),
-      );
-      return KeyEventResult.handled;
-    }
+      // Select eraser tool (no repeat)
+      if (matchesShortcut(_shortcuts.selectEraserTool)) {
+        annotationNotifier.setTool(DrawingTool.eraser);
+        return KeyEventResult.handled;
+      }
 
-    // Jump backward (with repeat, slower)
-    if (matchesShortcut(_shortcuts.jumpBackward)) {
-      startKeyRepeat(
-        () => playerNotifier.jumpBackward(const Duration(seconds: 1)),
-        interval: const Duration(milliseconds: 100),
-      );
-      return KeyEventResult.handled;
-    }
+      // Select rectangle tool (no repeat)
+      if (matchesShortcut(_shortcuts.selectRectangleTool)) {
+        annotationNotifier.setTool(DrawingTool.rectangle);
+        return KeyEventResult.handled;
+      }
 
-    // Open file (no repeat)
-    if (matchesShortcut(_shortcuts.openFile)) {
-      _openFile();
-      return KeyEventResult.handled;
-    }
+      // Select circle tool (no repeat)
+      if (matchesShortcut(_shortcuts.selectCircleTool)) {
+        annotationNotifier.setTool(DrawingTool.circle);
+        return KeyEventResult.handled;
+      }
 
-    // Save annotations (no repeat)
-    if (matchesShortcut(_shortcuts.saveAnnotations)) {
-      _saveAnnotations();
-      return KeyEventResult.handled;
-    }
+      // Select line tool (no repeat)
+      if (matchesShortcut(_shortcuts.selectLineTool)) {
+        annotationNotifier.setTool(DrawingTool.line);
+        return KeyEventResult.handled;
+      }
 
-    // Undo (no repeat)
-    if (matchesShortcut(_shortcuts.undo)) {
-      if (annotationNotifier.canUndo) {
-        annotationNotifier.undo();
+      // Select arrow tool (no repeat)
+      if (matchesShortcut(_shortcuts.selectArrowTool)) {
+        annotationNotifier.setTool(DrawingTool.arrow);
+        return KeyEventResult.handled;
+      }
+
+      // Select text tool (no repeat)
+      if (matchesShortcut(_shortcuts.selectTextTool)) {
+        annotationNotifier.setTool(DrawingTool.text);
         return KeyEventResult.handled;
       }
     }
 
-    // Redo (no repeat)
-    if (matchesShortcut(_shortcuts.redo)) {
-      if (annotationNotifier.canRedo) {
-        annotationNotifier.redo();
+    // Loop controls shortcuts
+    if (_shortcuts.loopControlsShortcutsEnabled) {
+      // Toggle full video loop (no repeat)
+      if (matchesShortcut(_shortcuts.toggleFullLoop)) {
+        loopNotifier.toggleFullVideoLoop();
+        return KeyEventResult.handled;
+      }
+
+      // Set loop start point (A) (no repeat)
+      if (matchesShortcut(_shortcuts.setLoopStart)) {
+        loopNotifier.setAPoint();
+        return KeyEventResult.handled;
+      }
+
+      // Set loop end point (B) (no repeat)
+      if (matchesShortcut(_shortcuts.setLoopEnd)) {
+        loopNotifier.setBPoint();
+        return KeyEventResult.handled;
+      }
+
+      // Toggle section loop (A-B) (no repeat)
+      if (matchesShortcut(_shortcuts.toggleSectionLoop)) {
+        loopNotifier.toggleSectionLoop();
         return KeyEventResult.handled;
       }
     }
 
-    // Select selection tool (no repeat)
-    if (matchesShortcut(_shortcuts.selectSelectionTool)) {
-      annotationNotifier.setTool(DrawingTool.select);
-      return KeyEventResult.handled;
-    }
-
-    // Select pen tool (no repeat)
-    if (matchesShortcut(_shortcuts.selectPenTool)) {
-      annotationNotifier.setTool(DrawingTool.pen);
-      return KeyEventResult.handled;
-    }
-
-    // Select eraser tool (no repeat)
-    if (matchesShortcut(_shortcuts.selectEraserTool)) {
-      annotationNotifier.setTool(DrawingTool.eraser);
-      return KeyEventResult.handled;
-    }
-
-    // Select rectangle tool (no repeat)
-    if (matchesShortcut(_shortcuts.selectRectangleTool)) {
-      annotationNotifier.setTool(DrawingTool.rectangle);
-      return KeyEventResult.handled;
-    }
-
-    // Select circle tool (no repeat)
-    if (matchesShortcut(_shortcuts.selectCircleTool)) {
-      annotationNotifier.setTool(DrawingTool.circle);
-      return KeyEventResult.handled;
-    }
-
-    // Select line tool (no repeat)
-    if (matchesShortcut(_shortcuts.selectLineTool)) {
-      annotationNotifier.setTool(DrawingTool.line);
-      return KeyEventResult.handled;
-    }
-
-    // Select arrow tool (no repeat)
-    if (matchesShortcut(_shortcuts.selectArrowTool)) {
-      annotationNotifier.setTool(DrawingTool.arrow);
-      return KeyEventResult.handled;
-    }
-
-    // Toggle full video loop (no repeat)
-    if (matchesShortcut(_shortcuts.toggleFullLoop)) {
-      loopNotifier.toggleFullVideoLoop();
-      return KeyEventResult.handled;
-    }
-
-    // Set loop start point (A) (no repeat)
-    if (matchesShortcut(_shortcuts.setLoopStart)) {
-      loopNotifier.setAPoint();
-      return KeyEventResult.handled;
-    }
-
-    // Set loop end point (B) (no repeat)
-    if (matchesShortcut(_shortcuts.setLoopEnd)) {
-      loopNotifier.setBPoint();
-      return KeyEventResult.handled;
-    }
-
-    // Toggle section loop (A-B) (no repeat)
-    if (matchesShortcut(_shortcuts.toggleSectionLoop)) {
-      loopNotifier.toggleSectionLoop();
-      return KeyEventResult.handled;
-    }
-
-    // Toggle crop mode (no repeat)
-    if (matchesShortcut(_shortcuts.toggleCropMode)) {
-      cropNotifier.toggleCropMode();
-      return KeyEventResult.handled;
+    // Crop controls shortcuts
+    if (_shortcuts.cropControlsShortcutsEnabled) {
+      // Toggle crop mode (no repeat)
+      if (matchesShortcut(_shortcuts.toggleCropMode)) {
+        cropNotifier.toggleCropMode();
+        return KeyEventResult.handled;
+      }
     }
 
     // Escape key - exit crop mode

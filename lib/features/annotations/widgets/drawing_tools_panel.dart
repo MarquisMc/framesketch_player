@@ -144,6 +144,14 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                     isSelected: annotationState.currentTool == DrawingTool.arrow,
                     onTap: () => annotationNotifier.setTool(DrawingTool.arrow),
                   ),
+                  const SizedBox(height: 8),
+                  _buildToolButton(
+                    icon: Icons.text_fields,
+                    label: 'Text',
+                    tool: DrawingTool.text,
+                    isSelected: annotationState.currentTool == DrawingTool.text,
+                    onTap: () => annotationNotifier.setTool(DrawingTool.text),
+                  ),
                 ],
               ],
             ),
@@ -228,6 +236,52 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
               ],
             ),
           ),
+
+          // Font size (visible when text tool is selected)
+          if (annotationState.currentTool == DrawingTool.text) ...[
+            const Divider(height: 1, color: Colors.white24),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Font Size',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Slider(
+                          value: annotationState.currentFontSize,
+                          min: 8.0,
+                          max: 72.0,
+                          divisions: 32,
+                          label: annotationState.currentFontSize.toStringAsFixed(0),
+                          onChanged: (value) {
+                            annotationNotifier.setFontSize(value);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        annotationState.currentFontSize.toStringAsFixed(0),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           const Divider(height: 1, color: Colors.white24),
 

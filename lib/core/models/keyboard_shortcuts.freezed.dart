@@ -275,14 +275,21 @@ mixin _$KeyboardShortcuts {
       throw _privateConstructorUsedError;
   KeyboardShortcut get selectCircleTool => throw _privateConstructorUsedError;
   KeyboardShortcut get selectLineTool => throw _privateConstructorUsedError;
-  KeyboardShortcut get selectArrowTool =>
+  KeyboardShortcut get selectArrowTool => throw _privateConstructorUsedError;
+  KeyboardShortcut get selectTextTool =>
       throw _privateConstructorUsedError; // Loop shortcuts
   KeyboardShortcut get toggleFullLoop => throw _privateConstructorUsedError;
   KeyboardShortcut get setLoopStart => throw _privateConstructorUsedError;
   KeyboardShortcut get setLoopEnd => throw _privateConstructorUsedError;
   KeyboardShortcut get toggleSectionLoop =>
       throw _privateConstructorUsedError; // Crop shortcuts
-  KeyboardShortcut get toggleCropMode => throw _privateConstructorUsedError;
+  KeyboardShortcut get toggleCropMode =>
+      throw _privateConstructorUsedError; // Group enable/disable toggles
+  bool get generalShortcutsEnabled => throw _privateConstructorUsedError;
+  bool get annotationToolsShortcutsEnabled =>
+      throw _privateConstructorUsedError;
+  bool get loopControlsShortcutsEnabled => throw _privateConstructorUsedError;
+  bool get cropControlsShortcutsEnabled => throw _privateConstructorUsedError;
 
   /// Serializes this KeyboardShortcuts to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -318,11 +325,16 @@ abstract class $KeyboardShortcutsCopyWith<$Res> {
     KeyboardShortcut selectCircleTool,
     KeyboardShortcut selectLineTool,
     KeyboardShortcut selectArrowTool,
+    KeyboardShortcut selectTextTool,
     KeyboardShortcut toggleFullLoop,
     KeyboardShortcut setLoopStart,
     KeyboardShortcut setLoopEnd,
     KeyboardShortcut toggleSectionLoop,
     KeyboardShortcut toggleCropMode,
+    bool generalShortcutsEnabled,
+    bool annotationToolsShortcutsEnabled,
+    bool loopControlsShortcutsEnabled,
+    bool cropControlsShortcutsEnabled,
   });
 
   $KeyboardShortcutCopyWith<$Res> get nextFrame;
@@ -341,6 +353,7 @@ abstract class $KeyboardShortcutsCopyWith<$Res> {
   $KeyboardShortcutCopyWith<$Res> get selectCircleTool;
   $KeyboardShortcutCopyWith<$Res> get selectLineTool;
   $KeyboardShortcutCopyWith<$Res> get selectArrowTool;
+  $KeyboardShortcutCopyWith<$Res> get selectTextTool;
   $KeyboardShortcutCopyWith<$Res> get toggleFullLoop;
   $KeyboardShortcutCopyWith<$Res> get setLoopStart;
   $KeyboardShortcutCopyWith<$Res> get setLoopEnd;
@@ -379,11 +392,16 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
     Object? selectCircleTool = null,
     Object? selectLineTool = null,
     Object? selectArrowTool = null,
+    Object? selectTextTool = null,
     Object? toggleFullLoop = null,
     Object? setLoopStart = null,
     Object? setLoopEnd = null,
     Object? toggleSectionLoop = null,
     Object? toggleCropMode = null,
+    Object? generalShortcutsEnabled = null,
+    Object? annotationToolsShortcutsEnabled = null,
+    Object? loopControlsShortcutsEnabled = null,
+    Object? cropControlsShortcutsEnabled = null,
   }) {
     return _then(
       _value.copyWith(
@@ -451,6 +469,10 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
                 ? _value.selectArrowTool
                 : selectArrowTool // ignore: cast_nullable_to_non_nullable
                       as KeyboardShortcut,
+            selectTextTool: null == selectTextTool
+                ? _value.selectTextTool
+                : selectTextTool // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
             toggleFullLoop: null == toggleFullLoop
                 ? _value.toggleFullLoop
                 : toggleFullLoop // ignore: cast_nullable_to_non_nullable
@@ -471,6 +493,23 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
                 ? _value.toggleCropMode
                 : toggleCropMode // ignore: cast_nullable_to_non_nullable
                       as KeyboardShortcut,
+            generalShortcutsEnabled: null == generalShortcutsEnabled
+                ? _value.generalShortcutsEnabled
+                : generalShortcutsEnabled // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            annotationToolsShortcutsEnabled:
+                null == annotationToolsShortcutsEnabled
+                ? _value.annotationToolsShortcutsEnabled
+                : annotationToolsShortcutsEnabled // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            loopControlsShortcutsEnabled: null == loopControlsShortcutsEnabled
+                ? _value.loopControlsShortcutsEnabled
+                : loopControlsShortcutsEnabled // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            cropControlsShortcutsEnabled: null == cropControlsShortcutsEnabled
+                ? _value.cropControlsShortcutsEnabled
+                : cropControlsShortcutsEnabled // ignore: cast_nullable_to_non_nullable
+                      as bool,
           )
           as $Val,
     );
@@ -640,6 +679,16 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
   /// with the given fields replaced by the non-null parameter values.
   @override
   @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get selectTextTool {
+    return $KeyboardShortcutCopyWith<$Res>(_value.selectTextTool, (value) {
+      return _then(_value.copyWith(selectTextTool: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
   $KeyboardShortcutCopyWith<$Res> get toggleFullLoop {
     return $KeyboardShortcutCopyWith<$Res>(_value.toggleFullLoop, (value) {
       return _then(_value.copyWith(toggleFullLoop: value) as $Val);
@@ -713,11 +762,16 @@ abstract class _$$KeyboardShortcutsImplCopyWith<$Res>
     KeyboardShortcut selectCircleTool,
     KeyboardShortcut selectLineTool,
     KeyboardShortcut selectArrowTool,
+    KeyboardShortcut selectTextTool,
     KeyboardShortcut toggleFullLoop,
     KeyboardShortcut setLoopStart,
     KeyboardShortcut setLoopEnd,
     KeyboardShortcut toggleSectionLoop,
     KeyboardShortcut toggleCropMode,
+    bool generalShortcutsEnabled,
+    bool annotationToolsShortcutsEnabled,
+    bool loopControlsShortcutsEnabled,
+    bool cropControlsShortcutsEnabled,
   });
 
   @override
@@ -752,6 +806,8 @@ abstract class _$$KeyboardShortcutsImplCopyWith<$Res>
   $KeyboardShortcutCopyWith<$Res> get selectLineTool;
   @override
   $KeyboardShortcutCopyWith<$Res> get selectArrowTool;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get selectTextTool;
   @override
   $KeyboardShortcutCopyWith<$Res> get toggleFullLoop;
   @override
@@ -794,11 +850,16 @@ class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
     Object? selectCircleTool = null,
     Object? selectLineTool = null,
     Object? selectArrowTool = null,
+    Object? selectTextTool = null,
     Object? toggleFullLoop = null,
     Object? setLoopStart = null,
     Object? setLoopEnd = null,
     Object? toggleSectionLoop = null,
     Object? toggleCropMode = null,
+    Object? generalShortcutsEnabled = null,
+    Object? annotationToolsShortcutsEnabled = null,
+    Object? loopControlsShortcutsEnabled = null,
+    Object? cropControlsShortcutsEnabled = null,
   }) {
     return _then(
       _$KeyboardShortcutsImpl(
@@ -866,6 +927,10 @@ class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
             ? _value.selectArrowTool
             : selectArrowTool // ignore: cast_nullable_to_non_nullable
                   as KeyboardShortcut,
+        selectTextTool: null == selectTextTool
+            ? _value.selectTextTool
+            : selectTextTool // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
         toggleFullLoop: null == toggleFullLoop
             ? _value.toggleFullLoop
             : toggleFullLoop // ignore: cast_nullable_to_non_nullable
@@ -886,6 +951,22 @@ class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
             ? _value.toggleCropMode
             : toggleCropMode // ignore: cast_nullable_to_non_nullable
                   as KeyboardShortcut,
+        generalShortcutsEnabled: null == generalShortcutsEnabled
+            ? _value.generalShortcutsEnabled
+            : generalShortcutsEnabled // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        annotationToolsShortcutsEnabled: null == annotationToolsShortcutsEnabled
+            ? _value.annotationToolsShortcutsEnabled
+            : annotationToolsShortcutsEnabled // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        loopControlsShortcutsEnabled: null == loopControlsShortcutsEnabled
+            ? _value.loopControlsShortcutsEnabled
+            : loopControlsShortcutsEnabled // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        cropControlsShortcutsEnabled: null == cropControlsShortcutsEnabled
+            ? _value.cropControlsShortcutsEnabled
+            : cropControlsShortcutsEnabled // ignore: cast_nullable_to_non_nullable
+                  as bool,
       ),
     );
   }
@@ -911,11 +992,16 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
     required this.selectCircleTool,
     required this.selectLineTool,
     required this.selectArrowTool,
+    required this.selectTextTool,
     required this.toggleFullLoop,
     required this.setLoopStart,
     required this.setLoopEnd,
     required this.toggleSectionLoop,
     required this.toggleCropMode,
+    this.generalShortcutsEnabled = true,
+    this.annotationToolsShortcutsEnabled = true,
+    this.loopControlsShortcutsEnabled = true,
+    this.cropControlsShortcutsEnabled = true,
   });
 
   factory _$KeyboardShortcutsImpl.fromJson(Map<String, dynamic> json) =>
@@ -954,6 +1040,8 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
   final KeyboardShortcut selectLineTool;
   @override
   final KeyboardShortcut selectArrowTool;
+  @override
+  final KeyboardShortcut selectTextTool;
   // Loop shortcuts
   @override
   final KeyboardShortcut toggleFullLoop;
@@ -966,10 +1054,23 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
   // Crop shortcuts
   @override
   final KeyboardShortcut toggleCropMode;
+  // Group enable/disable toggles
+  @override
+  @JsonKey()
+  final bool generalShortcutsEnabled;
+  @override
+  @JsonKey()
+  final bool annotationToolsShortcutsEnabled;
+  @override
+  @JsonKey()
+  final bool loopControlsShortcutsEnabled;
+  @override
+  @JsonKey()
+  final bool cropControlsShortcutsEnabled;
 
   @override
   String toString() {
-    return 'KeyboardShortcuts(nextFrame: $nextFrame, previousFrame: $previousFrame, playPause: $playPause, jumpForward: $jumpForward, jumpBackward: $jumpBackward, openFile: $openFile, saveAnnotations: $saveAnnotations, undo: $undo, redo: $redo, selectSelectionTool: $selectSelectionTool, selectPenTool: $selectPenTool, selectEraserTool: $selectEraserTool, selectRectangleTool: $selectRectangleTool, selectCircleTool: $selectCircleTool, selectLineTool: $selectLineTool, selectArrowTool: $selectArrowTool, toggleFullLoop: $toggleFullLoop, setLoopStart: $setLoopStart, setLoopEnd: $setLoopEnd, toggleSectionLoop: $toggleSectionLoop, toggleCropMode: $toggleCropMode)';
+    return 'KeyboardShortcuts(nextFrame: $nextFrame, previousFrame: $previousFrame, playPause: $playPause, jumpForward: $jumpForward, jumpBackward: $jumpBackward, openFile: $openFile, saveAnnotations: $saveAnnotations, undo: $undo, redo: $redo, selectSelectionTool: $selectSelectionTool, selectPenTool: $selectPenTool, selectEraserTool: $selectEraserTool, selectRectangleTool: $selectRectangleTool, selectCircleTool: $selectCircleTool, selectLineTool: $selectLineTool, selectArrowTool: $selectArrowTool, selectTextTool: $selectTextTool, toggleFullLoop: $toggleFullLoop, setLoopStart: $setLoopStart, setLoopEnd: $setLoopEnd, toggleSectionLoop: $toggleSectionLoop, toggleCropMode: $toggleCropMode, generalShortcutsEnabled: $generalShortcutsEnabled, annotationToolsShortcutsEnabled: $annotationToolsShortcutsEnabled, loopControlsShortcutsEnabled: $loopControlsShortcutsEnabled, cropControlsShortcutsEnabled: $cropControlsShortcutsEnabled)';
   }
 
   @override
@@ -1007,6 +1108,8 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
                 other.selectLineTool == selectLineTool) &&
             (identical(other.selectArrowTool, selectArrowTool) ||
                 other.selectArrowTool == selectArrowTool) &&
+            (identical(other.selectTextTool, selectTextTool) ||
+                other.selectTextTool == selectTextTool) &&
             (identical(other.toggleFullLoop, toggleFullLoop) ||
                 other.toggleFullLoop == toggleFullLoop) &&
             (identical(other.setLoopStart, setLoopStart) ||
@@ -1016,7 +1119,30 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
             (identical(other.toggleSectionLoop, toggleSectionLoop) ||
                 other.toggleSectionLoop == toggleSectionLoop) &&
             (identical(other.toggleCropMode, toggleCropMode) ||
-                other.toggleCropMode == toggleCropMode));
+                other.toggleCropMode == toggleCropMode) &&
+            (identical(
+                  other.generalShortcutsEnabled,
+                  generalShortcutsEnabled,
+                ) ||
+                other.generalShortcutsEnabled == generalShortcutsEnabled) &&
+            (identical(
+                  other.annotationToolsShortcutsEnabled,
+                  annotationToolsShortcutsEnabled,
+                ) ||
+                other.annotationToolsShortcutsEnabled ==
+                    annotationToolsShortcutsEnabled) &&
+            (identical(
+                  other.loopControlsShortcutsEnabled,
+                  loopControlsShortcutsEnabled,
+                ) ||
+                other.loopControlsShortcutsEnabled ==
+                    loopControlsShortcutsEnabled) &&
+            (identical(
+                  other.cropControlsShortcutsEnabled,
+                  cropControlsShortcutsEnabled,
+                ) ||
+                other.cropControlsShortcutsEnabled ==
+                    cropControlsShortcutsEnabled));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -1039,11 +1165,16 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
     selectCircleTool,
     selectLineTool,
     selectArrowTool,
+    selectTextTool,
     toggleFullLoop,
     setLoopStart,
     setLoopEnd,
     toggleSectionLoop,
     toggleCropMode,
+    generalShortcutsEnabled,
+    annotationToolsShortcutsEnabled,
+    loopControlsShortcutsEnabled,
+    cropControlsShortcutsEnabled,
   ]);
 
   /// Create a copy of KeyboardShortcuts
@@ -1081,11 +1212,16 @@ abstract class _KeyboardShortcuts implements KeyboardShortcuts {
     required final KeyboardShortcut selectCircleTool,
     required final KeyboardShortcut selectLineTool,
     required final KeyboardShortcut selectArrowTool,
+    required final KeyboardShortcut selectTextTool,
     required final KeyboardShortcut toggleFullLoop,
     required final KeyboardShortcut setLoopStart,
     required final KeyboardShortcut setLoopEnd,
     required final KeyboardShortcut toggleSectionLoop,
     required final KeyboardShortcut toggleCropMode,
+    final bool generalShortcutsEnabled,
+    final bool annotationToolsShortcutsEnabled,
+    final bool loopControlsShortcutsEnabled,
+    final bool cropControlsShortcutsEnabled,
   }) = _$KeyboardShortcutsImpl;
 
   factory _KeyboardShortcuts.fromJson(Map<String, dynamic> json) =
@@ -1122,7 +1258,9 @@ abstract class _KeyboardShortcuts implements KeyboardShortcuts {
   @override
   KeyboardShortcut get selectLineTool;
   @override
-  KeyboardShortcut get selectArrowTool; // Loop shortcuts
+  KeyboardShortcut get selectArrowTool;
+  @override
+  KeyboardShortcut get selectTextTool; // Loop shortcuts
   @override
   KeyboardShortcut get toggleFullLoop;
   @override
@@ -1132,7 +1270,15 @@ abstract class _KeyboardShortcuts implements KeyboardShortcuts {
   @override
   KeyboardShortcut get toggleSectionLoop; // Crop shortcuts
   @override
-  KeyboardShortcut get toggleCropMode;
+  KeyboardShortcut get toggleCropMode; // Group enable/disable toggles
+  @override
+  bool get generalShortcutsEnabled;
+  @override
+  bool get annotationToolsShortcutsEnabled;
+  @override
+  bool get loopControlsShortcutsEnabled;
+  @override
+  bool get cropControlsShortcutsEnabled;
 
   /// Create a copy of KeyboardShortcuts
   /// with the given fields replaced by the non-null parameter values.

@@ -219,6 +219,9 @@ mixin _$Stroke {
   List<StrokePoint> get points => throw _privateConstructorUsedError;
   int get startTimeMs => throw _privateConstructorUsedError;
   int get endTimeMs => throw _privateConstructorUsedError;
+  String? get text => throw _privateConstructorUsedError;
+  double get fontSize => throw _privateConstructorUsedError;
+  double get scale => throw _privateConstructorUsedError;
 
   /// Serializes this Stroke to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -242,6 +245,9 @@ abstract class $StrokeCopyWith<$Res> {
     List<StrokePoint> points,
     int startTimeMs,
     int endTimeMs,
+    String? text,
+    double fontSize,
+    double scale,
   });
 }
 
@@ -267,6 +273,9 @@ class _$StrokeCopyWithImpl<$Res, $Val extends Stroke>
     Object? points = null,
     Object? startTimeMs = null,
     Object? endTimeMs = null,
+    Object? text = freezed,
+    Object? fontSize = null,
+    Object? scale = null,
   }) {
     return _then(
       _value.copyWith(
@@ -298,6 +307,18 @@ class _$StrokeCopyWithImpl<$Res, $Val extends Stroke>
                 ? _value.endTimeMs
                 : endTimeMs // ignore: cast_nullable_to_non_nullable
                       as int,
+            text: freezed == text
+                ? _value.text
+                : text // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            fontSize: null == fontSize
+                ? _value.fontSize
+                : fontSize // ignore: cast_nullable_to_non_nullable
+                      as double,
+            scale: null == scale
+                ? _value.scale
+                : scale // ignore: cast_nullable_to_non_nullable
+                      as double,
           )
           as $Val,
     );
@@ -320,6 +341,9 @@ abstract class _$$StrokeImplCopyWith<$Res> implements $StrokeCopyWith<$Res> {
     List<StrokePoint> points,
     int startTimeMs,
     int endTimeMs,
+    String? text,
+    double fontSize,
+    double scale,
   });
 }
 
@@ -344,6 +368,9 @@ class __$$StrokeImplCopyWithImpl<$Res>
     Object? points = null,
     Object? startTimeMs = null,
     Object? endTimeMs = null,
+    Object? text = freezed,
+    Object? fontSize = null,
+    Object? scale = null,
   }) {
     return _then(
       _$StrokeImpl(
@@ -375,6 +402,18 @@ class __$$StrokeImplCopyWithImpl<$Res>
             ? _value.endTimeMs
             : endTimeMs // ignore: cast_nullable_to_non_nullable
                   as int,
+        text: freezed == text
+            ? _value.text
+            : text // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        fontSize: null == fontSize
+            ? _value.fontSize
+            : fontSize // ignore: cast_nullable_to_non_nullable
+                  as double,
+        scale: null == scale
+            ? _value.scale
+            : scale // ignore: cast_nullable_to_non_nullable
+                  as double,
       ),
     );
   }
@@ -392,6 +431,9 @@ class _$StrokeImpl implements _Stroke {
     required final List<StrokePoint> points,
     this.startTimeMs = 0,
     this.endTimeMs = 0,
+    this.text,
+    this.fontSize = 16.0,
+    this.scale = 1.0,
   }) : _points = points;
 
   factory _$StrokeImpl.fromJson(Map<String, dynamic> json) =>
@@ -421,10 +463,18 @@ class _$StrokeImpl implements _Stroke {
   @override
   @JsonKey()
   final int endTimeMs;
+  @override
+  final String? text;
+  @override
+  @JsonKey()
+  final double fontSize;
+  @override
+  @JsonKey()
+  final double scale;
 
   @override
   String toString() {
-    return 'Stroke(id: $id, tool: $tool, color: $color, strokeWidth: $strokeWidth, points: $points, startTimeMs: $startTimeMs, endTimeMs: $endTimeMs)';
+    return 'Stroke(id: $id, tool: $tool, color: $color, strokeWidth: $strokeWidth, points: $points, startTimeMs: $startTimeMs, endTimeMs: $endTimeMs, text: $text, fontSize: $fontSize, scale: $scale)';
   }
 
   @override
@@ -441,7 +491,11 @@ class _$StrokeImpl implements _Stroke {
             (identical(other.startTimeMs, startTimeMs) ||
                 other.startTimeMs == startTimeMs) &&
             (identical(other.endTimeMs, endTimeMs) ||
-                other.endTimeMs == endTimeMs));
+                other.endTimeMs == endTimeMs) &&
+            (identical(other.text, text) || other.text == text) &&
+            (identical(other.fontSize, fontSize) ||
+                other.fontSize == fontSize) &&
+            (identical(other.scale, scale) || other.scale == scale));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -455,6 +509,9 @@ class _$StrokeImpl implements _Stroke {
     const DeepCollectionEquality().hash(_points),
     startTimeMs,
     endTimeMs,
+    text,
+    fontSize,
+    scale,
   );
 
   /// Create a copy of Stroke
@@ -481,6 +538,9 @@ abstract class _Stroke implements Stroke {
     required final List<StrokePoint> points,
     final int startTimeMs,
     final int endTimeMs,
+    final String? text,
+    final double fontSize,
+    final double scale,
   }) = _$StrokeImpl;
 
   factory _Stroke.fromJson(Map<String, dynamic> json) = _$StrokeImpl.fromJson;
@@ -500,6 +560,12 @@ abstract class _Stroke implements Stroke {
   int get startTimeMs;
   @override
   int get endTimeMs;
+  @override
+  String? get text;
+  @override
+  double get fontSize;
+  @override
+  double get scale;
 
   /// Create a copy of Stroke
   /// with the given fields replaced by the non-null parameter values.

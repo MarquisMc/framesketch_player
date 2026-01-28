@@ -37,6 +37,24 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const Text(
+                'General Shortcuts',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                title: const Text('Enable General Shortcuts'),
+                value: _shortcuts.generalShortcutsEnabled,
+                onChanged: (value) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(generalShortcutsEnabled: value);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
               _ShortcutRow(
                 label: 'Next Frame',
                 shortcut: _shortcuts.nextFrame,
@@ -140,6 +158,16 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                title: const Text('Enable Annotation Tools Shortcuts'),
+                value: _shortcuts.annotationToolsShortcutsEnabled,
+                onChanged: (value) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(annotationToolsShortcutsEnabled: value);
+                  });
+                },
+              ),
               const SizedBox(height: 16),
               _ShortcutRow(
                 label: 'Select Selection Tool',
@@ -210,6 +238,16 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                   });
                 },
               ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Select Text Tool',
+                shortcut: _shortcuts.selectTextTool,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(selectTextTool: shortcut);
+                  });
+                },
+              ),
               const SizedBox(height: 24),
               const Divider(),
               const SizedBox(height: 8),
@@ -219,6 +257,16 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                title: const Text('Enable Loop Controls Shortcuts'),
+                value: _shortcuts.loopControlsShortcutsEnabled,
+                onChanged: (value) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(loopControlsShortcutsEnabled: value);
+                  });
+                },
               ),
               const SizedBox(height: 16),
               _ShortcutRow(
@@ -269,6 +317,16 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                title: const Text('Enable Crop Controls Shortcuts'),
+                value: _shortcuts.cropControlsShortcutsEnabled,
+                onChanged: (value) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(cropControlsShortcutsEnabled: value);
+                  });
+                },
               ),
               const SizedBox(height: 16),
               _ShortcutRow(
@@ -459,6 +517,7 @@ class _ShortcutRowState extends State<_ShortcutRow> {
     if (key == LogicalKeyboardKey.keyL) return 'L';
     if (key == LogicalKeyboardKey.keyI) return 'I';
     if (key == LogicalKeyboardKey.keyC) return 'C';
+    if (key == LogicalKeyboardKey.keyT) return 'T';
     if (key == LogicalKeyboardKey.bracketLeft) return '[';
 
     final debugName = key.debugName;

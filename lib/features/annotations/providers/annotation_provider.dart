@@ -19,6 +19,10 @@ class AnnotationState {
   final bool hasUnsavedChanges;
   final String? selectedStrokeId;
   final StrokePoint? dragStartPoint;
+  final double currentFontSize;
+  final String? pendingTextStrokeId;
+  final bool isScaling;
+  final String? scalingCorner;
 
   const AnnotationState({
     this.annotationData,
@@ -32,6 +36,10 @@ class AnnotationState {
     this.hasUnsavedChanges = false,
     this.selectedStrokeId,
     this.dragStartPoint,
+    this.currentFontSize = 16.0,
+    this.pendingTextStrokeId,
+    this.isScaling = false,
+    this.scalingCorner,
   });
 
   AnnotationState copyWith({
@@ -48,6 +56,12 @@ class AnnotationState {
     StrokePoint? dragStartPoint,
     bool clearSelectedStroke = false,
     bool clearDragStartPoint = false,
+    double? currentFontSize,
+    String? pendingTextStrokeId,
+    bool clearPendingTextStrokeId = false,
+    bool? isScaling,
+    String? scalingCorner,
+    bool clearScalingCorner = false,
   }) {
     return AnnotationState(
       annotationData: annotationData ?? this.annotationData,
@@ -61,6 +75,10 @@ class AnnotationState {
       hasUnsavedChanges: hasUnsavedChanges ?? this.hasUnsavedChanges,
       selectedStrokeId: clearSelectedStroke ? null : (selectedStrokeId ?? this.selectedStrokeId),
       dragStartPoint: clearDragStartPoint ? null : (dragStartPoint ?? this.dragStartPoint),
+      currentFontSize: currentFontSize ?? this.currentFontSize,
+      pendingTextStrokeId: clearPendingTextStrokeId ? null : (pendingTextStrokeId ?? this.pendingTextStrokeId),
+      isScaling: isScaling ?? this.isScaling,
+      scalingCorner: clearScalingCorner ? null : (scalingCorner ?? this.scalingCorner),
     );
   }
 
@@ -121,6 +139,11 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     state = state.copyWith(currentStrokeWidth: width);
   }
 
+  /// Set font size for text tool
+  void setFontSize(double size) {
+    state = state.copyWith(currentFontSize: size);
+  }
+
   /// Start drawing a new stroke
   void startStroke(StrokePoint point) {
     final currentTimeMs = ref.read(playerProvider).position.inMilliseconds;
@@ -140,6 +163,36 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
         dragStartPoint: point,
         isDrawing: true,
         clearSelectedStroke: selectedStroke == null,
+      );
+      return;
+    }
+
+    // If text tool, create stroke at click position and trigger dialog
+    if (state.currentTool == DrawingTool.text) {
+      final newStroke = Stroke(
+        id: _uuid.v4(),
+        tool: DrawingTool.text,
+        color: state.currentColor,
+        strokeWidth: state.currentStrokeWidth,
+        points: [point],
+        startTimeMs: currentTimeMs,
+        endTimeMs: currentTimeMs,
+        text: '',
+        fontSize: state.currentFontSize,
+      );
+
+      final updatedStrokes = [...state.allStrokes, newStroke];
+      final updatedData = state.annotationData!.copyWith(
+        strokes: updatedStrokes,
+        updatedAt: DateTime.now(),
+      );
+
+      state = state.copyWith(
+        annotationData: updatedData,
+        pendingTextStrokeId: newStroke.id,
+        isDrawing: false,
+        hasUnsavedChanges: true,
+        redoStack: [],
       );
       return;
     }
@@ -167,6 +220,9 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       _eraseStrokesAtPoint(point);
       return;
     }
+
+    // Text tool does not use drag
+    if (state.currentTool == DrawingTool.text) return;
 
     // If select tool, move the selected stroke
     if (state.currentTool == DrawingTool.select) {
@@ -207,6 +263,12 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   void finishStroke() {
     // If eraser tool, just stop erasing
     if (state.currentTool == DrawingTool.eraser) {
+      state = state.copyWith(isDrawing: false);
+      return;
+    }
+
+    // Text tool finishes via dialog, not drag
+    if (state.currentTool == DrawingTool.text) {
       state = state.copyWith(isDrawing: false);
       return;
     }
@@ -412,6 +474,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       points: points,
       startTimeMs: points.first.timestampMs,
       endTimeMs: points.last.timestampMs,
+      text: original.text,
+      fontSize: original.fontSize,
     );
   }
 
@@ -442,6 +506,10 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
         }
       } else if (stroke.tool == DrawingTool.line || stroke.tool == DrawingTool.arrow) {
         if (_isPointNearLine(stroke, point, selectionRadius)) {
+          return stroke;
+        }
+      } else if (stroke.tool == DrawingTool.text) {
+        if (_isPointNearText(stroke, point, selectionRadius)) {
           return stroke;
         }
       } else {
@@ -526,6 +594,22 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     return distance <= threshold * threshold;
   }
 
+  /// Check if point is near a text stroke bounding box
+  bool _isPointNearText(Stroke stroke, StrokePoint point, double threshold) {
+    if (stroke.points.isEmpty || stroke.text == null || stroke.text!.isEmpty) return false;
+
+    final anchor = stroke.points.first;
+    // Approximate text bounding box in normalized coordinates
+    final textLength = stroke.text!.length;
+    final estimatedWidth = textLength * 0.008 * (stroke.fontSize / 16.0);
+    final estimatedHeight = 0.025 * (stroke.fontSize / 16.0);
+
+    return point.x >= anchor.x - threshold &&
+           point.x <= anchor.x + estimatedWidth + threshold &&
+           point.y >= anchor.y - threshold &&
+           point.y <= anchor.y + estimatedHeight + threshold;
+  }
+
   /// Move the selected stroke by the drag offset
   void _moveSelectedStroke(StrokePoint currentPoint) {
     if (state.selectedStrokeId == null || state.dragStartPoint == null) return;
@@ -567,6 +651,173 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   /// Deselect the currently selected stroke
   void deselectStroke() {
     state = state.copyWith(clearSelectedStroke: true);
+  }
+
+  /// Delete the currently selected stroke
+  void deleteSelectedStroke() {
+    if (state.selectedStrokeId == null) return;
+
+    final updatedStrokes = state.allStrokes
+        .where((s) => s.id != state.selectedStrokeId)
+        .toList();
+
+    final updatedData = state.annotationData!.copyWith(
+      strokes: updatedStrokes,
+      updatedAt: DateTime.now(),
+    );
+
+    state = state.copyWith(
+      annotationData: updatedData,
+      clearSelectedStroke: true,
+      hasUnsavedChanges: true,
+      redoStack: [],
+    );
+  }
+
+  /// Start scaling a selected stroke from a corner
+  void startScaling(String corner, StrokePoint point) {
+    state = state.copyWith(
+      isScaling: true,
+      scalingCorner: corner,
+      dragStartPoint: point,
+    );
+  }
+
+  /// Update scaling of the selected stroke
+  void updateScaling(StrokePoint currentPoint) {
+    if (!state.isScaling || state.selectedStrokeId == null || state.scalingCorner == null) return;
+
+    final strokeIndex = state.allStrokes.indexWhere((s) => s.id == state.selectedStrokeId);
+    if (strokeIndex == -1) return;
+
+    final stroke = state.allStrokes[strokeIndex];
+
+    // Calculate the center point of the annotation
+    final center = _getStrokeCenter(stroke);
+
+    // Calculate the new scale based on distance from center
+    final initialDistance = _calculateDistance(state.dragStartPoint!, center);
+    final currentDistance = _calculateDistance(currentPoint, center);
+
+    if (initialDistance == 0) return;
+
+    // Calculate scale multiplier (current distance / initial distance)
+    final scaleMultiplier = currentDistance / initialDistance;
+    final newScale = (stroke.scale * scaleMultiplier).clamp(0.1, 10.0);
+
+    // Scale all points relative to the center
+    final scaledPoints = stroke.points.map((p) {
+      final dx = p.x - center.x;
+      final dy = p.y - center.y;
+      return StrokePoint(
+        x: center.x + dx * (newScale / stroke.scale),
+        y: center.y + dy * (newScale / stroke.scale),
+        timestampMs: p.timestampMs,
+      );
+    }).toList();
+
+    final updatedStroke = stroke.copyWith(points: scaledPoints, scale: newScale);
+    final updatedStrokes = List<Stroke>.from(state.allStrokes);
+    updatedStrokes[strokeIndex] = updatedStroke;
+
+    final updatedData = state.annotationData!.copyWith(
+      strokes: updatedStrokes,
+      updatedAt: DateTime.now(),
+    );
+
+    state = state.copyWith(
+      annotationData: updatedData,
+      dragStartPoint: currentPoint,
+      hasUnsavedChanges: true,
+    );
+  }
+
+  /// Finish scaling
+  void finishScaling() {
+    state = state.copyWith(
+      isScaling: false,
+      clearScalingCorner: true,
+      clearDragStartPoint: true,
+    );
+  }
+
+  /// Get the center point of a stroke
+  StrokePoint _getStrokeCenter(Stroke stroke) {
+    if (stroke.points.isEmpty) {
+      return const StrokePoint(x: 0.5, y: 0.5);
+    }
+
+    if (stroke.points.length == 1) {
+      return stroke.points.first;
+    }
+
+    double sumX = 0;
+    double sumY = 0;
+    for (final point in stroke.points) {
+      sumX += point.x;
+      sumY += point.y;
+    }
+
+    return StrokePoint(
+      x: sumX / stroke.points.length,
+      y: sumY / stroke.points.length,
+    );
+  }
+
+  /// Calculate distance between two points
+  double _calculateDistance(StrokePoint p1, StrokePoint p2) {
+    final dx = p2.x - p1.x;
+    final dy = p2.y - p1.y;
+    return (dx * dx + dy * dy);
+  }
+
+  /// Confirm text for a pending text stroke
+  void confirmTextStroke(String textContent) {
+    if (state.pendingTextStrokeId == null) return;
+
+    final strokeIndex = state.allStrokes.indexWhere(
+      (s) => s.id == state.pendingTextStrokeId,
+    );
+    if (strokeIndex == -1) return;
+
+    final updatedStroke = state.allStrokes[strokeIndex].copyWith(text: textContent);
+    final updatedStrokes = List<Stroke>.from(state.allStrokes);
+    updatedStrokes[strokeIndex] = updatedStroke;
+
+    final updatedData = state.annotationData!.copyWith(
+      strokes: updatedStrokes,
+      updatedAt: DateTime.now(),
+    );
+
+    state = state.copyWith(
+      annotationData: updatedData,
+      clearPendingTextStrokeId: true,
+      hasUnsavedChanges: true,
+    );
+  }
+
+  /// Cancel a pending text stroke (remove it)
+  void cancelTextStroke() {
+    if (state.pendingTextStrokeId == null) return;
+
+    final updatedStrokes = state.allStrokes
+        .where((s) => s.id != state.pendingTextStrokeId)
+        .toList();
+
+    final updatedData = state.annotationData!.copyWith(
+      strokes: updatedStrokes,
+      updatedAt: DateTime.now(),
+    );
+
+    state = state.copyWith(
+      annotationData: updatedData,
+      clearPendingTextStrokeId: true,
+    );
+  }
+
+  /// Set a text stroke for editing (triggered by double-tap)
+  void editTextStroke(String strokeId) {
+    state = state.copyWith(pendingTextStrokeId: strokeId);
   }
 }
 

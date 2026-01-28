@@ -30,8 +30,10 @@ class TimelineState {
 /// Timeline notifier for smooth scrubbing
 class TimelineNotifier extends StateNotifier<TimelineState> {
   final Ref ref;
-  Timer? _seekDebounceTimer;
-  static const _debounceDelay = Duration(milliseconds: 60);
+  Timer? _throttleTimer;
+  bool _seekPending = false;
+  Duration? _latestPosition;
+  static const _throttleInterval = Duration(milliseconds: 80);
 
   TimelineNotifier(this.ref) : super(const TimelineState());
 
@@ -41,28 +43,41 @@ class TimelineNotifier extends StateNotifier<TimelineState> {
   }
 
   /// Update scrubbing position (user is dragging)
+  /// Uses throttling to seek at regular intervals for real-time video preview
   void updateScrubbingPosition(Duration position) {
     state = state.copyWith(
       scrubbingPosition: position,
       pendingSeekPosition: position,
     );
 
-    // Debounce the actual seek operation
-    _seekDebounceTimer?.cancel();
-    _seekDebounceTimer = Timer(_debounceDelay, () {
+    _latestPosition = position;
+
+    // Throttle: if no seek is pending, seek immediately and start cooldown
+    if (!_seekPending) {
+      _seekPending = true;
       _performSeek(position);
-    });
+      _throttleTimer = Timer(_throttleInterval, () {
+        _seekPending = false;
+        // If position changed during cooldown, fire one more seek
+        if (_latestPosition != null && _latestPosition != position) {
+          _performSeek(_latestPosition!);
+        }
+      });
+    }
   }
 
   /// End scrubbing (user released)
   void endScrubbing() {
-    _seekDebounceTimer?.cancel();
+    _throttleTimer?.cancel();
+    _seekPending = false;
 
     // Perform final seek if there's a pending position
     final finalPosition = state.pendingSeekPosition;
     if (finalPosition != null) {
       _performSeek(finalPosition);
     }
+
+    _latestPosition = null;
 
     state = state.copyWith(
       isScrubbing: false,
@@ -73,7 +88,9 @@ class TimelineNotifier extends StateNotifier<TimelineState> {
 
   /// Cancel scrubbing (user canceled gesture)
   void cancelScrubbing() {
-    _seekDebounceTimer?.cancel();
+    _throttleTimer?.cancel();
+    _seekPending = false;
+    _latestPosition = null;
     state = const TimelineState();
   }
 
@@ -93,7 +110,7 @@ class TimelineNotifier extends StateNotifier<TimelineState> {
 
   @override
   void dispose() {
-    _seekDebounceTimer?.cancel();
+    _throttleTimer?.cancel();
     super.dispose();
   }
 }

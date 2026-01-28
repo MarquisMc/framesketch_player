@@ -30,6 +30,9 @@ _$StrokeImpl _$$StrokeImplFromJson(Map<String, dynamic> json) => _$StrokeImpl(
       .toList(),
   startTimeMs: (json['startTimeMs'] as num?)?.toInt() ?? 0,
   endTimeMs: (json['endTimeMs'] as num?)?.toInt() ?? 0,
+  text: json['text'] as String?,
+  fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
+  scale: (json['scale'] as num?)?.toDouble() ?? 1.0,
 );
 
 Map<String, dynamic> _$$StrokeImplToJson(_$StrokeImpl instance) =>
@@ -41,6 +44,9 @@ Map<String, dynamic> _$$StrokeImplToJson(_$StrokeImpl instance) =>
       'points': instance.points,
       'startTimeMs': instance.startTimeMs,
       'endTimeMs': instance.endTimeMs,
+      'text': instance.text,
+      'fontSize': instance.fontSize,
+      'scale': instance.scale,
     };
 
 const _$DrawingToolEnumMap = {
@@ -50,5 +56,6 @@ const _$DrawingToolEnumMap = {
   DrawingTool.circle: 'circle',
   DrawingTool.line: 'line',
   DrawingTool.arrow: 'arrow',
+  DrawingTool.text: 'text',
   DrawingTool.select: 'select',
 };

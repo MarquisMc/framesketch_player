@@ -56,6 +56,7 @@ class KeyboardShortcuts with _$KeyboardShortcuts {
     required KeyboardShortcut selectCircleTool,
     required KeyboardShortcut selectLineTool,
     required KeyboardShortcut selectArrowTool,
+    required KeyboardShortcut selectTextTool,
     // Loop shortcuts
     required KeyboardShortcut toggleFullLoop,
     required KeyboardShortcut setLoopStart,
@@ -63,6 +64,11 @@ class KeyboardShortcuts with _$KeyboardShortcuts {
     required KeyboardShortcut toggleSectionLoop,
     // Crop shortcuts
     required KeyboardShortcut toggleCropMode,
+    // Group enable/disable toggles
+    @Default(true) bool generalShortcutsEnabled,
+    @Default(true) bool annotationToolsShortcutsEnabled,
+    @Default(true) bool loopControlsShortcutsEnabled,
+    @Default(true) bool cropControlsShortcutsEnabled,
   }) = _KeyboardShortcuts;
 
   factory KeyboardShortcuts.fromJson(Map<String, dynamic> json) =>
@@ -106,6 +112,7 @@ final defaultKeyboardShortcuts = KeyboardShortcuts(
   selectCircleTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyO, shiftPressed: true),
   selectLineTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyL, shiftPressed: true),
   selectArrowTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyA),
+  selectTextTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyT),
   // Loop shortcuts
   toggleFullLoop: const KeyboardShortcut(key: LogicalKeyboardKey.keyL),
   setLoopStart: const KeyboardShortcut(key: LogicalKeyboardKey.keyI),
@@ -113,4 +120,9 @@ final defaultKeyboardShortcuts = KeyboardShortcuts(
   toggleSectionLoop: const KeyboardShortcut(key: LogicalKeyboardKey.bracketLeft),
   // Crop shortcuts
   toggleCropMode: const KeyboardShortcut(key: LogicalKeyboardKey.keyC),
+  // Group toggles - all enabled by default
+  generalShortcutsEnabled: true,
+  annotationToolsShortcutsEnabled: true,
+  loopControlsShortcutsEnabled: true,
+  cropControlsShortcutsEnabled: true,
 );
