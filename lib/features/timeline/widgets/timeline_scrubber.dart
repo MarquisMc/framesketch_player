@@ -303,11 +303,12 @@ class _LoopMarkerState extends State<_LoopMarker> {
               borderRadius: BorderRadius.circular(4),
             ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Top marker triangle
                 CustomPaint(
-                  size: const Size(12, 8),
+                  size: const Size(10, 6),
                   painter: _MarkerTrianglePainter(
                     color: widget.color,
                     pointDown: true,
@@ -316,12 +317,12 @@ class _LoopMarkerState extends State<_LoopMarker> {
                 // Vertical line
                 Container(
                   width: 2,
-                  height: 16,
+                  height: 12,
                   color: widget.color,
                 ),
                 // Label
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 1),
                   decoration: BoxDecoration(
                     color: widget.color,
                     borderRadius: BorderRadius.circular(2),
@@ -330,7 +331,8 @@ class _LoopMarkerState extends State<_LoopMarker> {
                     widget.label,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 8,
+                      fontSize: 7,
+                      height: 1.0,
                       fontWeight: FontWeight.bold,
                     ),
                   ),

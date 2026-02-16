@@ -15,6 +15,8 @@ class PlayerState {
   final Duration duration;
   final bool isPlaying;
   final bool isLoading;
+  final double volume;
+  final bool isMuted;
   final String? error;
   final String? currentVideoPath;
 
@@ -26,6 +28,8 @@ class PlayerState {
     this.duration = Duration.zero,
     this.isPlaying = false,
     this.isLoading = false,
+    this.volume = 100.0,
+    this.isMuted = false,
     this.error,
     this.currentVideoPath,
   });
@@ -38,6 +42,8 @@ class PlayerState {
     Duration? duration,
     bool? isPlaying,
     bool? isLoading,
+    double? volume,
+    bool? isMuted,
     String? error,
     String? currentVideoPath,
   }) {
@@ -49,6 +55,8 @@ class PlayerState {
       duration: duration ?? this.duration,
       isPlaying: isPlaying ?? this.isPlaying,
       isLoading: isLoading ?? this.isLoading,
+      volume: volume ?? this.volume,
+      isMuted: isMuted ?? this.isMuted,
       error: error,
       currentVideoPath: currentVideoPath ?? this.currentVideoPath,
     );
@@ -61,6 +69,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<bool>? _playingSubscription;
+  StreamSubscription<double>? _volumeSubscription;
+  double _lastNonZeroVolume = 100.0;
 
   PlayerNotifier(this._ref) : super(const PlayerState());
 
@@ -117,6 +127,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         state = state.copyWith(isPlaying: isPlaying);
       });
 
+      _volumeSubscription = player.stream.volume.listen((volume) {
+        final muted = volume <= 0.001;
+        if (!muted) {
+          _lastNonZeroVolume = volume;
+        }
+        state = state.copyWith(
+          volume: volume,
+          isMuted: muted,
+        );
+      });
+
       // Open video first to get metadata from media_kit
       await player.open(Media(filePath));
 
@@ -155,6 +176,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         isLoading: false,
         currentVideoPath: filePath,
       );
+
+      // Ensure player starts with the app's current volume preference.
+      await player.setVolume(state.volume);
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -271,6 +295,31 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await seek(newPosition);
   }
 
+  /// Toggle mute/unmute for app-only audio control.
+  Future<void> toggleMute() async {
+    if (state.isMuted || state.volume <= 0.001) {
+      final restore = _lastNonZeroVolume <= 0.001 ? 100.0 : _lastNonZeroVolume;
+      await setVolume(restore);
+    } else {
+      _lastNonZeroVolume = state.volume;
+      await setVolume(0.0);
+    }
+  }
+
+  /// Set player volume (0-100).
+  Future<void> setVolume(double value) async {
+    final clamped = value.clamp(0.0, 100.0);
+    await state.player?.setVolume(clamped);
+    final muted = clamped <= 0.001;
+    state = state.copyWith(
+      volume: clamped,
+      isMuted: muted,
+    );
+    if (!muted) {
+      _lastNonZeroVolume = clamped;
+    }
+  }
+
   /// Get current frame number
   int get currentFrame {
     final metadata = state.metadata;
@@ -285,9 +334,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await _positionSubscription?.cancel();
     await _durationSubscription?.cancel();
     await _playingSubscription?.cancel();
+    await _volumeSubscription?.cancel();
     _positionSubscription = null;
     _durationSubscription = null;
     _playingSubscription = null;
+    _volumeSubscription = null;
 
     await state.player?.dispose();
   }

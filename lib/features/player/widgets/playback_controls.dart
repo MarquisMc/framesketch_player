@@ -110,6 +110,20 @@ class PlaybackControls extends ConsumerWidget {
             tooltip: 'Stop',
           ),
 
+          const SizedBox(width: 8),
+
+          // Mute toggle button
+          IconButton(
+            icon: Icon(
+              playerState.isMuted || playerState.volume <= 0.001
+                  ? Icons.volume_off
+                  : Icons.volume_up,
+              color: hasVideo ? Colors.white : Colors.white38,
+            ),
+            onPressed: hasVideo ? () => playerNotifier.toggleMute() : null,
+            tooltip: playerState.isMuted ? 'Unmute' : 'Mute',
+          ),
+
           const SizedBox(width: 16),
 
           // Frame step backward

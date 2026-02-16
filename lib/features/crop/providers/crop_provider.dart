@@ -192,6 +192,12 @@ class CropState {
   /// Path to exported file (on success)
   final String? exportedFilePath;
 
+  /// Optional export segment start time. Null means start of video.
+  final Duration? exportStart;
+
+  /// Optional export segment end time. Null means end of video.
+  final Duration? exportEnd;
+
   const CropState({
     this.isCropModeActive = false,
     this.cropRect = const CropRect.full(),
@@ -201,6 +207,8 @@ class CropState {
     this.exportProgress = 0.0,
     this.exportError,
     this.exportedFilePath,
+    this.exportStart,
+    this.exportEnd,
   });
 
   CropState copyWith({
@@ -215,6 +223,10 @@ class CropState {
     bool clearExportError = false,
     String? exportedFilePath,
     bool clearExportedFilePath = false,
+    Duration? exportStart,
+    bool clearExportStart = false,
+    Duration? exportEnd,
+    bool clearExportEnd = false,
   }) {
     return CropState(
       isCropModeActive: isCropModeActive ?? this.isCropModeActive,
@@ -227,6 +239,8 @@ class CropState {
       exportedFilePath: clearExportedFilePath
           ? null
           : (exportedFilePath ?? this.exportedFilePath),
+      exportStart: clearExportStart ? null : (exportStart ?? this.exportStart),
+      exportEnd: clearExportEnd ? null : (exportEnd ?? this.exportEnd),
     );
   }
 }
@@ -562,8 +576,67 @@ class CropNotifier extends StateNotifier<CropState> {
     state = state.copyWith(cropRect: const CropRect.full());
   }
 
+  /// Set export segment range. Pass null values for full-range defaults.
+  void setExportRange({
+    Duration? start,
+    Duration? end,
+  }) {
+    final playerState = _ref.read(playerProvider);
+    final fullDuration = playerState.duration;
+
+    if (fullDuration <= Duration.zero) {
+      state = state.copyWith(
+        exportStart: start,
+        exportEnd: end,
+      );
+      return;
+    }
+
+    const minSegmentMs = 100;
+    final fullMs = fullDuration.inMilliseconds;
+
+    var startMs = start?.inMilliseconds ?? 0;
+    var endMs = end?.inMilliseconds ?? fullMs;
+
+    startMs = startMs.clamp(0, fullMs);
+    endMs = endMs.clamp(0, fullMs);
+
+    if (endMs - startMs < minSegmentMs) {
+      if (start != null && end == null) {
+        endMs = (startMs + minSegmentMs).clamp(0, fullMs);
+      } else {
+        startMs = (endMs - minSegmentMs).clamp(0, fullMs);
+      }
+      if (endMs - startMs < minSegmentMs) {
+        startMs = 0;
+        endMs = fullMs;
+      }
+    }
+
+    state = state.copyWith(
+      exportStart: startMs == 0 ? null : Duration(milliseconds: startMs),
+      exportEnd: endMs == fullMs ? null : Duration(milliseconds: endMs),
+    );
+  }
+
+  /// Reset export segment to full video range.
+  void resetExportRange() {
+    state = state.copyWith(
+      clearExportStart: true,
+      clearExportEnd: true,
+    );
+  }
+
   /// Find FFmpeg executable (bundled with media_kit or system)
   Future<String?> _findFFmpegPath() async {
+    // Prefer system FFmpeg first (typically more complete codec support).
+    try {
+      final result = await Process.run('ffmpeg', ['-version']);
+      if (result.exitCode == 0) {
+        return 'ffmpeg';
+      }
+    } catch (_) {}
+
     // Try to find FFmpeg in the app's bundled libraries
     if (Platform.isWindows) {
       // media_kit_libs bundles FFmpeg in build/windows/x64/runner/Release
@@ -609,14 +682,6 @@ class CropNotifier extends StateNotifier<CropState> {
       }
     }
 
-    // Try system PATH
-    try {
-      final result = await Process.run('ffmpeg', ['-version']);
-      if (result.exitCode == 0) {
-        return 'ffmpeg';
-      }
-    } catch (_) {}
-
     return null;
   }
 
@@ -632,15 +697,28 @@ class CropNotifier extends StateNotifier<CropState> {
     }
 
     final inputPath = playerState.currentVideoPath!;
-    final videoWidth = playerState.metadata!.width;
-    final videoHeight = playerState.metadata!.height;
+    final normalizedOutputPath = _normalizeOutputPath(outputPath);
+    final fullDuration = playerState.duration;
+    final fullMs = fullDuration.inMilliseconds;
 
-    // Convert normalized crop rect to pixel values
-    final crop = state.cropRect.toPixels(videoWidth, videoHeight);
+    var startMs = state.exportStart?.inMilliseconds ?? 0;
+    var endMs = state.exportEnd?.inMilliseconds ?? fullMs;
 
-    // Ensure dimensions are even (required by many codecs)
-    final cropWidth = (crop.width ~/ 2) * 2;
-    final cropHeight = (crop.height ~/ 2) * 2;
+    startMs = startMs.clamp(0, fullMs);
+    endMs = endMs.clamp(0, fullMs);
+
+    final targetDurationMs = endMs - startMs;
+    final isSegmentedExport = startMs > 0 || endMs < fullMs;
+
+    if (targetDurationMs <= 0) {
+      state = state.copyWith(
+        exportStatus: ExportStatus.error,
+        exportError: 'Invalid export range selected',
+      );
+      return;
+    }
+
+    final normalizedCropFilter = _buildNormalizedCropFilter(state.cropRect);
 
     state = state.copyWith(
       exportStatus: ExportStatus.preparing,
@@ -664,11 +742,41 @@ class CropNotifier extends StateNotifier<CropState> {
 
       // Build FFmpeg arguments
       final args = [
-        '-i', inputPath,
-        '-vf', 'crop=$cropWidth:$cropHeight:${crop.x}:${crop.y}',
-        '-c:a', 'copy', // Copy audio without re-encoding
+        '-hide_banner',
+        '-fflags',
+        '+genpts',
+        if (startMs > 0) ...[
+          '-ss',
+          (startMs / 1000.0).toStringAsFixed(3),
+        ],
+        '-i',
+        inputPath,
+        if (isSegmentedExport) ...[
+          '-t',
+          (targetDurationMs / 1000.0).toStringAsFixed(3),
+        ],
+        '-vf',
+        '$normalizedCropFilter,setsar=1',
+        '-map', '0:v:0',
+        '-map', '0:a:0?',
+        // Use broadly compatible encoding so exported files open reliably
+        // in default OS players outside the app.
+        '-c:v', 'libx264',
+        '-preset', 'medium',
+        '-crf', '20',
+        '-profile:v', 'baseline',
+        '-level', '3.0',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac',
+        '-profile:a', 'aac_low',
+        '-ar', '44100',
+        '-ac', '2',
+        '-b:a', '192k',
+        '-f', 'mp4',
+        '-movflags', '+faststart',
+        '-avoid_negative_ts', 'make_zero',
         '-y', // Overwrite output
-        outputPath,
+        normalizedOutputPath,
       ];
 
       state = state.copyWith(exportStatus: ExportStatus.exporting);
@@ -677,8 +785,7 @@ class CropNotifier extends StateNotifier<CropState> {
       _ffmpegProcess = await Process.start(ffmpegPath, args);
 
       // Track duration for progress calculation
-      final duration = playerState.duration;
-      final durationSeconds = duration.inSeconds;
+      final durationSeconds = targetDurationMs / 1000.0;
 
       // Monitor stderr for progress (FFmpeg outputs progress to stderr)
       final stderrLines = <String>[];
@@ -703,22 +810,61 @@ class CropNotifier extends StateNotifier<CropState> {
       if (_cancelRequested) {
         // Clean up partial file
         try {
-          await File(outputPath).delete();
+          await File(normalizedOutputPath).delete();
         } catch (_) {}
         state = state.copyWith(
           exportStatus: ExportStatus.cancelled,
           exportProgress: 0.0,
         );
       } else if (exitCode == 0) {
+        final outputFile = File(normalizedOutputPath);
+        if (!await outputFile.exists() || await outputFile.length() == 0) {
+          state = state.copyWith(
+            exportStatus: ExportStatus.error,
+            exportError: 'Export completed but output file is invalid.',
+          );
+          return;
+        }
+
+        final validation = await Process.run(
+          ffmpegPath,
+          ['-v', 'error', '-i', normalizedOutputPath, '-f', 'null', '-'],
+        );
+        if (validation.exitCode != 0) {
+          final validationOutput = (validation.stderr ?? '').toString();
+          final validationMessage = validationOutput.isEmpty
+              ? 'Unknown validation error'
+              : validationOutput.split('\n').take(5).join('\n');
+          try {
+            await File(normalizedOutputPath).delete();
+          } catch (_) {}
+          state = state.copyWith(
+            exportStatus: ExportStatus.error,
+            exportError: 'Exported file failed validation:\n$validationMessage',
+          );
+          return;
+        }
+
         state = state.copyWith(
           exportStatus: ExportStatus.success,
           exportProgress: 1.0,
-          exportedFilePath: outputPath,
+          exportedFilePath: normalizedOutputPath,
         );
       } else {
+        try {
+          await File(normalizedOutputPath).delete();
+        } catch (_) {}
+        final tail = stderrLines
+            .join('\n')
+            .split('\n')
+            .where((line) => line.trim().isNotEmpty)
+            .toList();
+        final tailMessage = tail.isEmpty
+            ? 'No ffmpeg stderr output captured.'
+            : tail.skip(tail.length > 12 ? tail.length - 12 : 0).join('\n');
         state = state.copyWith(
           exportStatus: ExportStatus.error,
-          exportError: 'Export failed (exit code: $exitCode)\n${stderrLines.take(5).join('\n')}',
+          exportError: 'Export failed (exit code: $exitCode)\n$tailMessage',
         );
       }
     } catch (e) {
@@ -730,6 +876,41 @@ class CropNotifier extends StateNotifier<CropState> {
       _progressTimer?.cancel();
       _ffmpegProcess = null;
     }
+  }
+
+  String _buildNormalizedCropFilter(CropRect rect) {
+    final safeLeft = rect.left.clamp(0.0, 1.0);
+    final safeTop = rect.top.clamp(0.0, 1.0);
+    final safeWidth = rect.width.clamp(0.01, 1.0);
+    final safeHeight = rect.height.clamp(0.01, 1.0);
+
+    String f(double v) => v.toStringAsFixed(6);
+
+    final wExpr = 'max(2\\,floor(iw*${f(safeWidth)}/2)*2)';
+    final hExpr = 'max(2\\,floor(ih*${f(safeHeight)}/2)*2)';
+    final xExpr = 'min(max(0\\,floor(iw*${f(safeLeft)}))\\,iw-$wExpr)';
+    final yExpr = 'min(max(0\\,floor(ih*${f(safeTop)}))\\,ih-$hExpr)';
+
+    return 'crop=$wExpr:$hExpr:$xExpr:$yExpr';
+  }
+
+  String _normalizeOutputPath(String outputPath) {
+    final trimmed = outputPath.trim();
+    final extension = path.extension(trimmed).toLowerCase();
+
+    final hasValidExtension =
+        extension.isNotEmpty && extension != '.' && RegExp(r'^\.[a-z0-9]+$').hasMatch(extension);
+
+    if (!hasValidExtension) {
+      return '${trimmed.replaceAll(RegExp(r'[. ]+$'), '')}.mp4';
+    }
+
+    if (extension != '.mp4') {
+      final withoutExt = trimmed.substring(0, trimmed.length - extension.length);
+      return '$withoutExt.mp4';
+    }
+
+    return trimmed.replaceAll(RegExp(r'[. ]+$'), '');
   }
 
   /// Cancel ongoing export

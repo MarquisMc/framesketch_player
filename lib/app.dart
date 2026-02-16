@@ -413,7 +413,15 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     if (_shortcuts.cropControlsShortcutsEnabled) {
       // Toggle crop mode (no repeat)
       if (matchesShortcut(_shortcuts.toggleCropMode)) {
+        final cropStateBefore = ref.read(cropProvider);
         cropNotifier.toggleCropMode();
+        if (!cropStateBefore.isCropModeActive) {
+          final loopState = ref.read(loopProvider);
+          cropNotifier.setExportRange(
+            start: loopState.loopStart,
+            end: loopState.loopEnd,
+          );
+        }
         return KeyEventResult.handled;
       }
     }
