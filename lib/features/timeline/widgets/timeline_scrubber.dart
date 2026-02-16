@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/timeline_provider.dart';
 import '../../player/providers/player_provider.dart';
 import '../../loop/providers/loop_provider.dart';
+import '../../annotations/providers/annotation_keyframe_timeline_provider.dart';
 
 /// Timeline scrubber widget with loop markers and section highlighting
 class TimelineScrubber extends ConsumerStatefulWidget {
@@ -20,6 +21,7 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
     final loopState = ref.watch(loopProvider);
     final timelineNotifier = ref.read(timelineProvider.notifier);
     final loopNotifier = ref.read(loopProvider.notifier);
+    final showAnnotationTimeline = ref.watch(annotationKeyframeTimelineVisibleProvider);
 
     final hasVideo = playerState.player != null;
     final duration = playerState.duration;
@@ -49,113 +51,143 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
       color: Colors.grey[900],
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final trackWidth = constraints.maxWidth;
-
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               // Main scrubber with loop overlay
-              SizedBox(
-                height: 32,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Loop region highlight (behind the slider)
-                    if (loopState.isSectionLoopActive &&
-                        loopStartNorm != null &&
-                        loopEndNorm != null)
-                      Positioned.fill(
-                        child: _LoopRegionPainter(
-                          startNorm: loopStartNorm,
-                          endNorm: loopEndNorm,
-                          isActive: loopState.mode == LoopMode.section,
-                        ),
-                      ),
+              Row(
+                children: [
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, timelineConstraints) {
+                        final trackWidth = timelineConstraints.maxWidth;
+                        return SizedBox(
+                          height: 32,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              // Loop region highlight (behind the slider)
+                              if (loopState.isSectionLoopActive &&
+                                  loopStartNorm != null &&
+                                  loopEndNorm != null)
+                                Positioned.fill(
+                                  child: _LoopRegionPainter(
+                                    startNorm: loopStartNorm,
+                                    endNorm: loopEndNorm,
+                                    isActive: loopState.mode == LoopMode.section,
+                                  ),
+                                ),
 
-                    // Main slider
-                    SliderTheme(
-                      data: SliderThemeData(
-                        trackHeight: 4,
-                        thumbShape: const RoundSliderThumbShape(
-                          enabledThumbRadius: 8,
-                        ),
-                        overlayShape: const RoundSliderOverlayShape(
-                          overlayRadius: 16,
-                        ),
-                        activeTrackColor: Colors.red[400],
-                        inactiveTrackColor: Colors.grey[700],
-                        thumbColor: Colors.red[300],
-                        overlayColor: Colors.red.withOpacity(0.3),
-                      ),
-                      child: Slider(
-                        value: sliderValue,
-                        min: 0.0,
-                        max: 1.0,
-                        onChangeStart: hasVideo
-                            ? (value) {
-                                timelineNotifier.startScrubbing();
-                              }
-                            : null,
-                        onChanged: hasVideo
-                            ? (value) {
-                                final newPosition = Duration(
-                                  microseconds:
-                                      (value * duration.inMicroseconds).round(),
-                                );
-                                timelineNotifier.updateScrubbingPosition(newPosition);
-                              }
-                            : null,
-                        onChangeEnd: hasVideo
-                            ? (value) {
-                                timelineNotifier.endScrubbing();
-                              }
-                            : null,
-                      ),
+                              // Main slider
+                              SliderTheme(
+                                data: SliderThemeData(
+                                  trackHeight: 4,
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 8,
+                                  ),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 16,
+                                  ),
+                                  activeTrackColor: Colors.red[400],
+                                  inactiveTrackColor: Colors.grey[700],
+                                  thumbColor: Colors.red[300],
+                                  overlayColor: Colors.red.withValues(alpha: 0.3),
+                                ),
+                                child: Slider(
+                                  value: sliderValue,
+                                  min: 0.0,
+                                  max: 1.0,
+                                  onChangeStart: hasVideo
+                                      ? (value) {
+                                          timelineNotifier.startScrubbing();
+                                        }
+                                      : null,
+                                  onChanged: hasVideo
+                                      ? (value) {
+                                          final newPosition = Duration(
+                                            microseconds:
+                                                (value * duration.inMicroseconds).round(),
+                                          );
+                                          timelineNotifier.updateScrubbingPosition(newPosition);
+                                        }
+                                      : null,
+                                  onChangeEnd: hasVideo
+                                      ? (value) {
+                                          timelineNotifier.endScrubbing();
+                                        }
+                                      : null,
+                                ),
+                              ),
+
+                              // A marker (loop start)
+                              if (loopStartNorm != null)
+                                _LoopMarker(
+                                  normalizedPosition: loopStartNorm,
+                                  trackWidth: trackWidth,
+                                  label: 'A',
+                                  color: Colors.green,
+                                  onDrag: hasVideo
+                                      ? (delta) {
+                                          final newNorm = (loopStartNorm! +
+                                                  delta / trackWidth)
+                                              .clamp(0.0, 1.0);
+                                          final newPos = Duration(
+                                            milliseconds:
+                                                (newNorm * duration.inMilliseconds).round(),
+                                          );
+                                          loopNotifier.setAPointAt(newPos);
+                                        }
+                                      : null,
+                                ),
+
+                              // B marker (loop end)
+                              if (loopEndNorm != null)
+                                _LoopMarker(
+                                  normalizedPosition: loopEndNorm,
+                                  trackWidth: trackWidth,
+                                  label: 'B',
+                                  color: Colors.orange,
+                                  onDrag: hasVideo
+                                      ? (delta) {
+                                          final newNorm = (loopEndNorm! +
+                                                  delta / trackWidth)
+                                              .clamp(0.0, 1.0);
+                                          final newPos = Duration(
+                                            milliseconds:
+                                                (newNorm * duration.inMilliseconds).round(),
+                                          );
+                                          loopNotifier.setBPointAt(newPos);
+                                        }
+                                      : null,
+                                ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-
-                    // A marker (loop start)
-                    if (loopStartNorm != null)
-                      _LoopMarker(
-                        normalizedPosition: loopStartNorm,
-                        trackWidth: trackWidth,
-                        label: 'A',
-                        color: Colors.green,
-                        onDrag: hasVideo
-                            ? (delta) {
-                                final newNorm = (loopStartNorm! +
-                                        delta / trackWidth)
-                                    .clamp(0.0, 1.0);
-                                final newPos = Duration(
-                                  milliseconds:
-                                      (newNorm * duration.inMilliseconds).round(),
-                                );
-                                loopNotifier.setAPointAt(newPos);
-                              }
-                            : null,
-                      ),
-
-                    // B marker (loop end)
-                    if (loopEndNorm != null)
-                      _LoopMarker(
-                        normalizedPosition: loopEndNorm,
-                        trackWidth: trackWidth,
-                        label: 'B',
-                        color: Colors.orange,
-                        onDrag: hasVideo
-                            ? (delta) {
-                                final newNorm = (loopEndNorm! +
-                                        delta / trackWidth)
-                                    .clamp(0.0, 1.0);
-                                final newPos = Duration(
-                                  milliseconds:
-                                      (newNorm * duration.inMilliseconds).round(),
-                                );
-                                loopNotifier.setBPointAt(newPos);
-                              }
-                            : null,
-                      ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: showAnnotationTimeline
+                        ? 'Hide Annotation Keyframe Timeline'
+                        : 'Show Annotation Keyframe Timeline',
+                    icon: Icon(
+                      showAnnotationTimeline
+                          ? Icons.timeline
+                          : Icons.timeline_outlined,
+                      color: showAnnotationTimeline
+                          ? Colors.lightBlueAccent
+                          : Colors.white70,
+                    ),
+                    onPressed: hasVideo
+                        ? () {
+                            ref
+                                .read(annotationKeyframeTimelineVisibleProvider.notifier)
+                                .state = !showAnnotationTimeline;
+                          }
+                        : null,
+                  ),
+                ],
               ),
             ],
           );
@@ -212,8 +244,8 @@ class _LoopRegionCustomPainter extends CustomPainter {
 
     final paint = Paint()
       ..color = isActive
-          ? Colors.green.withOpacity(0.25)
-          : Colors.green.withOpacity(0.1)
+          ? Colors.green.withValues(alpha: 0.25)
+          : Colors.green.withValues(alpha: 0.1)
       ..style = PaintingStyle.fill;
 
     // Draw the highlighted region
@@ -225,7 +257,7 @@ class _LoopRegionCustomPainter extends CustomPainter {
 
     // Draw border
     final borderPaint = Paint()
-      ..color = isActive ? Colors.green : Colors.green.withOpacity(0.5)
+      ..color = isActive ? Colors.green : Colors.green.withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
     canvas.drawRRect(rect, borderPaint);
@@ -298,7 +330,7 @@ class _LoopMarkerState extends State<_LoopMarker> {
             width: 16,
             decoration: BoxDecoration(
               color: _isDragging
-                  ? widget.color.withOpacity(0.3)
+                  ? widget.color.withValues(alpha: 0.3)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(4),
             ),

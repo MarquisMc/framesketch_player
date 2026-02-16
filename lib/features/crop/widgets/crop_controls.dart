@@ -6,6 +6,7 @@ import '../../../core/utils/timecode_formatter.dart';
 import '../providers/crop_provider.dart';
 import '../../player/providers/player_provider.dart';
 import '../../loop/providers/loop_provider.dart';
+import '../../annotations/providers/annotation_provider.dart';
 
 /// Crop controls panel widget
 /// Shows when crop mode is active, provides aspect ratio selection and export
@@ -201,6 +202,7 @@ class CropControlsPanel extends ConsumerWidget {
     );
 
     if (result != null) {
+      await ref.read(annotationProvider.notifier).saveAnnotations();
       // Start export
       cropNotifier.exportCroppedVideo(result);
     }

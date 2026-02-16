@@ -64,11 +64,11 @@ class FFmpegService {
       // 3. Run ffmpeg with progress monitoring
 
       // For now, just copy the video as placeholder
-      print('Export functionality requires advanced FFmpeg filter implementation');
+      stderr.writeln('Export functionality requires advanced FFmpeg filter implementation');
 
       return false;
     } catch (e) {
-      print('Error exporting video: $e');
+      stderr.writeln('Error exporting video: $e');
       return false;
     }
   }
@@ -86,7 +86,7 @@ class FFmpegService {
         return firstLine;
       }
     } catch (e) {
-      print('Error getting FFmpeg version: $e');
+      stderr.writeln('Error getting FFmpeg version: $e');
     }
     return null;
   }

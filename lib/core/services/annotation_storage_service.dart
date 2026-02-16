@@ -42,7 +42,7 @@ class AnnotationStorageService {
 
       return true;
     } catch (e) {
-      print('Error saving annotations: $e');
+      stderr.writeln('Error saving annotations: $e');
       return false;
     }
   }
@@ -62,7 +62,7 @@ class AnnotationStorageService {
 
       return AnnotationData.fromJson(jsonData);
     } catch (e) {
-      print('Error loading annotations: $e');
+      stderr.writeln('Error loading annotations: $e');
       return null;
     }
   }
@@ -85,7 +85,7 @@ class AnnotationStorageService {
 
       return true;
     } catch (e) {
-      print('Error deleting annotations: $e');
+      stderr.writeln('Error deleting annotations: $e');
       return false;
     }
   }
@@ -109,7 +109,7 @@ class AnnotationStorageService {
 
       await prefs.setStringList(_recentFilesKey, recentFiles);
     } catch (e) {
-      print('Error adding to recent files: $e');
+      stderr.writeln('Error adding to recent files: $e');
     }
   }
 
@@ -134,7 +134,7 @@ class AnnotationStorageService {
 
       return existingFiles;
     } catch (e) {
-      print('Error getting recent files: $e');
+      stderr.writeln('Error getting recent files: $e');
       return [];
     }
   }

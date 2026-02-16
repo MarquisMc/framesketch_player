@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/models/keyboard_shortcuts.dart';
@@ -23,7 +24,7 @@ class KeyboardShortcutsNotifier extends StateNotifier<KeyboardShortcuts> {
         state = shortcuts;
       }
     } catch (e) {
-      print('Error loading keyboard shortcuts: $e');
+      debugPrint('Error loading keyboard shortcuts: $e');
       state = defaultKeyboardShortcuts;
     }
   }
@@ -33,7 +34,7 @@ class KeyboardShortcutsNotifier extends StateNotifier<KeyboardShortcuts> {
     try {
       await _prefs.setString(_storageKey, jsonEncode(shortcuts.toJson()));
     } catch (e) {
-      print('Error saving keyboard shortcuts: $e');
+      debugPrint('Error saving keyboard shortcuts: $e');
     }
   }
 

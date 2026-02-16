@@ -85,8 +85,11 @@ class PlaybackControls extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: Colors.grey[850],
-      child: Row(
-        children: [
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
           // Play/Pause button
           IconButton(
             icon: Icon(
@@ -220,7 +223,7 @@ class PlaybackControls extends ConsumerWidget {
           // Loop controls
           const LoopControls(),
 
-          const Spacer(),
+          const SizedBox(width: 24),
 
           // FPS display
           if (hasVideo && playerState.metadata != null)
@@ -239,7 +242,8 @@ class PlaybackControls extends ConsumerWidget {
                 ),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

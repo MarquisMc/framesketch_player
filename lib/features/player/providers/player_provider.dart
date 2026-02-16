@@ -331,16 +331,22 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// Dispose player
   Future<void> _disposePlayer() async {
-    await _positionSubscription?.cancel();
-    await _durationSubscription?.cancel();
-    await _playingSubscription?.cancel();
-    await _volumeSubscription?.cancel();
+    final positionSubscription = _positionSubscription;
+    final durationSubscription = _durationSubscription;
+    final playingSubscription = _playingSubscription;
+    final volumeSubscription = _volumeSubscription;
+    final player = state.player;
+
     _positionSubscription = null;
     _durationSubscription = null;
     _playingSubscription = null;
     _volumeSubscription = null;
 
-    await state.player?.dispose();
+    await positionSubscription?.cancel();
+    await durationSubscription?.cancel();
+    await playingSubscription?.cancel();
+    await volumeSubscription?.cancel();
+    await player?.dispose();
   }
 
   @override

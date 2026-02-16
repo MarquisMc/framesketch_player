@@ -1,3 +1,5 @@
+// ignore_for_file: invalid_annotation_target
+
 import 'package:flutter/material.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
@@ -26,7 +28,6 @@ class Stroke with _$Stroke {
   const factory Stroke({
     required String id,
     required DrawingTool tool,
-    // ignore: invalid_annotation_target
     @JsonKey(fromJson: _colorFromJson, toJson: _colorToJson)
     required Color color,
     required double strokeWidth,

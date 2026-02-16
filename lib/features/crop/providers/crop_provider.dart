@@ -3,6 +3,10 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import '../../player/providers/player_provider.dart';
+import '../../annotations/models/stroke.dart';
+import '../../../core/services/annotation_overlay_renderer_service.dart';
+import '../../../core/services/annotation_storage_service.dart';
+import '../../../core/models/annotation_data.dart';
 
 /// Available aspect ratio presets for cropping
 enum CropAspectRatio {
@@ -269,6 +273,8 @@ class CropNotifier extends StateNotifier<CropState> {
   Process? _ffmpegProcess;
   bool _cancelRequested = false;
   Timer? _progressTimer;
+  final AnnotationOverlayRendererService _overlayRenderer =
+      AnnotationOverlayRendererService();
 
   CropNotifier(this._ref) : super(const CropState());
 
@@ -719,6 +725,8 @@ class CropNotifier extends StateNotifier<CropState> {
     }
 
     final normalizedCropFilter = _buildNormalizedCropFilter(state.cropRect);
+    final metadata = playerState.metadata!;
+    final annotationData = await AnnotationStorageService().loadAnnotations(inputPath);
 
     state = state.copyWith(
       exportStatus: ExportStatus.preparing,
@@ -728,6 +736,7 @@ class CropNotifier extends StateNotifier<CropState> {
     );
 
     _cancelRequested = false;
+    Directory? overlayTempDir;
 
     try {
       // Find FFmpeg executable
@@ -740,6 +749,18 @@ class CropNotifier extends StateNotifier<CropState> {
         return;
       }
 
+      overlayTempDir = await Directory.systemTemp.createTemp(
+        'framesketch_annotation_overlays_',
+      );
+      final overlays = await _prepareAnnotationOverlays(
+        annotationData: annotationData,
+        videoWidth: metadata.width,
+        videoHeight: metadata.height,
+        startMs: startMs,
+        endMs: endMs,
+        tempDir: overlayTempDir,
+      );
+
       // Build FFmpeg arguments
       final args = [
         '-hide_banner',
@@ -751,13 +772,29 @@ class CropNotifier extends StateNotifier<CropState> {
         ],
         '-i',
         inputPath,
+        for (final overlay in overlays) ...[
+          '-loop',
+          '1',
+          '-i',
+          overlay.path,
+        ],
         if (isSegmentedExport) ...[
           '-t',
           (targetDurationMs / 1000.0).toStringAsFixed(3),
         ],
-        '-vf',
-        '$normalizedCropFilter,setsar=1',
-        '-map', '0:v:0',
+        if (overlays.isNotEmpty) ...[
+          '-filter_complex',
+          _buildFilterComplex(
+            overlays: overlays,
+            cropFilter: normalizedCropFilter,
+          ),
+          '-map', '[vout]',
+        ] else ...[
+          '-vf',
+          '$normalizedCropFilter,setsar=1',
+          '-map',
+          '0:v:0',
+        ],
         '-map', '0:a:0?',
         // Use broadly compatible encoding so exported files open reliably
         // in default OS players outside the app.
@@ -875,7 +912,107 @@ class CropNotifier extends StateNotifier<CropState> {
     } finally {
       _progressTimer?.cancel();
       _ffmpegProcess = null;
+      if (overlayTempDir != null) {
+        try {
+          if (await overlayTempDir.exists()) {
+            await overlayTempDir.delete(recursive: true);
+          }
+        } catch (_) {}
+      }
     }
+  }
+
+  Future<List<_TimedOverlay>> _prepareAnnotationOverlays({
+    required AnnotationData? annotationData,
+    required int videoWidth,
+    required int videoHeight,
+    required int startMs,
+    required int endMs,
+    required Directory tempDir,
+  }) async {
+    if (annotationData == null || annotationData.strokes.isEmpty) {
+      return const [];
+    }
+
+    final fps = annotationData.fps > 0 ? annotationData.fps : 30.0;
+    int snap(int ms) {
+      final frameMs = 1000.0 / fps;
+      final frame = (ms / frameMs).round();
+      return (frame * frameMs).round();
+    }
+
+    final grouped = <int, List<Stroke>>{};
+    for (final stroke in annotationData.strokes) {
+      final keyframeMs = snap(stroke.startTimeMs);
+      grouped.putIfAbsent(keyframeMs, () => <Stroke>[]).add(stroke);
+    }
+
+    if (grouped.isEmpty) return const [];
+
+    final keyframes = grouped.keys.toList()..sort();
+    final overlays = <_TimedOverlay>[];
+
+    for (int i = 0; i < keyframes.length; i++) {
+      final keyframeMs = keyframes[i];
+      final nextKeyframeMs = i + 1 < keyframes.length ? keyframes[i + 1] : endMs;
+
+      final intervalStartMs = keyframeMs > startMs ? keyframeMs : startMs;
+      final intervalEndMs = nextKeyframeMs < endMs ? nextKeyframeMs : endMs;
+      if (intervalEndMs <= intervalStartMs) continue;
+
+      final relativeStart = (intervalStartMs - startMs) / 1000.0;
+      final relativeEnd = (intervalEndMs - startMs) / 1000.0;
+
+      final overlayPath = path.join(
+        tempDir.path,
+        'overlay_${i.toString().padLeft(4, '0')}.png',
+      );
+
+      await _overlayRenderer.renderOverlayImage(
+        outputPath: overlayPath,
+        strokes: grouped[keyframeMs]!,
+        width: videoWidth,
+        height: videoHeight,
+        viewportWidth: annotationData.viewportWidth,
+        viewportHeight: annotationData.viewportHeight,
+      );
+
+      overlays.add(
+        _TimedOverlay(
+          path: overlayPath,
+          startSec: relativeStart,
+          endSec: relativeEnd,
+        ),
+      );
+    }
+
+    return overlays;
+  }
+
+  String _buildFilterComplex({
+    required List<_TimedOverlay> overlays,
+    required String cropFilter,
+  }) {
+    if (overlays.isEmpty) {
+      return '[0:v]$cropFilter,setsar=1[vout]';
+    }
+
+    final steps = <String>[];
+    String previous = '0:v';
+
+    for (int i = 0; i < overlays.length; i++) {
+      final inputLabel = '${i + 1}:v';
+      final outputLabel = i == overlays.length - 1 ? 'v_overlayed' : 'v$i';
+      final start = overlays[i].startSec.toStringAsFixed(3);
+      final end = overlays[i].endSec.toStringAsFixed(3);
+      steps.add(
+        '[$previous][$inputLabel]overlay=enable=\'between(t\\,$start\\,$end)\'[$outputLabel]',
+      );
+      previous = outputLabel;
+    }
+
+    steps.add('[$previous]$cropFilter,setsar=1[vout]');
+    return steps.join(';');
   }
 
   String _buildNormalizedCropFilter(CropRect rect) {
@@ -947,3 +1084,15 @@ class CropNotifier extends StateNotifier<CropState> {
 final cropProvider = StateNotifierProvider<CropNotifier, CropState>((ref) {
   return CropNotifier(ref);
 });
+
+class _TimedOverlay {
+  final String path;
+  final double startSec;
+  final double endSec;
+
+  const _TimedOverlay({
+    required this.path,
+    required this.startSec,
+    required this.endSec,
+  });
+}

@@ -10,7 +10,9 @@ import 'features/player/widgets/video_viewport.dart';
 import 'features/player/widgets/playback_controls.dart';
 import 'features/timeline/widgets/timeline_scrubber.dart';
 import 'features/annotations/widgets/drawing_tools_panel.dart';
+import 'features/annotations/widgets/annotation_keyframe_timeline.dart';
 import 'features/annotations/providers/annotation_provider.dart';
+import 'features/annotations/providers/annotation_keyframe_timeline_provider.dart';
 import 'features/annotations/models/stroke.dart';
 import 'core/services/annotation_storage_service.dart';
 import 'core/models/keyboard_shortcuts.dart';
@@ -19,7 +21,7 @@ import 'features/loop/providers/loop_provider.dart';
 import 'features/crop/providers/crop_provider.dart';
 import 'features/crop/widgets/crop_controls.dart';
 import 'core/services/file_association_service.dart';
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 /// Main application widget
 class FrameSketchPlayerApp extends ConsumerStatefulWidget {
@@ -28,12 +30,15 @@ class FrameSketchPlayerApp extends ConsumerStatefulWidget {
   const FrameSketchPlayerApp({super.key, this.initialVideoPath});
 
   @override
-  ConsumerState<FrameSketchPlayerApp> createState() => _FrameSketchPlayerAppState();
+  ConsumerState<FrameSketchPlayerApp> createState() =>
+      _FrameSketchPlayerAppState();
 }
 
 class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   final FocusNode _focusNode = FocusNode();
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
   late KeyboardShortcuts _shortcuts;
   Timer? _keyRepeatTimer;
   LogicalKeyboardKey? _lastPressedKey;
@@ -79,7 +84,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         _shortcuts = shortcuts;
       });
     } catch (e) {
-      print('Error saving shortcuts: $e');
+      debugPrint('Error saving shortcuts: $e');
     }
   }
 
@@ -92,8 +97,17 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
   @override
   Widget build(BuildContext context) {
+    final showAnnotationTimeline = ref.watch(
+      annotationKeyframeTimelineVisibleProvider,
+    );
+    final playerState = ref.watch(playerProvider);
+    final cropState = ref.watch(cropProvider);
+    final hasVideoLoaded = playerState.currentVideoPath != null;
+    final isExporting = cropState.exportStatus == ExportStatus.exporting;
+
     return MaterialApp(
       navigatorKey: _navigatorKey,
+      scaffoldMessengerKey: _scaffoldMessengerKey,
       title: 'FrameSketch Player',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(useMaterial3: true).copyWith(
@@ -121,6 +135,17 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                   icon: const Icon(Icons.save),
                   onPressed: _saveAnnotations,
                   tooltip: 'Save Annotations (Ctrl+S)',
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: hasVideoLoaded && !isExporting
+                      ? _exportVideoFromTopBar
+                      : null,
+                  icon: Icon(
+                    isExporting ? Icons.hourglass_bottom : Icons.file_download,
+                    size: 18,
+                  ),
+                  label: Text(isExporting ? 'Exporting...' : 'Export'),
                 ),
                 const SizedBox(width: 8),
                 // Crop mode toggle button
@@ -173,34 +198,35 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                 const SizedBox(width: 8),
               ],
             ),
-          body: Column(
-            children: [
-              // Main content area
-              Expanded(
-                child: Row(
-                  children: [
-                    // Video and annotation area
-                    const Expanded(
-                      child: VideoViewport(),
-                    ),
+            body: Column(
+              children: [
+                // Main content area
+                Expanded(
+                  child: Row(
+                    children: [
+                      // Video and annotation area
+                      const Expanded(child: VideoViewport()),
 
-                    // Drawing tools panel
-                    const DrawingToolsPanel(),
-                  ],
+                      // Drawing tools panel
+                      const DrawingToolsPanel(),
+                    ],
+                  ),
                 ),
-              ),
 
-              // Crop controls panel (shows when crop mode is active)
-              const CropControlsPanel(),
+                // Crop controls panel (shows when crop mode is active)
+                const CropControlsPanel(),
 
-              // Timeline scrubber
-              const TimelineScrubber(),
+                // Timeline scrubber
+                const TimelineScrubber(),
 
-              // Playback controls
-              const PlaybackControls(),
-            ],
+                // Annotation keyframe timeline (separate from playback timeline)
+                if (showAnnotationTimeline) const AnnotationKeyframeTimeline(),
+
+                // Playback controls
+                const PlaybackControls(),
+              ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -324,7 +350,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       // Delete selected annotation (no repeat)
       if (event.logicalKey == LogicalKeyboardKey.delete) {
         final annotationState = ref.read(annotationProvider);
-        if (annotationState.selectedStrokeId != null) {
+        if (annotationState.selectedStrokeId != null ||
+            annotationState.selectedStrokeIds.isNotEmpty) {
           annotationNotifier.deleteSelectedStroke();
           return KeyEventResult.handled;
         }
@@ -448,7 +475,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       final playerState = ref.read(playerProvider);
       if (playerState.metadata == null) {
         if (mounted) {
-          _showErrorDialog('Failed to load video. The video file may be corrupted or in an unsupported format.');
+          _showErrorDialog(
+            'Failed to load video. The video file may be corrupted or in an unsupported format.',
+          );
         }
         return;
       }
@@ -494,7 +523,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       final playerState = ref.read(playerProvider);
       if (playerState.metadata == null) {
         if (mounted) {
-          _showErrorDialog('Failed to load video. The video file may be corrupted or in an unsupported format.');
+          _showErrorDialog(
+            'Failed to load video. The video file may be corrupted or in an unsupported format.',
+          );
         }
         return;
       }
@@ -526,7 +557,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
       if (mounted) {
         if (success) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          _scaffoldMessengerKey.currentState?.showSnackBar(
             const SnackBar(
               content: Text('Annotations saved successfully'),
               backgroundColor: Colors.green,
@@ -546,14 +577,110 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     }
   }
 
+  Future<void> _exportVideoFromTopBar() async {
+    try {
+      final playerState = ref.read(playerProvider);
+      final cropState = ref.read(cropProvider);
+      final cropNotifier = ref.read(cropProvider.notifier);
+
+      if (playerState.currentVideoPath == null) {
+        _showErrorDialog('No video loaded');
+        return;
+      }
+
+      if (cropState.exportStatus == ExportStatus.exporting) {
+        return;
+      }
+
+      final inputFile = File(playerState.currentVideoPath!);
+      final inputName = inputFile.uri.pathSegments.isNotEmpty
+          ? inputFile.uri.pathSegments.last
+          : 'video';
+      final extIndex = inputName.lastIndexOf('.');
+      final nameWithoutExt = extIndex > 0
+          ? inputName.substring(0, extIndex)
+          : inputName;
+      final safeBaseName = _buildSafeOutputBaseName(nameWithoutExt);
+
+      final outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Export Annotated Video',
+        fileName: '${safeBaseName}_annotated.mp4',
+        type: FileType.video,
+      );
+
+      if (outputPath == null) {
+        _focusNode.requestFocus();
+        return;
+      }
+
+      await ref.read(annotationProvider.notifier).saveAnnotations();
+      await cropNotifier.exportCroppedVideo(outputPath);
+
+      if (!mounted) return;
+
+      final updatedCropState = ref.read(cropProvider);
+      switch (updatedCropState.exportStatus) {
+        case ExportStatus.success:
+          _scaffoldMessengerKey.currentState?.showSnackBar(
+            SnackBar(
+              content: Text(
+                'Export complete: ${updatedCropState.exportedFilePath ?? outputPath}',
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+          break;
+        case ExportStatus.cancelled:
+          _scaffoldMessengerKey.currentState?.showSnackBar(
+            const SnackBar(
+              content: Text('Export cancelled'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          break;
+        case ExportStatus.error:
+          _showErrorDialog(updatedCropState.exportError ?? 'Export failed');
+          break;
+        case ExportStatus.idle:
+        case ExportStatus.preparing:
+        case ExportStatus.exporting:
+          break;
+      }
+
+      _focusNode.requestFocus();
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Error exporting video: $e');
+      }
+    }
+  }
+
+  String _buildSafeOutputBaseName(String input) {
+    final sanitized = input
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (sanitized.isEmpty) {
+      return 'export';
+    }
+
+    const maxLen = 64;
+    if (sanitized.length <= maxLen) {
+      return sanitized;
+    }
+
+    return sanitized.substring(0, maxLen).trimRight();
+  }
+
   void _openSettings(BuildContext context) {
-    print('Opening settings dialog...');
-    print('Current shortcuts: $_shortcuts');
+    debugPrint('Opening settings dialog...');
+    debugPrint('Current shortcuts: $_shortcuts');
     try {
       showDialog(
         context: context,
         builder: (dialogContext) {
-          print('Building dialog...');
+          debugPrint('Building dialog...');
           return KeyboardShortcutsDialog(
             shortcuts: _shortcuts,
             onSave: (shortcuts) {
@@ -564,7 +691,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         },
       );
     } catch (e) {
-      print('Error opening settings dialog: $e');
+      debugPrint('Error opening settings dialog: $e');
       _showErrorDialog('Error opening settings: $e');
     }
   }
@@ -581,14 +708,16 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
               _showInfoDialog(
                 'File Associations Registered',
                 'FrameSketch Player has been registered as a video player.\n\n'
-                'To set it as default:\n'
-                '1. Right-click any video file\n'
-                '2. Select "Open with" → "Choose another app"\n'
-                '3. Select "FrameSketch Player"\n'
-                '4. Check "Always use this app"',
+                    'To set it as default:\n'
+                    '1. Right-click any video file\n'
+                    '2. Select "Open with" → "Choose another app"\n'
+                    '3. Select "FrameSketch Player"\n'
+                    '4. Check "Always use this app"',
               );
             } else {
-              _showErrorDialog('Failed to register file associations. Please try running as administrator.');
+              _showErrorDialog(
+                'Failed to register file associations. Please try running as administrator.',
+              );
             }
           }
         } catch (e) {
@@ -603,7 +732,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
           final success = await service.unregisterFileAssociations();
           if (mounted) {
             if (success) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              _scaffoldMessengerKey.currentState?.showSnackBar(
                 const SnackBar(
                   content: Text('File associations removed successfully'),
                   backgroundColor: Colors.green,

@@ -1,0 +1,347 @@
+import 'dart:io';
+import 'dart:math';
+import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import '../../features/annotations/models/stroke.dart';
+
+@immutable
+class OverlayTransform {
+  final int outputWidth;
+  final int outputHeight;
+  final int viewportWidth;
+  final int viewportHeight;
+  final double videoLeftInViewport;
+  final double videoTopInViewport;
+  final double videoWidthInViewport;
+  final double videoHeightInViewport;
+  final double styleScaleFactor;
+  final bool usesViewportProjection;
+
+  const OverlayTransform({
+    required this.outputWidth,
+    required this.outputHeight,
+    required this.viewportWidth,
+    required this.viewportHeight,
+    required this.videoLeftInViewport,
+    required this.videoTopInViewport,
+    required this.videoWidthInViewport,
+    required this.videoHeightInViewport,
+    required this.styleScaleFactor,
+    required this.usesViewportProjection,
+  });
+
+  Offset toOutputOffset(StrokePoint point) {
+    if (!usesViewportProjection ||
+        viewportWidth <= 0 ||
+        viewportHeight <= 0 ||
+        videoWidthInViewport <= 0 ||
+        videoHeightInViewport <= 0) {
+      return Offset(point.x * outputWidth, point.y * outputHeight);
+    }
+
+    final viewportX = point.x * viewportWidth;
+    final viewportY = point.y * viewportHeight;
+    final normalizedX =
+        (viewportX - videoLeftInViewport) / videoWidthInViewport;
+    final normalizedY =
+        (viewportY - videoTopInViewport) / videoHeightInViewport;
+
+    return Offset(normalizedX * outputWidth, normalizedY * outputHeight);
+  }
+}
+
+class AnnotationOverlayRendererService {
+  Future<void> renderOverlayImage({
+    required String outputPath,
+    required List<Stroke> strokes,
+    required int width,
+    required int height,
+    required int viewportWidth,
+    required int viewportHeight,
+  }) async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    );
+    final transform = createOverlayTransform(
+      outputWidth: width,
+      outputHeight: height,
+      viewportWidth: viewportWidth,
+      viewportHeight: viewportHeight,
+    );
+
+    for (final stroke in strokes) {
+      _drawStroke(canvas, stroke, transform);
+    }
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(width, height);
+    final pngBytes = await image.toByteData(format: ui.ImageByteFormat.png);
+
+    if (pngBytes == null) {
+      throw Exception('Failed to encode annotation overlay as PNG.');
+    }
+
+    await File(
+      outputPath,
+    ).writeAsBytes(pngBytes.buffer.asUint8List(), flush: true);
+  }
+
+  @visibleForTesting
+  OverlayTransform createOverlayTransform({
+    required int outputWidth,
+    required int outputHeight,
+    required int viewportWidth,
+    required int viewportHeight,
+  }) {
+    final safeOutputWidth = outputWidth > 0 ? outputWidth : 1;
+    final safeOutputHeight = outputHeight > 0 ? outputHeight : 1;
+
+    final fallbackWidthScale = viewportWidth > 0
+        ? safeOutputWidth / viewportWidth
+        : 1.0;
+    final fallbackHeightScale = viewportHeight > 0
+        ? safeOutputHeight / viewportHeight
+        : 1.0;
+    final fallbackStyleScale = (fallbackWidthScale + fallbackHeightScale) / 2.0;
+
+    if (viewportWidth <= 0 || viewportHeight <= 0) {
+      return OverlayTransform(
+        outputWidth: safeOutputWidth,
+        outputHeight: safeOutputHeight,
+        viewportWidth: viewportWidth,
+        viewportHeight: viewportHeight,
+        videoLeftInViewport: 0.0,
+        videoTopInViewport: 0.0,
+        videoWidthInViewport: viewportWidth.toDouble(),
+        videoHeightInViewport: viewportHeight.toDouble(),
+        styleScaleFactor: fallbackStyleScale,
+        usesViewportProjection: false,
+      );
+    }
+
+    final scaleToViewport = min(
+      viewportWidth / safeOutputWidth,
+      viewportHeight / safeOutputHeight,
+    );
+
+    if (!scaleToViewport.isFinite || scaleToViewport <= 0) {
+      return OverlayTransform(
+        outputWidth: safeOutputWidth,
+        outputHeight: safeOutputHeight,
+        viewportWidth: viewportWidth,
+        viewportHeight: viewportHeight,
+        videoLeftInViewport: 0.0,
+        videoTopInViewport: 0.0,
+        videoWidthInViewport: viewportWidth.toDouble(),
+        videoHeightInViewport: viewportHeight.toDouble(),
+        styleScaleFactor: fallbackStyleScale,
+        usesViewportProjection: false,
+      );
+    }
+
+    final videoWidthInViewport = safeOutputWidth * scaleToViewport;
+    final videoHeightInViewport = safeOutputHeight * scaleToViewport;
+    final videoLeftInViewport = (viewportWidth - videoWidthInViewport) / 2.0;
+    final videoTopInViewport = (viewportHeight - videoHeightInViewport) / 2.0;
+    final styleScaleFactor = 1.0 / scaleToViewport;
+
+    return OverlayTransform(
+      outputWidth: safeOutputWidth,
+      outputHeight: safeOutputHeight,
+      viewportWidth: viewportWidth,
+      viewportHeight: viewportHeight,
+      videoLeftInViewport: videoLeftInViewport,
+      videoTopInViewport: videoTopInViewport,
+      videoWidthInViewport: videoWidthInViewport,
+      videoHeightInViewport: videoHeightInViewport,
+      styleScaleFactor: styleScaleFactor,
+      usesViewportProjection: true,
+    );
+  }
+
+  void _drawStroke(Canvas canvas, Stroke stroke, OverlayTransform transform) {
+    if (stroke.points.isEmpty) return;
+
+    final strokeWidth = (stroke.strokeWidth * transform.styleScaleFactor).clamp(
+      1.0,
+      64.0,
+    );
+    final fontSize = (stroke.fontSize * transform.styleScaleFactor).clamp(
+      6.0,
+      256.0,
+    );
+
+    if (stroke.tool == DrawingTool.text) {
+      _drawText(canvas, stroke, transform, fontSize);
+      return;
+    }
+
+    if (stroke.points.length < 2) {
+      final point = _toOffset(stroke.points.first, transform);
+      final paint = Paint()
+        ..color = stroke.color
+        ..strokeWidth = strokeWidth
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(point, strokeWidth / 2, paint);
+      return;
+    }
+
+    switch (stroke.tool) {
+      case DrawingTool.pen:
+        _drawPen(canvas, stroke, transform, strokeWidth);
+        break;
+      case DrawingTool.rectangle:
+        _drawRectangle(canvas, stroke, transform, strokeWidth);
+        break;
+      case DrawingTool.circle:
+        _drawCircle(canvas, stroke, transform, strokeWidth);
+        break;
+      case DrawingTool.line:
+        _drawLine(canvas, stroke, transform, strokeWidth);
+        break;
+      case DrawingTool.arrow:
+        _drawArrow(canvas, stroke, transform, strokeWidth);
+        break;
+      case DrawingTool.text:
+        break;
+      case DrawingTool.eraser:
+      case DrawingTool.select:
+        break;
+    }
+  }
+
+  Offset _toOffset(StrokePoint p, OverlayTransform transform) {
+    return transform.toOutputOffset(p);
+  }
+
+  void _drawPen(
+    Canvas canvas,
+    Stroke stroke,
+    OverlayTransform transform,
+    double strokeWidth,
+  ) {
+    final paint = Paint()
+      ..color = stroke.color
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    final path = Path();
+    final first = _toOffset(stroke.points.first, transform);
+    path.moveTo(first.dx, first.dy);
+    for (int i = 1; i < stroke.points.length; i++) {
+      final p = _toOffset(stroke.points[i], transform);
+      path.lineTo(p.dx, p.dy);
+    }
+
+    canvas.drawPath(path, paint);
+  }
+
+  void _drawRectangle(
+    Canvas canvas,
+    Stroke stroke,
+    OverlayTransform transform,
+    double strokeWidth,
+  ) {
+    final p1 = _toOffset(stroke.points.first, transform);
+    final p2 = _toOffset(stroke.points.last, transform);
+    final paint = Paint()
+      ..color = stroke.color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+    canvas.drawRect(Rect.fromPoints(p1, p2), paint);
+  }
+
+  void _drawCircle(
+    Canvas canvas,
+    Stroke stroke,
+    OverlayTransform transform,
+    double strokeWidth,
+  ) {
+    final p1 = _toOffset(stroke.points.first, transform);
+    final p2 = _toOffset(stroke.points.last, transform);
+    final center = Offset((p1.dx + p2.dx) / 2, (p1.dy + p2.dy) / 2);
+    final rx = (p2.dx - p1.dx).abs() / 2;
+    final ry = (p2.dy - p1.dy).abs() / 2;
+    final paint = Paint()
+      ..color = stroke.color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+    canvas.drawOval(
+      Rect.fromCenter(center: center, width: rx * 2, height: ry * 2),
+      paint,
+    );
+  }
+
+  void _drawLine(
+    Canvas canvas,
+    Stroke stroke,
+    OverlayTransform transform,
+    double strokeWidth,
+  ) {
+    final p1 = _toOffset(stroke.points.first, transform);
+    final p2 = _toOffset(stroke.points.last, transform);
+    final paint = Paint()
+      ..color = stroke.color
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(p1, p2, paint);
+  }
+
+  void _drawArrow(
+    Canvas canvas,
+    Stroke stroke,
+    OverlayTransform transform,
+    double strokeWidth,
+  ) {
+    final p1 = _toOffset(stroke.points.first, transform);
+    final p2 = _toOffset(stroke.points.last, transform);
+    final paint = Paint()
+      ..color = stroke.color
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(p1, p2, paint);
+
+    final dx = p2.dx - p1.dx;
+    final dy = p2.dy - p1.dy;
+    final angle = atan2(dy, dx);
+    final arrowSize = strokeWidth * 3;
+    const arrowAngle = 0.5235987756; // pi/6
+    final a1 = Offset(
+      p2.dx - arrowSize * cos(angle - arrowAngle),
+      p2.dy - arrowSize * sin(angle - arrowAngle),
+    );
+    final a2 = Offset(
+      p2.dx - arrowSize * cos(angle + arrowAngle),
+      p2.dy - arrowSize * sin(angle + arrowAngle),
+    );
+    final path = Path()
+      ..moveTo(a1.dx, a1.dy)
+      ..lineTo(p2.dx, p2.dy)
+      ..lineTo(a2.dx, a2.dy);
+    canvas.drawPath(path, paint);
+  }
+
+  void _drawText(
+    Canvas canvas,
+    Stroke stroke,
+    OverlayTransform transform,
+    double fontSize,
+  ) {
+    if (stroke.text == null || stroke.text!.trim().isEmpty) return;
+    final anchor = _toOffset(stroke.points.first, transform);
+    final span = TextSpan(
+      text: stroke.text!,
+      style: TextStyle(color: stroke.color, fontSize: fontSize),
+    );
+    final painter = TextPainter(text: span, textDirection: TextDirection.ltr)
+      ..layout();
+    painter.paint(canvas, anchor);
+  }
+}

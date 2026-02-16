@@ -72,7 +72,7 @@ class FFprobeService {
       final jsonData = json.decode(result.stdout as String);
       return _parseMetadata(filePath, jsonData);
     } catch (e) {
-      print('Error extracting metadata: $e');
+      stderr.writeln('Error extracting metadata: $e');
       return null;
     }
   }
@@ -128,7 +128,7 @@ class FFprobeService {
         timeBase: timeBase,
       );
     } catch (e) {
-      print('Error parsing metadata: $e');
+      stderr.writeln('Error parsing metadata: $e');
       return null;
     }
   }
@@ -166,7 +166,7 @@ class FFprobeService {
       }
       return null;
     } catch (e) {
-      print('Error extracting frame: $e');
+      stderr.writeln('Error extracting frame: $e');
       return null;
     }
   }

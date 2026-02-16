@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/stroke.dart';
 import '../providers/annotation_provider.dart';
+import '../../player/providers/player_provider.dart';
 
 /// Drawing tools panel
 class DrawingToolsPanel extends ConsumerStatefulWidget {
@@ -18,6 +19,9 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
   Widget build(BuildContext context) {
     final annotationState = ref.watch(annotationProvider);
     final annotationNotifier = ref.read(annotationProvider.notifier);
+    final keyframeTimesMs = ref.watch(annotationKeyframeTimesProvider);
+    final activeKeyframeMs = ref.watch(activeAnnotationKeyframeProvider);
+    final fps = ref.watch(playerProvider.select((state) => state.metadata?.fps)) ?? 30.0;
 
     return Container(
       width: 250,
@@ -351,6 +355,21 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                     fontSize: 12,
                   ),
                 ),
+                Text(
+                  'Keyframes: ${keyframeTimesMs.length}',
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                  ),
+                ),
+                if (activeKeyframeMs != null)
+                  Text(
+                    'Active frame: ${((activeKeyframeMs / 1000.0) * fps).round()}',
+                    style: const TextStyle(
+                      color: Colors.lightBlueAccent,
+                      fontSize: 12,
+                    ),
+                  ),
                 if (annotationState.hasUnsavedChanges)
                   const Text(
                     'Unsaved changes',
@@ -429,7 +448,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
