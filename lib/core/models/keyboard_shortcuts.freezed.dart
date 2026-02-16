@@ -262,6 +262,7 @@ mixin _$KeyboardShortcuts {
   KeyboardShortcut get playPause => throw _privateConstructorUsedError;
   KeyboardShortcut get jumpForward => throw _privateConstructorUsedError;
   KeyboardShortcut get jumpBackward => throw _privateConstructorUsedError;
+  KeyboardShortcut get toggleFullscreen => throw _privateConstructorUsedError;
   KeyboardShortcut get openFile => throw _privateConstructorUsedError;
   KeyboardShortcut get saveAnnotations => throw _privateConstructorUsedError;
   KeyboardShortcut get undo => throw _privateConstructorUsedError;
@@ -314,6 +315,7 @@ abstract class $KeyboardShortcutsCopyWith<$Res> {
     KeyboardShortcut playPause,
     KeyboardShortcut jumpForward,
     KeyboardShortcut jumpBackward,
+    KeyboardShortcut toggleFullscreen,
     KeyboardShortcut openFile,
     KeyboardShortcut saveAnnotations,
     KeyboardShortcut undo,
@@ -342,6 +344,7 @@ abstract class $KeyboardShortcutsCopyWith<$Res> {
   $KeyboardShortcutCopyWith<$Res> get playPause;
   $KeyboardShortcutCopyWith<$Res> get jumpForward;
   $KeyboardShortcutCopyWith<$Res> get jumpBackward;
+  $KeyboardShortcutCopyWith<$Res> get toggleFullscreen;
   $KeyboardShortcutCopyWith<$Res> get openFile;
   $KeyboardShortcutCopyWith<$Res> get saveAnnotations;
   $KeyboardShortcutCopyWith<$Res> get undo;
@@ -381,6 +384,7 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
     Object? playPause = null,
     Object? jumpForward = null,
     Object? jumpBackward = null,
+    Object? toggleFullscreen = null,
     Object? openFile = null,
     Object? saveAnnotations = null,
     Object? undo = null,
@@ -424,6 +428,10 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
             jumpBackward: null == jumpBackward
                 ? _value.jumpBackward
                 : jumpBackward // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            toggleFullscreen: null == toggleFullscreen
+                ? _value.toggleFullscreen
+                : toggleFullscreen // ignore: cast_nullable_to_non_nullable
                       as KeyboardShortcut,
             openFile: null == openFile
                 ? _value.openFile
@@ -562,6 +570,16 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
   $KeyboardShortcutCopyWith<$Res> get jumpBackward {
     return $KeyboardShortcutCopyWith<$Res>(_value.jumpBackward, (value) {
       return _then(_value.copyWith(jumpBackward: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get toggleFullscreen {
+    return $KeyboardShortcutCopyWith<$Res>(_value.toggleFullscreen, (value) {
+      return _then(_value.copyWith(toggleFullscreen: value) as $Val);
     });
   }
 
@@ -751,6 +769,7 @@ abstract class _$$KeyboardShortcutsImplCopyWith<$Res>
     KeyboardShortcut playPause,
     KeyboardShortcut jumpForward,
     KeyboardShortcut jumpBackward,
+    KeyboardShortcut toggleFullscreen,
     KeyboardShortcut openFile,
     KeyboardShortcut saveAnnotations,
     KeyboardShortcut undo,
@@ -784,6 +803,8 @@ abstract class _$$KeyboardShortcutsImplCopyWith<$Res>
   $KeyboardShortcutCopyWith<$Res> get jumpForward;
   @override
   $KeyboardShortcutCopyWith<$Res> get jumpBackward;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get toggleFullscreen;
   @override
   $KeyboardShortcutCopyWith<$Res> get openFile;
   @override
@@ -839,6 +860,7 @@ class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
     Object? playPause = null,
     Object? jumpForward = null,
     Object? jumpBackward = null,
+    Object? toggleFullscreen = null,
     Object? openFile = null,
     Object? saveAnnotations = null,
     Object? undo = null,
@@ -882,6 +904,10 @@ class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
         jumpBackward: null == jumpBackward
             ? _value.jumpBackward
             : jumpBackward // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        toggleFullscreen: null == toggleFullscreen
+            ? _value.toggleFullscreen
+            : toggleFullscreen // ignore: cast_nullable_to_non_nullable
                   as KeyboardShortcut,
         openFile: null == openFile
             ? _value.openFile
@@ -981,6 +1007,7 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
     required this.playPause,
     required this.jumpForward,
     required this.jumpBackward,
+    this.toggleFullscreen = const KeyboardShortcut(key: LogicalKeyboardKey.f11),
     required this.openFile,
     required this.saveAnnotations,
     required this.undo,
@@ -1017,6 +1044,9 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
   final KeyboardShortcut jumpForward;
   @override
   final KeyboardShortcut jumpBackward;
+  @override
+  @JsonKey()
+  final KeyboardShortcut toggleFullscreen;
   @override
   final KeyboardShortcut openFile;
   @override
@@ -1070,7 +1100,7 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
 
   @override
   String toString() {
-    return 'KeyboardShortcuts(nextFrame: $nextFrame, previousFrame: $previousFrame, playPause: $playPause, jumpForward: $jumpForward, jumpBackward: $jumpBackward, openFile: $openFile, saveAnnotations: $saveAnnotations, undo: $undo, redo: $redo, selectSelectionTool: $selectSelectionTool, selectPenTool: $selectPenTool, selectEraserTool: $selectEraserTool, selectRectangleTool: $selectRectangleTool, selectCircleTool: $selectCircleTool, selectLineTool: $selectLineTool, selectArrowTool: $selectArrowTool, selectTextTool: $selectTextTool, toggleFullLoop: $toggleFullLoop, setLoopStart: $setLoopStart, setLoopEnd: $setLoopEnd, toggleSectionLoop: $toggleSectionLoop, toggleCropMode: $toggleCropMode, generalShortcutsEnabled: $generalShortcutsEnabled, annotationToolsShortcutsEnabled: $annotationToolsShortcutsEnabled, loopControlsShortcutsEnabled: $loopControlsShortcutsEnabled, cropControlsShortcutsEnabled: $cropControlsShortcutsEnabled)';
+    return 'KeyboardShortcuts(nextFrame: $nextFrame, previousFrame: $previousFrame, playPause: $playPause, jumpForward: $jumpForward, jumpBackward: $jumpBackward, toggleFullscreen: $toggleFullscreen, openFile: $openFile, saveAnnotations: $saveAnnotations, undo: $undo, redo: $redo, selectSelectionTool: $selectSelectionTool, selectPenTool: $selectPenTool, selectEraserTool: $selectEraserTool, selectRectangleTool: $selectRectangleTool, selectCircleTool: $selectCircleTool, selectLineTool: $selectLineTool, selectArrowTool: $selectArrowTool, selectTextTool: $selectTextTool, toggleFullLoop: $toggleFullLoop, setLoopStart: $setLoopStart, setLoopEnd: $setLoopEnd, toggleSectionLoop: $toggleSectionLoop, toggleCropMode: $toggleCropMode, generalShortcutsEnabled: $generalShortcutsEnabled, annotationToolsShortcutsEnabled: $annotationToolsShortcutsEnabled, loopControlsShortcutsEnabled: $loopControlsShortcutsEnabled, cropControlsShortcutsEnabled: $cropControlsShortcutsEnabled)';
   }
 
   @override
@@ -1088,6 +1118,8 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
                 other.jumpForward == jumpForward) &&
             (identical(other.jumpBackward, jumpBackward) ||
                 other.jumpBackward == jumpBackward) &&
+            (identical(other.toggleFullscreen, toggleFullscreen) ||
+                other.toggleFullscreen == toggleFullscreen) &&
             (identical(other.openFile, openFile) ||
                 other.openFile == openFile) &&
             (identical(other.saveAnnotations, saveAnnotations) ||
@@ -1154,6 +1186,7 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
     playPause,
     jumpForward,
     jumpBackward,
+    toggleFullscreen,
     openFile,
     saveAnnotations,
     undo,
@@ -1201,6 +1234,7 @@ abstract class _KeyboardShortcuts implements KeyboardShortcuts {
     required final KeyboardShortcut playPause,
     required final KeyboardShortcut jumpForward,
     required final KeyboardShortcut jumpBackward,
+    final KeyboardShortcut toggleFullscreen,
     required final KeyboardShortcut openFile,
     required final KeyboardShortcut saveAnnotations,
     required final KeyboardShortcut undo,
@@ -1237,6 +1271,8 @@ abstract class _KeyboardShortcuts implements KeyboardShortcuts {
   KeyboardShortcut get jumpForward;
   @override
   KeyboardShortcut get jumpBackward;
+  @override
+  KeyboardShortcut get toggleFullscreen;
   @override
   KeyboardShortcut get openFile;
   @override
