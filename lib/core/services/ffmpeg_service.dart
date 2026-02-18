@@ -1,43 +1,23 @@
 import 'dart:io';
 import '../models/annotation_data.dart';
+import 'ffmpeg_binaries_service.dart';
 
 /// Service for FFmpeg operations (export annotated videos)
 class FFmpegService {
-  /// Check if ffmpeg is available on the system
+  final FFmpegBinariesService _binaries = FFmpegBinariesService();
+
+  /// Check if ffmpeg is available via app-managed binaries.
   Future<bool> isAvailable() async {
     try {
-      final result = await Process.run('ffmpeg', ['-version']);
-      return result.exitCode == 0;
+      return await findFFmpegPath() != null;
     } catch (e) {
       return false;
     }
   }
 
-  /// Find FFmpeg executable path
+  /// Find FFmpeg executable path from app-managed binaries.
   Future<String?> findFFmpegPath() async {
-    // Try system PATH first
-    if (await isAvailable()) {
-      return 'ffmpeg';
-    }
-
-    // Check common Windows installation paths
-    if (Platform.isWindows) {
-      final commonPaths = [
-        'C:\\ffmpeg\\bin\\ffmpeg.exe',
-        'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
-        Platform.environment['LOCALAPPDATA'] != null
-            ? '${Platform.environment['LOCALAPPDATA']}\\ffmpeg\\bin\\ffmpeg.exe'
-            : null,
-      ];
-
-      for (final path in commonPaths) {
-        if (path != null && await File(path).exists()) {
-          return path;
-        }
-      }
-    }
-
-    return null;
+    return _binaries.findFFmpegPath();
   }
 
   /// Export video with burned-in annotations
@@ -55,7 +35,9 @@ class FFmpegService {
     try {
       final ffmpegPath = await findFFmpegPath();
       if (ffmpegPath == null) {
-        throw Exception('FFmpeg not found. Please install FFmpeg.');
+        throw Exception(
+          'FFmpeg not found. Automatic provisioning failed. Check internet access and try again.',
+        );
       }
 
       // TODO: Full implementation would:
@@ -64,7 +46,9 @@ class FFmpegService {
       // 3. Run ffmpeg with progress monitoring
 
       // For now, just copy the video as placeholder
-      stderr.writeln('Export functionality requires advanced FFmpeg filter implementation');
+      stderr.writeln(
+        'Export functionality requires advanced FFmpeg filter implementation',
+      );
 
       return false;
     } catch (e) {

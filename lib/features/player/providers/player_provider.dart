@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../../../core/models/video_metadata.dart';
-import '../../../core/services/ffprobe_service.dart';
 import '../../loop/providers/loop_provider.dart';
 import '../../crop/providers/crop_provider.dart';
 
@@ -67,6 +66,7 @@ class PlayerState {
 /// Player provider with media_kit integration
 class PlayerNotifier extends StateNotifier<PlayerState> {
   final Ref _ref;
+  static const int _uiPositionUpdateIntervalMs = 33;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<bool>? _playingSubscription;
@@ -77,6 +77,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   bool _allowStreamDimensionUpdates = false;
   int? _streamVideoWidth;
   int? _streamVideoHeight;
+  int _lastPublishedPositionMs = -1;
 
   PlayerNotifier(this._ref) : super(const PlayerState());
 
@@ -132,7 +133,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
       // Listen to streams immediately with loop boundary checking
       _positionSubscription = player.stream.position.listen((position) {
-        state = state.copyWith(position: position);
+        final positionMs = position.inMilliseconds;
+        final shouldPublishPosition =
+            !state.isPlaying ||
+            _lastPublishedPositionMs < 0 ||
+            (positionMs - _lastPublishedPositionMs).abs() >=
+                _uiPositionUpdateIntervalMs ||
+            positionMs < _lastPublishedPositionMs;
+        if (shouldPublishPosition) {
+          state = state.copyWith(position: position);
+          _lastPublishedPositionMs = positionMs;
+        }
 
         // Check loop boundaries and seek if needed
         final loopNotifier = _ref.read(loopProvider.notifier);
@@ -153,22 +164,24 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       });
 
       _durationSubscription = player.stream.duration.listen((duration) {
+        if (state.duration == duration) return;
         state = state.copyWith(duration: duration);
       });
 
       _playingSubscription = player.stream.playing.listen((isPlaying) {
+        if (state.isPlaying == isPlaying) return;
         state = state.copyWith(isPlaying: isPlaying);
       });
 
       _volumeSubscription = player.stream.volume.listen((volume) {
         final muted = volume <= 0.001;
+        if (state.volume == volume && state.isMuted == muted) {
+          return;
+        }
         if (!muted) {
           _lastNonZeroVolume = volume;
         }
-        state = state.copyWith(
-          volume: volume,
-          isMuted: muted,
-        );
+        state = state.copyWith(volume: volume, isMuted: muted);
       });
 
       _widthSubscription = player.stream.width.listen((value) {
@@ -197,36 +210,32 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
       final snapshot = player.state;
       final rect = videoController.rect.value;
-      final probeMetadata = await FFprobeService().extractMetadata(filePath);
 
       final widthFromPlayer =
-          snapshot.width ??
-          snapshot.videoParams.w ??
-          rect?.width.round();
+          snapshot.width ?? snapshot.videoParams.w ?? rect?.width.round();
       final heightFromPlayer =
-          snapshot.height ??
-          snapshot.videoParams.h ??
-          rect?.height.round();
+          snapshot.height ?? snapshot.videoParams.h ?? rect?.height.round();
 
-      final videoDuration = probeMetadata?.duration ?? snapshot.duration;
-      final fps = (probeMetadata?.fps ?? 0) > 0 ? probeMetadata!.fps : 30.0;
-      final resolvedWidth = (probeMetadata?.width ?? 0) > 0
-          ? probeMetadata!.width
-          : (widthFromPlayer != null && widthFromPlayer > 0 ? widthFromPlayer : 1920);
-      final resolvedHeight = (probeMetadata?.height ?? 0) > 0
-          ? probeMetadata!.height
-          : (heightFromPlayer != null && heightFromPlayer > 0 ? heightFromPlayer : 1080);
-      final frameCount =
-          ((videoDuration.inMicroseconds / 1000000.0) * fps).round();
+      final videoDuration = snapshot.duration;
+      final fps = (snapshot.track.video.fps ?? 0) > 0
+          ? snapshot.track.video.fps!
+          : 30.0;
+      final resolvedWidth = (widthFromPlayer != null && widthFromPlayer > 0)
+          ? widthFromPlayer
+          : 1920;
+      final resolvedHeight = (heightFromPlayer != null && heightFromPlayer > 0)
+          ? heightFromPlayer
+          : 1080;
+      final frameCount = ((videoDuration.inMicroseconds / 1000000.0) * fps)
+          .round();
 
       // Allow one stream-driven width/height correction only when we had to
       // fall back to placeholder dimensions.
       _allowStreamDimensionUpdates =
-          probeMetadata == null &&
-          (widthFromPlayer == null ||
-              widthFromPlayer <= 0 ||
-              heightFromPlayer == null ||
-              heightFromPlayer <= 0);
+          widthFromPlayer == null ||
+          widthFromPlayer <= 0 ||
+          heightFromPlayer == null ||
+          heightFromPlayer <= 0;
 
       // Create metadata from FFprobe/player data
       final metadata = VideoMetadata(
@@ -235,10 +244,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         fps: fps,
         width: resolvedWidth,
         height: resolvedHeight,
-        codec: probeMetadata?.codec ?? 'unknown',
-        format: probeMetadata?.format ?? 'unknown',
+        codec: snapshot.track.video.codec ?? 'unknown',
+        format: 'unknown',
         frameCount: frameCount,
-        timeBase: probeMetadata?.timeBase,
+        timeBase: null,
       );
 
       state = state.copyWith(
@@ -383,10 +392,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final clamped = value.clamp(0.0, 100.0);
     await state.player?.setVolume(clamped);
     final muted = clamped <= 0.001;
-    state = state.copyWith(
-      volume: clamped,
-      isMuted: muted,
-    );
+    state = state.copyWith(volume: clamped, isMuted: muted);
     if (!muted) {
       _lastNonZeroVolume = clamped;
     }
@@ -420,6 +426,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _allowStreamDimensionUpdates = false;
     _streamVideoWidth = null;
     _streamVideoHeight = null;
+    _lastPublishedPositionMs = -1;
 
     await positionSubscription?.cancel();
     await durationSubscription?.cancel();
@@ -438,6 +445,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 }
 
 /// Player provider instance
-final playerProvider = StateNotifierProvider<PlayerNotifier, PlayerState>((ref) {
+final playerProvider = StateNotifierProvider<PlayerNotifier, PlayerState>((
+  ref,
+) {
   return PlayerNotifier(ref);
 });

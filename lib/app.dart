@@ -112,10 +112,14 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     final showAnnotationTimeline = ref.watch(
       annotationKeyframeTimelineVisibleProvider,
     );
-    final playerState = ref.watch(playerProvider);
-    final cropState = ref.watch(cropProvider);
-    final hasVideoLoaded = playerState.currentVideoPath != null;
-    final isExporting = cropState.exportStatus == ExportStatus.exporting;
+    final hasVideoLoaded = ref.watch(
+      playerProvider.select((state) => state.currentVideoPath != null),
+    );
+    final isExporting = ref.watch(
+      cropProvider.select(
+        (state) => state.exportStatus == ExportStatus.exporting,
+      ),
+    );
     _syncExportIconAnimation(isExporting);
 
     return MaterialApp(

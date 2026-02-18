@@ -15,24 +15,27 @@ class VideoViewport extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppPalette.of(context);
-    final playerState = ref.watch(playerProvider);
+    final error = ref.watch(playerProvider.select((state) => state.error));
+    final isLoading = ref.watch(
+      playerProvider.select((state) => state.isLoading),
+    );
+    final videoController = ref.watch(
+      playerProvider.select((state) => state.videoController),
+    );
 
-    if (playerState.error != null) {
-      return _buildError(playerState.error!, palette);
+    if (error != null) {
+      return _buildError(error, palette);
     }
 
-    if (playerState.isLoading) {
+    if (isLoading) {
       return _buildLoading(palette);
     }
 
-    if (playerState.videoController == null) {
+    if (videoController == null) {
       return _buildEmpty(palette);
     }
 
-    return _buildPlayer(
-      playerState.videoController!,
-      showOverlays: showOverlays,
-    );
+    return _buildPlayer(videoController, showOverlays: showOverlays);
   }
 
   Widget _buildPlayer(

@@ -147,7 +147,9 @@ class CropControlsPanel extends ConsumerWidget {
                       label: Text('Export Cropped Video'),
                       onPressed:
                           hasVideo &&
-                              cropState.exportStatus != ExportStatus.exporting
+                              cropState.exportStatus !=
+                                  ExportStatus.exporting &&
+                              cropState.exportStatus != ExportStatus.preparing
                           ? () => _showExportDialog(context, ref)
                           : null,
                       style: ElevatedButton.styleFrom(
@@ -159,15 +161,26 @@ class CropControlsPanel extends ConsumerWidget {
                 ],
               ),
 
-              // Export progress
+              // Export/provisioning progress
+              if (cropState.exportStatus == ExportStatus.preparing)
+                _ExportProgress(
+                  title: 'Preparing export...',
+                  progress: cropState.preparationProgress,
+                  detail:
+                      cropState.preparationMessage ??
+                      'Locating FFmpeg tools...',
+                ),
+
               if (cropState.exportStatus == ExportStatus.exporting)
                 _ExportProgress(
+                  title: 'Exporting...',
                   progress: cropState.exportProgress,
                   onCancel: cropNotifier.cancelExport,
                 ),
 
               if (cropState.exportStatus != ExportStatus.idle &&
-                  cropState.exportStatus != ExportStatus.exporting)
+                  cropState.exportStatus != ExportStatus.exporting &&
+                  cropState.exportStatus != ExportStatus.preparing)
                 _ExportStatusMessage(
                   status: cropState.exportStatus,
                   error: cropState.exportError,
@@ -500,14 +513,22 @@ class _InfoRow extends StatelessWidget {
 
 /// Export progress indicator
 class _ExportProgress extends StatelessWidget {
-  final double progress;
-  final VoidCallback onCancel;
+  final String title;
+  final double? progress;
+  final String? detail;
+  final VoidCallback? onCancel;
 
-  const _ExportProgress({required this.progress, required this.onCancel});
+  const _ExportProgress({
+    required this.title,
+    required this.progress,
+    this.detail,
+    this.onCancel,
+  });
 
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
+    final progressValue = progress?.clamp(0.0, 1.0).toDouble();
     return Container(
       margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(12),
@@ -521,7 +542,7 @@ class _ExportProgress extends StatelessWidget {
           Row(
             children: [
               Text(
-                'Exporting...',
+                title,
                 style: TextStyle(
                   color: palette.textPrimary,
                   fontSize: 14,
@@ -529,33 +550,43 @@ class _ExportProgress extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              Text(
-                '${(progress * 100).toStringAsFixed(1)}%',
-                style: TextStyle(
-                  color: palette.textSecondary,
-                  fontSize: 14,
-                  fontFamily: 'monospace',
+              if (progressValue != null)
+                Text(
+                  '${(progressValue * 100).toStringAsFixed(1)}%',
+                  style: TextStyle(
+                    color: palette.textSecondary,
+                    fontSize: 14,
+                    fontFamily: 'monospace',
+                  ),
                 ),
-              ),
             ],
           ),
+          if (detail != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              detail!,
+              style: TextStyle(color: palette.textMuted, fontSize: 11),
+            ),
+          ],
           const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value: progress,
+              value: progressValue,
               backgroundColor: palette.border,
               valueColor: AlwaysStoppedAnimation(palette.accent),
               minHeight: 8,
             ),
           ),
-          const SizedBox(height: 8),
-          TextButton.icon(
-            icon: Icon(Icons.cancel, size: 16),
-            label: Text('Cancel Export'),
-            onPressed: onCancel,
-            style: TextButton.styleFrom(foregroundColor: palette.error),
-          ),
+          if (onCancel != null) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              icon: Icon(Icons.cancel, size: 16),
+              label: Text('Cancel Export'),
+              onPressed: onCancel,
+              style: TextButton.styleFrom(foregroundColor: palette.error),
+            ),
+          ],
         ],
       ),
     );

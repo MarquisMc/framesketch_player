@@ -6,6 +6,7 @@ import '../../player/providers/player_provider.dart';
 import '../../annotations/models/stroke.dart';
 import '../../../core/services/annotation_overlay_renderer_service.dart';
 import '../../../core/services/annotation_storage_service.dart';
+import '../../../core/services/ffmpeg_binaries_service.dart';
 import '../../../core/models/annotation_data.dart';
 
 /// Available aspect ratio presets for cropping
@@ -182,6 +183,12 @@ class CropState {
   /// Export progress (0.0 to 1.0)
   final double exportProgress;
 
+  /// Optional preparation status while FFmpeg tools are being resolved.
+  final String? preparationMessage;
+
+  /// Optional preparation progress (0.0 to 1.0). Null means indeterminate.
+  final double? preparationProgress;
+
   /// Export error message (if any)
   final String? exportError;
 
@@ -201,6 +208,8 @@ class CropState {
     this.activeHandle,
     this.exportStatus = ExportStatus.idle,
     this.exportProgress = 0.0,
+    this.preparationMessage,
+    this.preparationProgress,
     this.exportError,
     this.exportedFilePath,
     this.exportStart,
@@ -215,6 +224,10 @@ class CropState {
     bool clearActiveHandle = false,
     ExportStatus? exportStatus,
     double? exportProgress,
+    String? preparationMessage,
+    bool clearPreparationMessage = false,
+    double? preparationProgress,
+    bool clearPreparationProgress = false,
     String? exportError,
     bool clearExportError = false,
     String? exportedFilePath,
@@ -233,6 +246,12 @@ class CropState {
           : (activeHandle ?? this.activeHandle),
       exportStatus: exportStatus ?? this.exportStatus,
       exportProgress: exportProgress ?? this.exportProgress,
+      preparationMessage: clearPreparationMessage
+          ? null
+          : (preparationMessage ?? this.preparationMessage),
+      preparationProgress: clearPreparationProgress
+          ? null
+          : (preparationProgress ?? this.preparationProgress),
       exportError: clearExportError ? null : (exportError ?? this.exportError),
       exportedFilePath: clearExportedFilePath
           ? null
@@ -269,6 +288,7 @@ class CropNotifier extends StateNotifier<CropState> {
   Timer? _progressTimer;
   final AnnotationOverlayRendererService _overlayRenderer =
       AnnotationOverlayRendererService();
+  final FFmpegBinariesService _ffmpegBinaries = FFmpegBinariesService();
 
   CropNotifier(this._ref) : super(const CropState());
 
@@ -552,13 +572,16 @@ class CropNotifier extends StateNotifier<CropState> {
     double newRight = rect.right;
     double newBottom = rect.bottom;
 
-    if (!anchorLeft)
+    if (!anchorLeft) {
       newLeft = (rect.left + deltaX).clamp(0.0, rect.right - 0.05);
-    if (!anchorRight)
+    }
+    if (!anchorRight) {
       newRight = (rect.right + deltaX).clamp(rect.left + 0.05, 1.0);
+    }
     if (!anchorTop) newTop = (rect.top + deltaY).clamp(0.0, rect.bottom - 0.05);
-    if (!anchorBottom)
+    if (!anchorBottom) {
       newBottom = (rect.bottom + deltaY).clamp(rect.top + 0.05, 1.0);
+    }
 
     if (targetRatio != null) {
       // Maintain aspect ratio - use the larger dimension change
@@ -645,66 +668,11 @@ class CropNotifier extends StateNotifier<CropState> {
     state = state.copyWith(clearExportStart: true, clearExportEnd: true);
   }
 
-  /// Find FFmpeg executable (bundled with media_kit or system)
-  Future<String?> _findFFmpegPath() async {
-    // Prefer system FFmpeg first (typically more complete codec support).
-    try {
-      final result = await Process.run('ffmpeg', ['-version']);
-      if (result.exitCode == 0) {
-        return 'ffmpeg';
-      }
-    } catch (_) {}
-
-    // Try to find FFmpeg in the app's bundled libraries
-    if (Platform.isWindows) {
-      // media_kit_libs bundles FFmpeg in build/windows/x64/runner/Release
-      final exePath = Platform.resolvedExecutable;
-      final exeDir = path.dirname(exePath);
-
-      // Check for FFmpeg in the same directory as the exe
-      final possiblePaths = [
-        path.join(exeDir, 'ffmpeg.exe'),
-        path.join(
-          exeDir,
-          'data',
-          'flutter_assets',
-          'packages',
-          'media_kit_libs_windows_video',
-          'ffmpeg.exe',
-        ),
-      ];
-
-      for (final ffmpegPath in possiblePaths) {
-        if (await File(ffmpegPath).exists()) {
-          return ffmpegPath;
-        }
-      }
-    } else if (Platform.isMacOS) {
-      final exePath = Platform.resolvedExecutable;
-      final exeDir = path.dirname(exePath);
-
-      final possiblePaths = [
-        path.join(exeDir, 'ffmpeg'),
-        '/usr/local/bin/ffmpeg',
-        '/opt/homebrew/bin/ffmpeg',
-      ];
-
-      for (final ffmpegPath in possiblePaths) {
-        if (await File(ffmpegPath).exists()) {
-          return ffmpegPath;
-        }
-      }
-    } else if (Platform.isLinux) {
-      final possiblePaths = ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg'];
-
-      for (final ffmpegPath in possiblePaths) {
-        if (await File(ffmpegPath).exists()) {
-          return ffmpegPath;
-        }
-      }
-    }
-
-    return null;
+  /// Find FFmpeg executable managed by the app.
+  Future<String?> _findFFmpegPath({
+    FFmpegProvisioningProgressCallback? onProgress,
+  }) async {
+    return _ffmpegBinaries.findFFmpegPath(onProgress: onProgress);
   }
 
   /// Export cropped video using FFmpeg (bundled with media_kit)
@@ -716,6 +684,8 @@ class CropNotifier extends StateNotifier<CropState> {
     if (playerState.currentVideoPath == null || playerState.metadata == null) {
       state = state.copyWith(
         exportStatus: ExportStatus.error,
+        clearPreparationMessage: true,
+        clearPreparationProgress: true,
         exportError: 'No video loaded',
       );
       return;
@@ -738,6 +708,8 @@ class CropNotifier extends StateNotifier<CropState> {
     if (targetDurationMs <= 0) {
       state = state.copyWith(
         exportStatus: ExportStatus.error,
+        clearPreparationMessage: true,
+        clearPreparationProgress: true,
         exportError: 'Invalid export range selected',
       );
       return;
@@ -759,6 +731,8 @@ class CropNotifier extends StateNotifier<CropState> {
     state = state.copyWith(
       exportStatus: ExportStatus.preparing,
       exportProgress: 0.0,
+      preparationMessage: 'Locating FFmpeg tools...',
+      clearPreparationProgress: true,
       clearExportError: true,
       clearExportedFilePath: true,
     );
@@ -768,12 +742,22 @@ class CropNotifier extends StateNotifier<CropState> {
 
     try {
       // Find FFmpeg executable
-      final ffmpegPath = await _findFFmpegPath();
+      final ffmpegPath = await _findFFmpegPath(
+        onProgress: (progress) {
+          if (state.exportStatus != ExportStatus.preparing) return;
+          state = state.copyWith(
+            preparationMessage: progress.message,
+            preparationProgress: progress.progress,
+          );
+        },
+      );
       if (ffmpegPath == null) {
         state = state.copyWith(
           exportStatus: ExportStatus.error,
+          clearPreparationMessage: true,
+          clearPreparationProgress: true,
           exportError:
-              'FFmpeg not found. Please ensure media_kit libraries are properly installed.',
+              'FFmpeg not found. Automatic provisioning failed. Check internet access and try again.',
         );
         return;
       }
@@ -897,7 +881,11 @@ class CropNotifier extends StateNotifier<CropState> {
               normalizedOutputPath,
             ];
 
-      state = state.copyWith(exportStatus: ExportStatus.exporting);
+      state = state.copyWith(
+        exportStatus: ExportStatus.exporting,
+        clearPreparationMessage: true,
+        clearPreparationProgress: true,
+      );
 
       // Start FFmpeg process
       _ffmpegProcess = await Process.start(ffmpegPath, args);
@@ -939,12 +927,16 @@ class CropNotifier extends StateNotifier<CropState> {
         state = state.copyWith(
           exportStatus: ExportStatus.cancelled,
           exportProgress: 0.0,
+          clearPreparationMessage: true,
+          clearPreparationProgress: true,
         );
       } else if (exitCode == 0) {
         final outputFile = File(normalizedOutputPath);
         if (!await outputFile.exists() || await outputFile.length() == 0) {
           state = state.copyWith(
             exportStatus: ExportStatus.error,
+            clearPreparationMessage: true,
+            clearPreparationProgress: true,
             exportError: 'Export completed but output file is invalid.',
           );
           return;
@@ -969,6 +961,8 @@ class CropNotifier extends StateNotifier<CropState> {
           } catch (_) {}
           state = state.copyWith(
             exportStatus: ExportStatus.error,
+            clearPreparationMessage: true,
+            clearPreparationProgress: true,
             exportError: 'Exported file failed validation:\n$validationMessage',
           );
           return;
@@ -977,6 +971,8 @@ class CropNotifier extends StateNotifier<CropState> {
         state = state.copyWith(
           exportStatus: ExportStatus.success,
           exportProgress: 1.0,
+          clearPreparationMessage: true,
+          clearPreparationProgress: true,
           exportedFilePath: normalizedOutputPath,
         );
       } else {
@@ -993,12 +989,16 @@ class CropNotifier extends StateNotifier<CropState> {
             : tail.skip(tail.length > 12 ? tail.length - 12 : 0).join('\n');
         state = state.copyWith(
           exportStatus: ExportStatus.error,
+          clearPreparationMessage: true,
+          clearPreparationProgress: true,
           exportError: 'Export failed (exit code: $exitCode)\n$tailMessage',
         );
       }
     } catch (e) {
       state = state.copyWith(
         exportStatus: ExportStatus.error,
+        clearPreparationMessage: true,
+        clearPreparationProgress: true,
         exportError: 'Failed to export video: $e',
       );
     } finally {
@@ -1190,6 +1190,8 @@ class CropNotifier extends StateNotifier<CropState> {
     state = state.copyWith(
       exportStatus: ExportStatus.idle,
       exportProgress: 0.0,
+      clearPreparationMessage: true,
+      clearPreparationProgress: true,
       clearExportError: true,
       clearExportedFilePath: true,
     );

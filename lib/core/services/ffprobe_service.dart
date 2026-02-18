@@ -1,44 +1,24 @@
 import 'dart:convert';
 import 'dart:io';
 import '../models/video_metadata.dart';
+import 'ffmpeg_binaries_service.dart';
 
 /// Service for extracting video metadata using FFprobe
 class FFprobeService {
-  /// Check if ffprobe is available on the system
+  final FFmpegBinariesService _binaries = FFmpegBinariesService();
+
+  /// Check if ffprobe is available via app-managed binaries.
   Future<bool> isAvailable() async {
     try {
-      final result = await Process.run('ffprobe', ['-version']);
-      return result.exitCode == 0;
+      return await findFFprobePath() != null;
     } catch (e) {
       return false;
     }
   }
 
-  /// Get the path to ffprobe executable (check common locations on Windows)
+  /// Get the ffprobe executable path from app-managed binaries.
   Future<String?> findFFprobePath() async {
-    // Try system PATH first
-    if (await isAvailable()) {
-      return 'ffprobe';
-    }
-
-    // Check common Windows installation paths
-    if (Platform.isWindows) {
-      final commonPaths = [
-        'C:\\ffmpeg\\bin\\ffprobe.exe',
-        'C:\\Program Files\\ffmpeg\\bin\\ffprobe.exe',
-        Platform.environment['LOCALAPPDATA'] != null
-            ? '${Platform.environment['LOCALAPPDATA']}\\ffmpeg\\bin\\ffprobe.exe'
-            : null,
-      ];
-
-      for (final path in commonPaths) {
-        if (path != null && await File(path).exists()) {
-          return path;
-        }
-      }
-    }
-
-    return null;
+    return _binaries.findFFprobePath();
   }
 
   /// Extract video metadata from file
@@ -46,24 +26,23 @@ class FFprobeService {
     try {
       final ffprobePath = await findFFprobePath();
       if (ffprobePath == null) {
-        throw Exception('FFprobe not found. Please install FFmpeg.');
+        throw Exception(
+          'FFprobe not found. Automatic provisioning failed. Check internet access and try again.',
+        );
       }
 
       // Run ffprobe with JSON output
-      final result = await Process.run(
-        ffprobePath,
-        [
-          '-v',
-          'quiet',
-          '-print_format',
-          'json',
-          '-show_format',
-          '-show_streams',
-          '-select_streams',
-          'v:0', // First video stream
-          filePath,
-        ],
-      );
+      final result = await Process.run(ffprobePath, [
+        '-v',
+        'quiet',
+        '-print_format',
+        'json',
+        '-show_format',
+        '-show_streams',
+        '-select_streams',
+        'v:0', // First video stream
+        filePath,
+      ]);
 
       if (result.exitCode != 0) {
         throw Exception('FFprobe failed: ${result.stderr}');
@@ -98,10 +77,8 @@ class FFprobeService {
       }
 
       // Extract duration
-      final durationSeconds = double.tryParse(
-            format?['duration']?.toString() ?? '0',
-          ) ??
-          0.0;
+      final durationSeconds =
+          double.tryParse(format?['duration']?.toString() ?? '0') ?? 0.0;
       final duration = Duration(milliseconds: (durationSeconds * 1000).round());
 
       // Calculate frame count
@@ -145,21 +122,18 @@ class FFprobeService {
         throw Exception('FFmpeg not found');
       }
 
-      final result = await Process.run(
-        ffmpegPath,
-        [
-          '-ss',
-          timestamp.inSeconds.toString(),
-          '-i',
-          videoPath,
-          '-frames:v',
-          '1',
-          '-q:v',
-          '2',
-          outputPath,
-          '-y', // Overwrite
-        ],
-      );
+      final result = await Process.run(ffmpegPath, [
+        '-ss',
+        timestamp.inSeconds.toString(),
+        '-i',
+        videoPath,
+        '-frames:v',
+        '1',
+        '-q:v',
+        '2',
+        outputPath,
+        '-y', // Overwrite
+      ]);
 
       if (result.exitCode == 0) {
         return File(outputPath);
@@ -172,29 +146,6 @@ class FFprobeService {
   }
 
   Future<String?> _findFFmpegPath() async {
-    try {
-      final result = await Process.run('ffmpeg', ['-version']);
-      if (result.exitCode == 0) return 'ffmpeg';
-    } catch (e) {
-      // Continue to check other paths
-    }
-
-    if (Platform.isWindows) {
-      final commonPaths = [
-        'C:\\ffmpeg\\bin\\ffmpeg.exe',
-        'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
-        Platform.environment['LOCALAPPDATA'] != null
-            ? '${Platform.environment['LOCALAPPDATA']}\\ffmpeg\\bin\\ffmpeg.exe'
-            : null,
-      ];
-
-      for (final path in commonPaths) {
-        if (path != null && await File(path).exists()) {
-          return path;
-        }
-      }
-    }
-
-    return null;
+    return _binaries.findFFmpegPath();
   }
 }
