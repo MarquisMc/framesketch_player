@@ -42,7 +42,6 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   late KeyboardShortcuts _shortcuts;
   Timer? _keyRepeatTimer;
   LogicalKeyboardKey? _lastPressedKey;
-  bool _isFullscreen = false;
 
   @override
   void initState() {
@@ -124,86 +123,81 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         onKeyEvent: (node, event) => _handleKeyEvent(event),
         child: Builder(
           builder: (context) => Scaffold(
-            appBar: _isFullscreen
-                ? null
-                : AppBar(
-                    title: const Text('FrameSketch Player'),
-                    actions: [
-                      IconButton(
-                        icon: const Icon(Icons.folder_open),
-                        onPressed: _openFile,
-                        tooltip: 'Open Video (Ctrl+O)',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.save),
-                        onPressed: _saveAnnotations,
-                        tooltip: 'Save Annotations (Ctrl+S)',
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        onPressed: hasVideoLoaded && !isExporting
-                            ? _exportVideoFromTopBar
-                            : null,
-                        icon: Icon(
-                          isExporting
-                              ? Icons.hourglass_bottom
-                              : Icons.file_download,
-                          size: 18,
-                        ),
-                        label: Text(isExporting ? 'Exporting...' : 'Export'),
-                      ),
-                      const SizedBox(width: 8),
-                      // Crop mode toggle button
-                      const CropModeToggleButton(),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(Icons.settings),
-                        onPressed: () => _openSettings(context),
-                        tooltip: 'Keyboard Shortcuts',
-                      ),
-                      // File associations menu (Windows only)
-                      if (Platform.isWindows)
-                        PopupMenuButton<String>(
-                          icon: const Icon(Icons.more_vert),
-                          tooltip: 'More Options',
-                          onSelected: (value) =>
-                              _handleMenuAction(value, context),
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'register',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.check_circle_outline),
-                                  SizedBox(width: 8),
-                                  Text('Set as Default Video Player'),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem(
-                              value: 'unregister',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.cancel_outlined),
-                                  SizedBox(width: 8),
-                                  Text('Remove File Associations'),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem(
-                              value: 'check',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.info_outline),
-                                  SizedBox(width: 8),
-                                  Text('Check Registration Status'),
-                                ],
-                              ),
-                            ),
+            appBar: AppBar(
+              title: const Text('FrameSketch Player'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.folder_open),
+                  onPressed: _openFile,
+                  tooltip: 'Open Video (Ctrl+O)',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.save),
+                  onPressed: _saveAnnotations,
+                  tooltip: 'Save Annotations (Ctrl+S)',
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: hasVideoLoaded && !isExporting
+                      ? _exportVideoFromTopBar
+                      : null,
+                  icon: Icon(
+                    isExporting ? Icons.hourglass_bottom : Icons.file_download,
+                    size: 18,
+                  ),
+                  label: Text(isExporting ? 'Exporting...' : 'Export'),
+                ),
+                const SizedBox(width: 8),
+                // Crop mode toggle button
+                const CropModeToggleButton(),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.settings),
+                  onPressed: () => _openSettings(context),
+                  tooltip: 'Keyboard Shortcuts',
+                ),
+                // File associations menu (Windows only)
+                if (Platform.isWindows)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    tooltip: 'More Options',
+                    onSelected: (value) => _handleMenuAction(value, context),
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'register',
+                        child: Row(
+                          children: [
+                            Icon(Icons.check_circle_outline),
+                            SizedBox(width: 8),
+                            Text('Set as Default Video Player'),
                           ],
                         ),
-                      const SizedBox(width: 8),
+                      ),
+                      const PopupMenuItem(
+                        value: 'unregister',
+                        child: Row(
+                          children: [
+                            Icon(Icons.cancel_outlined),
+                            SizedBox(width: 8),
+                            Text('Remove File Associations'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'check',
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline),
+                            SizedBox(width: 8),
+                            Text('Check Registration Status'),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
+                const SizedBox(width: 8),
+              ],
+            ),
             body: Column(
               children: [
                 // Main content area
@@ -211,31 +205,25 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                   child: Row(
                     children: [
                       // Video and annotation area
-                      Expanded(
-                        child: VideoViewport(showOverlays: !_isFullscreen),
-                      ),
+                      const Expanded(child: VideoViewport()),
 
                       // Drawing tools panel
-                      if (!_isFullscreen) const DrawingToolsPanel(),
+                      const DrawingToolsPanel(),
                     ],
                   ),
                 ),
 
                 // Crop controls panel (shows when crop mode is active)
-                if (!_isFullscreen) const CropControlsPanel(),
+                const CropControlsPanel(),
 
                 // Timeline scrubber
-                TimelineScrubber(showAnnotationTimelineToggle: !_isFullscreen),
+                const TimelineScrubber(),
 
                 // Annotation keyframe timeline (separate from playback timeline)
-                if (!_isFullscreen && showAnnotationTimeline)
-                  const AnnotationKeyframeTimeline(),
+                if (showAnnotationTimeline) const AnnotationKeyframeTimeline(),
 
                 // Playback controls
-                PlaybackControls(
-                  isFullscreen: _isFullscreen,
-                  onToggleFullscreen: _toggleFullscreenMode,
-                ),
+                const PlaybackControls(),
               ],
             ),
           ),
@@ -292,11 +280,6 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
     // Only handle key down events for actions
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
-
-    if (matchesShortcut(_shortcuts.toggleFullscreen)) {
-      _toggleFullscreenMode();
-      return KeyEventResult.handled;
-    }
 
     // General shortcuts
     if (_shortcuts.generalShortcutsEnabled) {
@@ -472,11 +455,6 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
     // Escape key - exit crop mode
     if (event.logicalKey == LogicalKeyboardKey.escape) {
-      if (_isFullscreen) {
-        _setFullscreenMode(false);
-        return KeyEventResult.handled;
-      }
-
       final cropState = ref.read(cropProvider);
       if (cropState.isCropModeActive) {
         cropNotifier.exitCropMode();
@@ -485,20 +463,6 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     }
 
     return KeyEventResult.ignored;
-  }
-
-  void _toggleFullscreenMode() {
-    _setFullscreenMode(!_isFullscreen);
-  }
-
-  void _setFullscreenMode(bool enabled) {
-    if (_isFullscreen == enabled) {
-      return;
-    }
-    setState(() {
-      _isFullscreen = enabled;
-    });
-    _focusNode.requestFocus();
   }
 
   Future<void> _loadInitialVideo(String filePath) async {

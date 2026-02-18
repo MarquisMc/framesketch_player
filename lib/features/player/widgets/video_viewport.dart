@@ -7,9 +7,7 @@ import '../../crop/widgets/crop_overlay.dart';
 
 /// Video viewport with annotation overlay
 class VideoViewport extends ConsumerWidget {
-  final bool showOverlays;
-
-  const VideoViewport({super.key, this.showOverlays = true});
+  const VideoViewport({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -27,16 +25,10 @@ class VideoViewport extends ConsumerWidget {
       return _buildEmpty();
     }
 
-    return _buildPlayer(
-      playerState.videoController!,
-      showOverlays: showOverlays,
-    );
+    return _buildPlayer(playerState.videoController!);
   }
 
-  Widget _buildPlayer(
-    VideoController controller, {
-    required bool showOverlays,
-  }) {
+  Widget _buildPlayer(VideoController controller) {
     return Container(
       color: Colors.black,
       child: LayoutBuilder(
@@ -52,18 +44,13 @@ class VideoViewport extends ConsumerWidget {
                 ),
               ),
 
-              if (showOverlays) ...[
-                // Annotation overlay layer
-                const AnnotationOverlay(),
+              // Annotation overlay layer
+              const AnnotationOverlay(),
 
-                // Crop overlay layer (on top of annotations)
-                CropOverlay(
-                  viewportSize: Size(
-                    constraints.maxWidth,
-                    constraints.maxHeight,
-                  ),
-                ),
-              ],
+              // Crop overlay layer (on top of annotations)
+              CropOverlay(
+                viewportSize: Size(constraints.maxWidth, constraints.maxHeight),
+              ),
             ],
           );
         },

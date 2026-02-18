@@ -73,14 +73,7 @@ class _HoldableButtonState extends State<_HoldableButton> {
 
 /// Playback controls widget
 class PlaybackControls extends ConsumerWidget {
-  final bool isFullscreen;
-  final VoidCallback? onToggleFullscreen;
-
-  const PlaybackControls({
-    super.key,
-    this.isFullscreen = false,
-    this.onToggleFullscreen,
-  });
+  const PlaybackControls({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -97,101 +90,120 @@ class PlaybackControls extends ConsumerWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Play/Pause button
-            IconButton(
-              icon: Icon(
-                playerState.isPlaying ? Icons.pause : Icons.play_arrow,
-                color: hasVideo ? Colors.white : Colors.white38,
-              ),
-              iconSize: 32,
-              onPressed: hasVideo
-                  ? () => playerNotifier.togglePlayPause()
-                  : null,
-              tooltip: playerState.isPlaying ? 'Pause (Space)' : 'Play (Space)',
+          // Play/Pause button
+          IconButton(
+            icon: Icon(
+              playerState.isPlaying ? Icons.pause : Icons.play_arrow,
+              color: hasVideo ? Colors.white : Colors.white38,
             ),
+            iconSize: 32,
+            onPressed: hasVideo ? () => playerNotifier.togglePlayPause() : null,
+            tooltip: playerState.isPlaying ? 'Pause (Space)' : 'Play (Space)',
+          ),
 
-            const SizedBox(width: 8),
+          const SizedBox(width: 8),
 
-            // Stop button
-            IconButton(
-              icon: Icon(
-                Icons.stop,
-                color: hasVideo ? Colors.white : Colors.white38,
-              ),
-              onPressed: hasVideo ? () => playerNotifier.stop() : null,
-              tooltip: 'Stop',
+          // Stop button
+          IconButton(
+            icon: Icon(
+              Icons.stop,
+              color: hasVideo ? Colors.white : Colors.white38,
             ),
+            onPressed: hasVideo ? () => playerNotifier.stop() : null,
+            tooltip: 'Stop',
+          ),
 
-            const SizedBox(width: 8),
+          const SizedBox(width: 8),
 
-            // Mute toggle button
-            IconButton(
-              icon: Icon(
-                playerState.isMuted || playerState.volume <= 0.001
-                    ? Icons.volume_off
-                    : Icons.volume_up,
-                color: hasVideo ? Colors.white : Colors.white38,
-              ),
-              onPressed: hasVideo ? () => playerNotifier.toggleMute() : null,
-              tooltip: playerState.isMuted ? 'Unmute' : 'Mute',
+          // Mute toggle button
+          IconButton(
+            icon: Icon(
+              playerState.isMuted || playerState.volume <= 0.001
+                  ? Icons.volume_off
+                  : Icons.volume_up,
+              color: hasVideo ? Colors.white : Colors.white38,
             ),
+            onPressed: hasVideo ? () => playerNotifier.toggleMute() : null,
+            tooltip: playerState.isMuted ? 'Unmute' : 'Mute',
+          ),
 
-            const SizedBox(width: 16),
+          const SizedBox(width: 16),
 
-            // Frame step backward
-            _HoldableButton(
-              icon: Icon(
-                Icons.skip_previous,
-                color: hasVideo ? Colors.white : Colors.white38,
-              ),
-              onPressed: hasVideo ? () => playerNotifier.stepBackward() : null,
-              tooltip: 'Previous Frame (,) - Hold to repeat',
+          // Frame step backward
+          _HoldableButton(
+            icon: Icon(
+              Icons.skip_previous,
+              color: hasVideo ? Colors.white : Colors.white38,
             ),
+            onPressed: hasVideo ? () => playerNotifier.stepBackward() : null,
+            tooltip: 'Previous Frame (,) - Hold to repeat',
+          ),
 
-            // Frame step forward
-            _HoldableButton(
-              icon: Icon(
-                Icons.skip_next,
-                color: hasVideo ? Colors.white : Colors.white38,
-              ),
-              onPressed: hasVideo ? () => playerNotifier.stepForward() : null,
-              tooltip: 'Next Frame (.) - Hold to repeat',
+          // Frame step forward
+          _HoldableButton(
+            icon: Icon(
+              Icons.skip_next,
+              color: hasVideo ? Colors.white : Colors.white38,
             ),
+            onPressed: hasVideo ? () => playerNotifier.stepForward() : null,
+            tooltip: 'Next Frame (.) - Hold to repeat',
+          ),
 
-            const SizedBox(width: 16),
+          const SizedBox(width: 16),
 
-            // Jump backward 1 second
-            _HoldableButton(
-              icon: Icon(
-                Icons.fast_rewind,
-                color: hasVideo ? Colors.white : Colors.white38,
-              ),
-              onPressed: hasVideo
-                  ? () =>
-                        playerNotifier.jumpBackward(const Duration(seconds: 1))
-                  : null,
-              tooltip: 'Jump back 1s (Shift+←) - Hold to repeat',
-              initialDelay: const Duration(milliseconds: 300),
-              repeatInterval: const Duration(milliseconds: 100),
+          // Jump backward 1 second
+          _HoldableButton(
+            icon: Icon(
+              Icons.fast_rewind,
+              color: hasVideo ? Colors.white : Colors.white38,
             ),
+            onPressed: hasVideo
+                ? () => playerNotifier.jumpBackward(const Duration(seconds: 1))
+                : null,
+            tooltip: 'Jump back 1s (Shift+←) - Hold to repeat',
+            initialDelay: const Duration(milliseconds: 300),
+            repeatInterval: const Duration(milliseconds: 100),
+          ),
 
-            // Jump forward 1 second
-            _HoldableButton(
-              icon: Icon(
-                Icons.fast_forward,
-                color: hasVideo ? Colors.white : Colors.white38,
-              ),
-              onPressed: hasVideo
-                  ? () => playerNotifier.jumpForward(const Duration(seconds: 1))
-                  : null,
-              tooltip: 'Jump forward 1s (Shift+→) - Hold to repeat',
-              initialDelay: const Duration(milliseconds: 300),
-              repeatInterval: const Duration(milliseconds: 100),
+          // Jump forward 1 second
+          _HoldableButton(
+            icon: Icon(
+              Icons.fast_forward,
+              color: hasVideo ? Colors.white : Colors.white38,
             ),
+            onPressed: hasVideo
+                ? () => playerNotifier.jumpForward(const Duration(seconds: 1))
+                : null,
+            tooltip: 'Jump forward 1s (Shift+→) - Hold to repeat',
+            initialDelay: const Duration(milliseconds: 300),
+            repeatInterval: const Duration(milliseconds: 100),
+          ),
 
-            const SizedBox(width: 24),
+          const SizedBox(width: 24),
 
-            // Timecode display
+          // Timecode display
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black45,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              hasVideo
+                  ? '${TimecodeFormatter.format(playerState.position)} / ${TimecodeFormatter.format(playerState.duration)}'
+                  : '00:00:00.000 / 00:00:00.000',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 16),
+
+          // Frame counter
+          if (hasVideo && playerState.metadata != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
@@ -199,77 +211,36 @@ class PlaybackControls extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
-                hasVideo
-                    ? '${TimecodeFormatter.format(playerState.position)} / ${TimecodeFormatter.format(playerState.duration)}'
-                    : '00:00:00.000 / 00:00:00.000',
+                'Frame ${playerNotifier.currentFrame} / ${playerState.metadata!.frameCount}',
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
+                  color: Colors.white70,
+                  fontSize: 12,
                   fontFamily: 'monospace',
                 ),
               ),
             ),
 
-            const SizedBox(width: 16),
+          // Loop controls
+          const LoopControls(),
 
-            // Frame counter
-            if (hasVideo && playerState.metadata != null)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black45,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  'Frame ${playerNotifier.currentFrame} / ${playerState.metadata!.frameCount}',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontFamily: 'monospace',
-                  ),
+          const SizedBox(width: 24),
+
+          // FPS display
+          if (hasVideo && playerState.metadata != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black45,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '${playerState.metadata!.fps.toStringAsFixed(2)} FPS',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontFamily: 'monospace',
                 ),
               ),
-
-            // Loop controls
-            const LoopControls(),
-
-            const SizedBox(width: 24),
-
-            // FPS display
-            if (hasVideo && playerState.metadata != null)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black45,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '${playerState.metadata!.fps.toStringAsFixed(2)} FPS',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ),
-
-            const SizedBox(width: 12),
-
-            IconButton(
-              icon: Icon(
-                isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
-                color: Colors.white70,
-              ),
-              onPressed: onToggleFullscreen,
-              tooltip: isFullscreen
-                  ? 'Exit Fullscreen (Esc)'
-                  : 'Enter Fullscreen (F11)',
             ),
           ],
         ),
