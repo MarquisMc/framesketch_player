@@ -7,7 +7,9 @@ import '../../annotations/providers/annotation_keyframe_timeline_provider.dart';
 
 /// Timeline scrubber widget with loop markers and section highlighting
 class TimelineScrubber extends ConsumerStatefulWidget {
-  const TimelineScrubber({super.key});
+  final bool showAnnotationTimelineToggle;
+
+  const TimelineScrubber({super.key, this.showAnnotationTimelineToggle = true});
 
   @override
   ConsumerState<TimelineScrubber> createState() => _TimelineScrubberState();
@@ -21,11 +23,14 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
     final loopState = ref.watch(loopProvider);
     final timelineNotifier = ref.read(timelineProvider.notifier);
     final loopNotifier = ref.read(loopProvider.notifier);
-    final showAnnotationTimeline = ref.watch(annotationKeyframeTimelineVisibleProvider);
+    final showAnnotationTimeline = ref.watch(
+      annotationKeyframeTimelineVisibleProvider,
+    );
 
     final hasVideo = playerState.player != null;
     final duration = playerState.duration;
-    final position = timelineState.isScrubbing && timelineState.scrubbingPosition != null
+    final position =
+        timelineState.isScrubbing && timelineState.scrubbingPosition != null
         ? timelineState.scrubbingPosition!
         : playerState.position;
 
@@ -74,7 +79,8 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
                                   child: _LoopRegionPainter(
                                     startNorm: loopStartNorm,
                                     endNorm: loopEndNorm,
-                                    isActive: loopState.mode == LoopMode.section,
+                                    isActive:
+                                        loopState.mode == LoopMode.section,
                                   ),
                                 ),
 
@@ -91,7 +97,9 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
                                   activeTrackColor: Colors.red[400],
                                   inactiveTrackColor: Colors.grey[700],
                                   thumbColor: Colors.red[300],
-                                  overlayColor: Colors.red.withValues(alpha: 0.3),
+                                  overlayColor: Colors.red.withValues(
+                                    alpha: 0.3,
+                                  ),
                                 ),
                                 child: Slider(
                                   value: sliderValue,
@@ -106,9 +114,14 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
                                       ? (value) {
                                           final newPosition = Duration(
                                             microseconds:
-                                                (value * duration.inMicroseconds).round(),
+                                                (value *
+                                                        duration.inMicroseconds)
+                                                    .round(),
                                           );
-                                          timelineNotifier.updateScrubbingPosition(newPosition);
+                                          timelineNotifier
+                                              .updateScrubbingPosition(
+                                                newPosition,
+                                              );
                                         }
                                       : null,
                                   onChangeEnd: hasVideo
@@ -128,12 +141,15 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
                                   color: Colors.green,
                                   onDrag: hasVideo
                                       ? (delta) {
-                                          final newNorm = (loopStartNorm! +
-                                                  delta / trackWidth)
-                                              .clamp(0.0, 1.0);
+                                          final newNorm =
+                                              (loopStartNorm! +
+                                                      delta / trackWidth)
+                                                  .clamp(0.0, 1.0);
                                           final newPos = Duration(
                                             milliseconds:
-                                                (newNorm * duration.inMilliseconds).round(),
+                                                (newNorm *
+                                                        duration.inMilliseconds)
+                                                    .round(),
                                           );
                                           loopNotifier.setAPointAt(newPos);
                                         }
@@ -149,12 +165,15 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
                                   color: Colors.orange,
                                   onDrag: hasVideo
                                       ? (delta) {
-                                          final newNorm = (loopEndNorm! +
-                                                  delta / trackWidth)
-                                              .clamp(0.0, 1.0);
+                                          final newNorm =
+                                              (loopEndNorm! +
+                                                      delta / trackWidth)
+                                                  .clamp(0.0, 1.0);
                                           final newPos = Duration(
                                             milliseconds:
-                                                (newNorm * duration.inMilliseconds).round(),
+                                                (newNorm *
+                                                        duration.inMilliseconds)
+                                                    .round(),
                                           );
                                           loopNotifier.setBPointAt(newPos);
                                         }
@@ -166,27 +185,33 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
                       },
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    tooltip: showAnnotationTimeline
-                        ? 'Hide Annotation Keyframe Timeline'
-                        : 'Show Annotation Keyframe Timeline',
-                    icon: Icon(
-                      showAnnotationTimeline
-                          ? Icons.timeline
-                          : Icons.timeline_outlined,
-                      color: showAnnotationTimeline
-                          ? Colors.lightBlueAccent
-                          : Colors.white70,
+                  if (widget.showAnnotationTimelineToggle) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: showAnnotationTimeline
+                          ? 'Hide Annotation Keyframe Timeline'
+                          : 'Show Annotation Keyframe Timeline',
+                      icon: Icon(
+                        showAnnotationTimeline
+                            ? Icons.timeline
+                            : Icons.timeline_outlined,
+                        color: showAnnotationTimeline
+                            ? Colors.lightBlueAccent
+                            : Colors.white70,
+                      ),
+                      onPressed: hasVideo
+                          ? () {
+                              ref
+                                      .read(
+                                        annotationKeyframeTimelineVisibleProvider
+                                            .notifier,
+                                      )
+                                      .state =
+                                  !showAnnotationTimeline;
+                            }
+                          : null,
                     ),
-                    onPressed: hasVideo
-                        ? () {
-                            ref
-                                .read(annotationKeyframeTimelineVisibleProvider.notifier)
-                                .state = !showAnnotationTimeline;
-                          }
-                        : null,
-                  ),
+                  ],
                 ],
               ),
             ],
@@ -347,11 +372,7 @@ class _LoopMarkerState extends State<_LoopMarker> {
                   ),
                 ),
                 // Vertical line
-                Container(
-                  width: 2,
-                  height: 12,
-                  color: widget.color,
-                ),
+                Container(width: 2, height: 12, color: widget.color),
                 // Label
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 1),
@@ -383,10 +404,7 @@ class _MarkerTrianglePainter extends CustomPainter {
   final Color color;
   final bool pointDown;
 
-  _MarkerTrianglePainter({
-    required this.color,
-    required this.pointDown,
-  });
+  _MarkerTrianglePainter({required this.color, required this.pointDown});
 
   @override
   void paint(Canvas canvas, Size size) {

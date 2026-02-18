@@ -39,10 +39,7 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
             children: [
               const Text(
                 'General Shortcuts',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               SwitchListTile(
@@ -50,7 +47,9 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 value: _shortcuts.generalShortcutsEnabled,
                 onChanged: (value) {
                   setState(() {
-                    _shortcuts = _shortcuts.copyWith(generalShortcutsEnabled: value);
+                    _shortcuts = _shortcuts.copyWith(
+                      generalShortcutsEnabled: value,
+                    );
                   });
                 },
               ),
@@ -70,8 +69,7 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 shortcut: _shortcuts.previousFrame,
                 onChanged: (shortcut) {
                   setState(() {
-                    _shortcuts =
-                        _shortcuts.copyWith(previousFrame: shortcut);
+                    _shortcuts = _shortcuts.copyWith(previousFrame: shortcut);
                   });
                 },
               ),
@@ -91,8 +89,7 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 shortcut: _shortcuts.jumpForward,
                 onChanged: (shortcut) {
                   setState(() {
-                    _shortcuts =
-                        _shortcuts.copyWith(jumpForward: shortcut);
+                    _shortcuts = _shortcuts.copyWith(jumpForward: shortcut);
                   });
                 },
               ),
@@ -102,8 +99,19 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 shortcut: _shortcuts.jumpBackward,
                 onChanged: (shortcut) {
                   setState(() {
-                    _shortcuts =
-                        _shortcuts.copyWith(jumpBackward: shortcut);
+                    _shortcuts = _shortcuts.copyWith(jumpBackward: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Toggle Fullscreen',
+                shortcut: _shortcuts.toggleFullscreen,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(
+                      toggleFullscreen: shortcut,
+                    );
                   });
                 },
               ),
@@ -123,8 +131,7 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 shortcut: _shortcuts.saveAnnotations,
                 onChanged: (shortcut) {
                   setState(() {
-                    _shortcuts =
-                        _shortcuts.copyWith(saveAnnotations: shortcut);
+                    _shortcuts = _shortcuts.copyWith(saveAnnotations: shortcut);
                   });
                 },
               ),
@@ -153,10 +160,7 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
               const SizedBox(height: 8),
               const Text(
                 'Annotation Tools',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               SwitchListTile(
@@ -164,7 +168,9 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 value: _shortcuts.annotationToolsShortcutsEnabled,
                 onChanged: (value) {
                   setState(() {
-                    _shortcuts = _shortcuts.copyWith(annotationToolsShortcutsEnabled: value);
+                    _shortcuts = _shortcuts.copyWith(
+                      annotationToolsShortcutsEnabled: value,
+                    );
                   });
                 },
               ),
@@ -174,7 +180,9 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 shortcut: _shortcuts.selectSelectionTool,
                 onChanged: (shortcut) {
                   setState(() {
-                    _shortcuts = _shortcuts.copyWith(selectSelectionTool: shortcut);
+                    _shortcuts = _shortcuts.copyWith(
+                      selectSelectionTool: shortcut,
+                    );
                   });
                 },
               ),
@@ -194,7 +202,9 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 shortcut: _shortcuts.selectEraserTool,
                 onChanged: (shortcut) {
                   setState(() {
-                    _shortcuts = _shortcuts.copyWith(selectEraserTool: shortcut);
+                    _shortcuts = _shortcuts.copyWith(
+                      selectEraserTool: shortcut,
+                    );
                   });
                 },
               ),
@@ -204,7 +214,9 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 shortcut: _shortcuts.selectRectangleTool,
                 onChanged: (shortcut) {
                   setState(() {
-                    _shortcuts = _shortcuts.copyWith(selectRectangleTool: shortcut);
+                    _shortcuts = _shortcuts.copyWith(
+                      selectRectangleTool: shortcut,
+                    );
                   });
                 },
               ),
@@ -214,7 +226,9 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 shortcut: _shortcuts.selectCircleTool,
                 onChanged: (shortcut) {
                   setState(() {
-                    _shortcuts = _shortcuts.copyWith(selectCircleTool: shortcut);
+                    _shortcuts = _shortcuts.copyWith(
+                      selectCircleTool: shortcut,
+                    );
                   });
                 },
               ),
@@ -253,10 +267,7 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
               const SizedBox(height: 8),
               const Text(
                 'Loop Controls',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               SwitchListTile(
@@ -264,7 +275,9 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 value: _shortcuts.loopControlsShortcutsEnabled,
                 onChanged: (value) {
                   setState(() {
-                    _shortcuts = _shortcuts.copyWith(loopControlsShortcutsEnabled: value);
+                    _shortcuts = _shortcuts.copyWith(
+                      loopControlsShortcutsEnabled: value,
+                    );
                   });
                 },
               ),
@@ -304,7 +317,9 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 shortcut: _shortcuts.toggleSectionLoop,
                 onChanged: (shortcut) {
                   setState(() {
-                    _shortcuts = _shortcuts.copyWith(toggleSectionLoop: shortcut);
+                    _shortcuts = _shortcuts.copyWith(
+                      toggleSectionLoop: shortcut,
+                    );
                   });
                 },
               ),
@@ -313,10 +328,7 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
               const SizedBox(height: 8),
               const Text(
                 'Crop Controls',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               SwitchListTile(
@@ -324,7 +336,9 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                 value: _shortcuts.cropControlsShortcutsEnabled,
                 onChanged: (value) {
                   setState(() {
-                    _shortcuts = _shortcuts.copyWith(cropControlsShortcutsEnabled: value);
+                    _shortcuts = _shortcuts.copyWith(
+                      cropControlsShortcutsEnabled: value,
+                    );
                   });
                 },
               ),
@@ -403,10 +417,7 @@ class _ShortcutRowState extends State<_ShortcutRow> {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(
-          flex: 2,
-          child: Text(widget.label),
-        ),
+        Expanded(flex: 2, child: Text(widget.label)),
         Expanded(
           flex: 3,
           child: Focus(
@@ -502,6 +513,7 @@ class _ShortcutRowState extends State<_ShortcutRow> {
     if (key == LogicalKeyboardKey.arrowRight) return 'Right Arrow';
     if (key == LogicalKeyboardKey.arrowUp) return 'Up Arrow';
     if (key == LogicalKeyboardKey.arrowDown) return 'Down Arrow';
+    if (key == LogicalKeyboardKey.f11) return 'F11';
     if (key == LogicalKeyboardKey.enter) return 'Enter';
     if (key == LogicalKeyboardKey.period) return '.';
     if (key == LogicalKeyboardKey.comma) return ',';

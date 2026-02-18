@@ -44,6 +44,8 @@ class KeyboardShortcuts with _$KeyboardShortcuts {
     required KeyboardShortcut playPause,
     required KeyboardShortcut jumpForward,
     required KeyboardShortcut jumpBackward,
+    @Default(KeyboardShortcut(key: LogicalKeyboardKey.f11))
+    KeyboardShortcut toggleFullscreen,
     required KeyboardShortcut openFile,
     required KeyboardShortcut saveAnnotations,
     required KeyboardShortcut undo,
@@ -88,6 +90,7 @@ final defaultKeyboardShortcuts = KeyboardShortcuts(
     key: LogicalKeyboardKey.arrowLeft,
     shiftPressed: true,
   ),
+  toggleFullscreen: const KeyboardShortcut(key: LogicalKeyboardKey.f11),
   openFile: const KeyboardShortcut(
     key: LogicalKeyboardKey.keyO,
     ctrlPressed: true,
@@ -96,28 +99,30 @@ final defaultKeyboardShortcuts = KeyboardShortcuts(
     key: LogicalKeyboardKey.keyS,
     ctrlPressed: true,
   ),
-  undo: const KeyboardShortcut(
-    key: LogicalKeyboardKey.keyZ,
-    ctrlPressed: true,
-  ),
-  redo: const KeyboardShortcut(
-    key: LogicalKeyboardKey.keyY,
-    ctrlPressed: true,
-  ),
+  undo: const KeyboardShortcut(key: LogicalKeyboardKey.keyZ, ctrlPressed: true),
+  redo: const KeyboardShortcut(key: LogicalKeyboardKey.keyY, ctrlPressed: true),
   // Annotation tools
   selectSelectionTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyV),
   selectPenTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyP),
   selectEraserTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyE),
   selectRectangleTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyR),
-  selectCircleTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyO, shiftPressed: true),
-  selectLineTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyL, shiftPressed: true),
+  selectCircleTool: const KeyboardShortcut(
+    key: LogicalKeyboardKey.keyO,
+    shiftPressed: true,
+  ),
+  selectLineTool: const KeyboardShortcut(
+    key: LogicalKeyboardKey.keyL,
+    shiftPressed: true,
+  ),
   selectArrowTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyA),
   selectTextTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyT),
   // Loop shortcuts
   toggleFullLoop: const KeyboardShortcut(key: LogicalKeyboardKey.keyL),
   setLoopStart: const KeyboardShortcut(key: LogicalKeyboardKey.keyI),
   setLoopEnd: const KeyboardShortcut(key: LogicalKeyboardKey.keyO),
-  toggleSectionLoop: const KeyboardShortcut(key: LogicalKeyboardKey.bracketLeft),
+  toggleSectionLoop: const KeyboardShortcut(
+    key: LogicalKeyboardKey.bracketLeft,
+  ),
   // Crop shortcuts
   toggleCropMode: const KeyboardShortcut(key: LogicalKeyboardKey.keyC),
   // Group toggles - all enabled by default
