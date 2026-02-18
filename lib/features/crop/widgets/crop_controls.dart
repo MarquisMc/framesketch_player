@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import '../../../core/theme/app_palette.dart';
 import '../../../core/utils/timecode_formatter.dart';
 import '../providers/crop_provider.dart';
 import '../../player/providers/player_provider.dart';
@@ -15,6 +16,7 @@ class CropControlsPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppPalette.of(context);
     final cropState = ref.watch(cropProvider);
     final cropNotifier = ref.read(cropProvider.notifier);
     final playerState = ref.watch(playerProvider);
@@ -29,10 +31,8 @@ class CropControlsPanel extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
-        border: Border(
-          top: BorderSide(color: Colors.grey[800]!),
-        ),
+        color: palette.panel,
+        border: Border(top: BorderSide(color: palette.border)),
       ),
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxPanelHeight),
@@ -44,12 +44,12 @@ class CropControlsPanel extends ConsumerWidget {
               // Header
               Row(
                 children: [
-                  const Icon(Icons.crop, color: Colors.white70, size: 20),
+                  Icon(Icons.crop, color: palette.textSecondary, size: 20),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'Crop Mode',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: palette.textPrimary,
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
@@ -57,10 +57,10 @@ class CropControlsPanel extends ConsumerWidget {
                   const Spacer(),
                   // Exit crop mode button
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: Icon(Icons.close),
                     tooltip: 'Exit crop mode (Esc)',
                     onPressed: cropNotifier.exitCropMode,
-                    color: Colors.white70,
+                    color: palette.textSecondary,
                   ),
                 ],
               ),
@@ -68,10 +68,10 @@ class CropControlsPanel extends ConsumerWidget {
               const SizedBox(height: 16),
 
               // Aspect ratio selection
-              const Text(
+              Text(
                 'Aspect Ratio',
                 style: TextStyle(
-                  color: Colors.white70,
+                  color: palette.textSecondary,
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
@@ -92,10 +92,12 @@ class CropControlsPanel extends ConsumerWidget {
                             }
                           }
                         : null,
-                    selectedColor: Colors.cyan[700],
-                    backgroundColor: Colors.grey[800],
+                    selectedColor: palette.accent,
+                    backgroundColor: palette.panelElevated,
                     labelStyle: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white70,
+                      color: isSelected
+                          ? palette.textPrimary
+                          : palette.textSecondary,
                       fontSize: 12,
                     ),
                   );
@@ -113,7 +115,7 @@ class CropControlsPanel extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.black26,
+                  color: palette.panelOverlay,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: _CropInfo(),
@@ -127,12 +129,12 @@ class CropControlsPanel extends ConsumerWidget {
                   // Reset button
                   Expanded(
                     child: OutlinedButton.icon(
-                      icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('Reset'),
+                      icon: Icon(Icons.refresh, size: 18),
+                      label: Text('Reset'),
                       onPressed: hasVideo ? cropNotifier.resetCrop : null,
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white70,
-                        side: BorderSide(color: Colors.grey[700]!),
+                        foregroundColor: palette.textSecondary,
+                        side: BorderSide(color: palette.border),
                       ),
                     ),
                   ),
@@ -141,15 +143,16 @@ class CropControlsPanel extends ConsumerWidget {
                   Expanded(
                     flex: 2,
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.file_download, size: 18),
-                      label: const Text('Export Cropped Video'),
-                      onPressed: hasVideo &&
+                      icon: Icon(Icons.file_download, size: 18),
+                      label: Text('Export Cropped Video'),
+                      onPressed:
+                          hasVideo &&
                               cropState.exportStatus != ExportStatus.exporting
                           ? () => _showExportDialog(context, ref)
                           : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.cyan[700],
-                        foregroundColor: Colors.white,
+                        backgroundColor: palette.accent,
+                        foregroundColor: palette.textPrimary,
                       ),
                     ),
                   ),
@@ -188,10 +191,7 @@ class CropControlsPanel extends ConsumerWidget {
     // Suggest output filename
     final inputFile = File(playerState.currentVideoPath!);
     final inputName = inputFile.uri.pathSegments.last;
-    final nameWithoutExt = inputName.substring(
-      0,
-      inputName.lastIndexOf('.'),
-    );
+    final nameWithoutExt = inputName.substring(0, inputName.lastIndexOf('.'));
     final safeBaseName = _buildSafeOutputBaseName(nameWithoutExt);
 
     // Ask user for save location
@@ -231,17 +231,15 @@ class CropControlsPanel extends ConsumerWidget {
   }
 }
 
-enum _RangeHandle {
-  start,
-  end,
-}
+enum _RangeHandle { start, end }
 
 /// Controls for selecting exported video segment.
 class _ExportRangeControls extends ConsumerStatefulWidget {
   const _ExportRangeControls();
 
   @override
-  ConsumerState<_ExportRangeControls> createState() => _ExportRangeControlsState();
+  ConsumerState<_ExportRangeControls> createState() =>
+      _ExportRangeControlsState();
 }
 
 class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
@@ -295,7 +293,9 @@ class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
     if (_lastStartMs != null && _lastEndMs != null) {
       final startDelta = (values.start - _lastStartMs!).abs();
       final endDelta = (values.end - _lastEndMs!).abs();
-      _activeHandle = startDelta >= endDelta ? _RangeHandle.start : _RangeHandle.end;
+      _activeHandle = startDelta >= endDelta
+          ? _RangeHandle.start
+          : _RangeHandle.end;
     } else {
       _activeHandle = _RangeHandle.end;
     }
@@ -303,7 +303,9 @@ class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
     _lastStartMs = values.start;
     _lastEndMs = values.end;
 
-    ref.read(cropProvider.notifier).setExportRange(
+    ref
+        .read(cropProvider.notifier)
+        .setExportRange(
           start: Duration(milliseconds: startMs),
           end: Duration(milliseconds: endMs),
         );
@@ -322,6 +324,7 @@ class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     final cropState = ref.watch(cropProvider);
     final playerState = ref.watch(playerProvider);
 
@@ -344,10 +347,10 @@ class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Export Segment',
           style: TextStyle(
-            color: Colors.white70,
+            color: palette.textSecondary,
             fontSize: 12,
             fontWeight: FontWeight.bold,
           ),
@@ -359,7 +362,7 @@ class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
               '${TimecodeFormatter.formatShort(start)} - '
               '${TimecodeFormatter.formatShort(end)}',
               style: TextStyle(
-                color: isFullRange ? Colors.white : Colors.cyan[300],
+                color: isFullRange ? palette.textPrimary : palette.accentBright,
                 fontSize: 12,
                 fontFamily: 'monospace',
                 fontWeight: FontWeight.w600,
@@ -370,15 +373,15 @@ class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
               onPressed: isFullRange
                   ? null
                   : () => ref.read(cropProvider.notifier).resetExportRange(),
-              child: const Text('Use Full Range'),
+              child: Text('Use Full Range'),
             ),
           ],
         ),
         const SizedBox(height: 2),
         Text(
           'Duration: ${TimecodeFormatter.formatShort(selectedDuration)}',
-          style: const TextStyle(
-            color: Colors.white54,
+          style: TextStyle(
+            color: palette.textMuted,
             fontSize: 11,
             fontFamily: 'monospace',
           ),
@@ -388,18 +391,15 @@ class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
           _activeHandle == null
               ? 'Drag either handle to preview exact start/end frames.'
               : (_activeHandle == _RangeHandle.start
-                  ? 'Previewing START frame in video.'
-                  : 'Previewing END frame in video.'),
-          style: const TextStyle(
-            color: Colors.white38,
-            fontSize: 11,
-          ),
+                    ? 'Previewing START frame in video.'
+                    : 'Previewing END frame in video.'),
+          style: TextStyle(color: palette.textMuted, fontSize: 11),
         ),
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
-            activeTrackColor: Colors.cyan[400],
-            inactiveTrackColor: Colors.grey[700],
-            thumbColor: Colors.cyan[300],
+            activeTrackColor: palette.accent,
+            inactiveTrackColor: palette.border,
+            thumbColor: palette.accentBright,
             rangeThumbShape: const RoundRangeSliderThumbShape(
               enabledThumbRadius: 8,
             ),
@@ -432,14 +432,15 @@ class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
 class _CropInfo extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppPalette.of(context);
     final cropState = ref.watch(cropProvider);
     final playerState = ref.watch(playerProvider);
     final metadata = playerState.metadata;
 
     if (metadata == null) {
-      return const Text(
+      return Text(
         'No video loaded',
-        style: TextStyle(color: Colors.white54, fontSize: 12),
+        style: TextStyle(color: palette.textMuted, fontSize: 12),
       );
     }
 
@@ -457,18 +458,12 @@ class _CropInfo extends ConsumerWidget {
         _InfoRow(
           label: 'Cropped',
           value: '${pixels.width} × ${pixels.height}',
-          valueColor: Colors.cyan[300],
+          valueColor: palette.accentBright,
         ),
         const SizedBox(height: 4),
-        _InfoRow(
-          label: 'Ratio',
-          value: aspectRatio.toStringAsFixed(2),
-        ),
+        _InfoRow(label: 'Ratio', value: aspectRatio.toStringAsFixed(2)),
         const SizedBox(height: 4),
-        _InfoRow(
-          label: 'Position',
-          value: '(${pixels.x}, ${pixels.y})',
-        ),
+        _InfoRow(label: 'Position', value: '(${pixels.x}, ${pixels.y})'),
       ],
     );
   }
@@ -480,28 +475,19 @@ class _InfoRow extends StatelessWidget {
   final String value;
   final Color? valueColor;
 
-  const _InfoRow({
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
+  const _InfoRow({required this.label, required this.value, this.valueColor});
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white54,
-            fontSize: 12,
-          ),
-        ),
+        Text(label, style: TextStyle(color: palette.textMuted, fontSize: 12)),
         Text(
           value,
           style: TextStyle(
-            color: valueColor ?? Colors.white,
+            color: valueColor ?? palette.textPrimary,
             fontSize: 12,
             fontFamily: 'monospace',
             fontWeight: FontWeight.w500,
@@ -517,18 +503,16 @@ class _ExportProgress extends StatelessWidget {
   final double progress;
   final VoidCallback onCancel;
 
-  const _ExportProgress({
-    required this.progress,
-    required this.onCancel,
-  });
+  const _ExportProgress({required this.progress, required this.onCancel});
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Container(
       margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.black26,
+        color: palette.panelOverlay,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -536,10 +520,10 @@ class _ExportProgress extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'Exporting...',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: palette.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                 ),
@@ -547,8 +531,8 @@ class _ExportProgress extends StatelessWidget {
               const Spacer(),
               Text(
                 '${(progress * 100).toStringAsFixed(1)}%',
-                style: const TextStyle(
-                  color: Colors.white70,
+                style: TextStyle(
+                  color: palette.textSecondary,
                   fontSize: 14,
                   fontFamily: 'monospace',
                 ),
@@ -560,19 +544,17 @@ class _ExportProgress extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: progress,
-              backgroundColor: Colors.grey[800],
-              valueColor: AlwaysStoppedAnimation(Colors.cyan[400]!),
+              backgroundColor: palette.border,
+              valueColor: AlwaysStoppedAnimation(palette.accent),
               minHeight: 8,
             ),
           ),
           const SizedBox(height: 8),
           TextButton.icon(
-            icon: const Icon(Icons.cancel, size: 16),
-            label: const Text('Cancel Export'),
+            icon: Icon(Icons.cancel, size: 16),
+            label: Text('Cancel Export'),
             onPressed: onCancel,
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red[300],
-            ),
+            style: TextButton.styleFrom(foregroundColor: palette.error),
           ),
         ],
       ),
@@ -595,6 +577,7 @@ class _ExportStatusMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     Color borderColor;
     Color titleColor;
     String title;
@@ -602,20 +585,20 @@ class _ExportStatusMessage extends StatelessWidget {
 
     switch (status) {
       case ExportStatus.success:
-        borderColor = Colors.green[400]!;
-        titleColor = Colors.green[300]!;
+        borderColor = palette.success;
+        titleColor = palette.success;
         title = 'Export complete';
         message = exportedPath ?? 'Video exported successfully.';
         break;
       case ExportStatus.cancelled:
-        borderColor = Colors.orange[400]!;
-        titleColor = Colors.orange[300]!;
+        borderColor = palette.warning;
+        titleColor = palette.warning;
         title = 'Export cancelled';
         message = 'The export was cancelled before completion.';
         break;
       case ExportStatus.error:
-        borderColor = Colors.red[400]!;
-        titleColor = Colors.red[300]!;
+        borderColor = palette.error;
+        titleColor = palette.error;
         title = 'Export failed';
         message = error ?? 'Unknown export error.';
         break;
@@ -629,7 +612,7 @@ class _ExportStatusMessage extends StatelessWidget {
       margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.black26,
+        color: palette.panelOverlay,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: borderColor.withValues(alpha: 0.8)),
       ),
@@ -650,15 +633,15 @@ class _ExportStatusMessage extends StatelessWidget {
               IconButton(
                 onPressed: onDismiss,
                 tooltip: 'Dismiss',
-                icon: const Icon(Icons.close, size: 18),
-                color: Colors.white70,
+                icon: Icon(Icons.close, size: 18),
+                color: palette.textSecondary,
               ),
             ],
           ),
           SelectableText(
             message,
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: palette.textSecondary,
               fontSize: 12,
               fontFamily: 'monospace',
             ),
@@ -675,6 +658,7 @@ class CropModeToggleButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppPalette.of(context);
     final cropState = ref.watch(cropProvider);
     final playerState = ref.watch(playerProvider);
     final cropNotifier = ref.read(cropProvider.notifier);
@@ -685,8 +669,8 @@ class CropModeToggleButton extends ConsumerWidget {
       message: 'Toggle crop mode (C)',
       child: Material(
         color: cropState.isCropModeActive
-            ? Colors.cyan[700]
-            : Colors.grey[800],
+            ? palette.accent
+            : palette.panelElevated,
         borderRadius: BorderRadius.circular(4),
         child: InkWell(
           onTap: hasVideo
@@ -712,8 +696,8 @@ class CropModeToggleButton extends ConsumerWidget {
               Icons.crop,
               size: 24,
               color: cropState.isCropModeActive
-                  ? Colors.white
-                  : (hasVideo ? Colors.white70 : Colors.white24),
+                  ? palette.textPrimary
+                  : (hasVideo ? palette.textSecondary : palette.textDisabled),
             ),
           ),
         ),

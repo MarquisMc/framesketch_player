@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/theme/app_palette.dart';
 import '../providers/loop_provider.dart';
 import '../../player/providers/player_provider.dart';
 import '../../../core/utils/timecode_formatter.dart';
@@ -11,6 +12,7 @@ class LoopControls extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppPalette.of(context);
     final loopState = ref.watch(loopProvider);
     final playerState = ref.watch(playerProvider);
     final loopNotifier = ref.read(loopProvider.notifier);
@@ -24,7 +26,7 @@ class LoopControls extends ConsumerWidget {
         Container(
           width: 1,
           height: 24,
-          color: Colors.grey[700],
+          color: palette.border,
           margin: const EdgeInsets.symmetric(horizontal: 8),
         ),
 
@@ -45,7 +47,7 @@ class LoopControls extends ConsumerWidget {
           tooltip: 'Set loop start point (I)',
           isActive: loopState.loopStartMs != null,
           isEnabled: hasVideo,
-          activeColor: Colors.green,
+          activeColor: palette.loopA,
           onPressed: hasVideo ? loopNotifier.setAPoint : null,
         ),
 
@@ -55,7 +57,7 @@ class LoopControls extends ConsumerWidget {
           tooltip: 'Set loop end point (O)',
           isActive: loopState.loopEndMs != null,
           isEnabled: hasVideo,
-          activeColor: Colors.orange,
+          activeColor: palette.loopB,
           onPressed: hasVideo ? loopNotifier.setBPoint : null,
         ),
 
@@ -77,9 +79,11 @@ class LoopControls extends ConsumerWidget {
           icon: Icons.clear,
           tooltip: 'Clear loop points',
           isActive: false,
-          isEnabled: hasVideo &&
+          isEnabled:
+              hasVideo &&
               (loopState.loopStartMs != null || loopState.loopEndMs != null),
-          onPressed: hasVideo &&
+          onPressed:
+              hasVideo &&
                   (loopState.loopStartMs != null || loopState.loopEndMs != null)
               ? loopNotifier.clearSectionPoints
               : null,
@@ -92,11 +96,11 @@ class LoopControls extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: loopState.isSectionLoopActive
-                  ? Colors.green.withAlpha(50)
-                  : Colors.black26,
+                  ? palette.loopA.withValues(alpha: 0.2)
+                  : palette.panelElevated,
               borderRadius: BorderRadius.circular(4),
               border: loopState.isSectionLoopActive
-                  ? Border.all(color: Colors.green.withAlpha(100))
+                  ? Border.all(color: palette.loopA.withValues(alpha: 0.45))
                   : null,
             ),
             child: Row(
@@ -107,8 +111,8 @@ class LoopControls extends ConsumerWidget {
                   'A: ${loopState.loopStart != null ? TimecodeFormatter.formatShort(loopState.loopStart!) : '--:--'}',
                   style: TextStyle(
                     color: loopState.loopStartMs != null
-                        ? Colors.green
-                        : Colors.grey,
+                        ? palette.loopA
+                        : palette.textMuted,
                     fontSize: 11,
                     fontFamily: 'monospace',
                   ),
@@ -119,8 +123,8 @@ class LoopControls extends ConsumerWidget {
                   'B: ${loopState.loopEnd != null ? TimecodeFormatter.formatShort(loopState.loopEnd!) : '--:--'}',
                   style: TextStyle(
                     color: loopState.loopEndMs != null
-                        ? Colors.orange
-                        : Colors.grey,
+                        ? palette.loopB
+                        : palette.textMuted,
                     fontSize: 11,
                     fontFamily: 'monospace',
                   ),
@@ -153,13 +157,14 @@ class _LoopButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveActiveColor = activeColor ?? Colors.cyan;
+    final palette = AppPalette.of(context);
+    final effectiveActiveColor = activeColor ?? palette.accent;
 
     return Tooltip(
       message: tooltip,
       child: Material(
         color: isActive
-            ? effectiveActiveColor.withAlpha(50)
+            ? effectiveActiveColor.withValues(alpha: 0.24)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(4),
         child: InkWell(
@@ -174,7 +179,7 @@ class _LoopButton extends StatelessWidget {
               size: 20,
               color: isActive
                   ? effectiveActiveColor
-                  : (isEnabled ? Colors.white70 : Colors.white24),
+                  : (isEnabled ? palette.textSecondary : palette.textDisabled),
             ),
           ),
         ),

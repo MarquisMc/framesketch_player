@@ -37,7 +37,7 @@ class AnnotationState {
     this.undoStack = const [],
     this.redoStack = const [],
     this.currentTool = DrawingTool.pen,
-    this.currentColor = Colors.red,
+    this.currentColor = const Color(0xFF58D3C4),
     this.currentStrokeWidth = 3.0,
     this.currentStroke,
     this.isDrawing = false,

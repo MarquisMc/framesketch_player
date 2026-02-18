@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/theme/app_palette.dart';
 import '../../../core/utils/timecode_formatter.dart';
 import '../../player/providers/player_provider.dart';
 import '../providers/annotation_keyframe_timeline_provider.dart';
@@ -16,6 +17,7 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppPalette.of(context);
     final playerState = ref.watch(playerProvider);
     final timelineState = ref.watch(annotationKeyframeTimelineProvider);
     final timelineNotifier = ref.read(
@@ -47,24 +49,24 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.grey[850],
+      color: palette.panel,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'Annotation Keyframes',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: palette.textPrimary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(width: 12),
               Text(
                 'Count: ${keyframeTimesMs.length}',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                style: TextStyle(color: palette.textSecondary, fontSize: 12),
               ),
               const SizedBox(width: 8),
               Tooltip(
@@ -87,8 +89,8 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
                       vertical: 3,
                     ),
                     backgroundColor: keyframeMode == KeyframeCreationMode.manual
-                        ? Colors.amber.withValues(alpha: 0.22)
-                        : Colors.lightBlueAccent.withValues(alpha: 0.2),
+                        ? palette.loopB.withValues(alpha: 0.24)
+                        : palette.accentSoft,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -99,8 +101,8 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
                         : 'Automatic',
                     style: TextStyle(
                       color: keyframeMode == KeyframeCreationMode.manual
-                          ? Colors.amberAccent
-                          : Colors.lightBlueAccent,
+                          ? palette.loopB
+                          : palette.accentBright,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
@@ -114,8 +116,8 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
                       ? () => annotationNotifier
                             .createManualKeyframeAtCurrentFrame()
                       : null,
-                  icon: const Icon(Icons.add_circle_outline, size: 16),
-                  label: const Text('New Frame'),
+                  icon: Icon(Icons.add_circle_outline, size: 16),
+                  label: Text('New Frame'),
                   style: TextButton.styleFrom(
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -131,8 +133,8 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
               if (activeKeyframeMs != null)
                 Text(
                   'Active Frame $activeFrame (${TimecodeFormatter.format(Duration(milliseconds: activeKeyframeMs))})',
-                  style: const TextStyle(
-                    color: Colors.lightBlueAccent,
+                  style: TextStyle(
+                    color: palette.accentBright,
                     fontSize: 12,
                     fontFamily: 'monospace',
                   ),
@@ -158,12 +160,10 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
                         overlayShape: const RoundSliderOverlayShape(
                           overlayRadius: 14,
                         ),
-                        activeTrackColor: Colors.lightBlueAccent,
-                        inactiveTrackColor: Colors.grey[700],
-                        thumbColor: Colors.blue[200],
-                        overlayColor: Colors.lightBlueAccent.withValues(
-                          alpha: 0.3,
-                        ),
+                        activeTrackColor: palette.accent,
+                        inactiveTrackColor: palette.border,
+                        thumbColor: palette.accentBright,
+                        overlayColor: palette.accentSoft,
                       ),
                       child: Slider(
                         value: sliderValue,
@@ -234,6 +234,7 @@ class _KeyframeMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     const horizontalPadding = 12.0;
     final effectiveWidth = trackWidth - (horizontalPadding * 2);
     final xPosition = horizontalPadding + (normalizedPosition * effectiveWidth);
@@ -252,8 +253,8 @@ class _KeyframeMarker extends StatelessWidget {
             height: 12,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isActive ? Colors.orangeAccent : Colors.lightBlueAccent,
-              border: Border.all(color: Colors.black87, width: 1.5),
+              color: isActive ? palette.loopB : palette.accent,
+              border: Border.all(color: palette.background, width: 1.5),
             ),
           ),
         ),

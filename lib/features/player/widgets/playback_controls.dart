@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/theme/app_palette.dart';
 import '../providers/player_provider.dart';
 import '../../../core/utils/timecode_formatter.dart';
 import '../../loop/widgets/loop_controls.dart';
@@ -86,12 +87,13 @@ class PlaybackControls extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final playerState = ref.watch(playerProvider);
     final playerNotifier = ref.read(playerProvider.notifier);
+    final palette = AppPalette.of(context);
 
     final hasVideo = playerState.player != null;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.grey[850],
+      color: palette.panel,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -101,7 +103,7 @@ class PlaybackControls extends ConsumerWidget {
             IconButton(
               icon: Icon(
                 playerState.isPlaying ? Icons.pause : Icons.play_arrow,
-                color: hasVideo ? Colors.white : Colors.white38,
+                color: hasVideo ? palette.textPrimary : palette.textDisabled,
               ),
               iconSize: 32,
               onPressed: hasVideo
@@ -116,7 +118,7 @@ class PlaybackControls extends ConsumerWidget {
             IconButton(
               icon: Icon(
                 Icons.stop,
-                color: hasVideo ? Colors.white : Colors.white38,
+                color: hasVideo ? palette.textPrimary : palette.textDisabled,
               ),
               onPressed: hasVideo ? () => playerNotifier.stop() : null,
               tooltip: 'Stop',
@@ -130,7 +132,7 @@ class PlaybackControls extends ConsumerWidget {
                 playerState.isMuted || playerState.volume <= 0.001
                     ? Icons.volume_off
                     : Icons.volume_up,
-                color: hasVideo ? Colors.white : Colors.white38,
+                color: hasVideo ? palette.textPrimary : palette.textDisabled,
               ),
               onPressed: hasVideo ? () => playerNotifier.toggleMute() : null,
               tooltip: playerState.isMuted ? 'Unmute' : 'Mute',
@@ -142,7 +144,7 @@ class PlaybackControls extends ConsumerWidget {
             _HoldableButton(
               icon: Icon(
                 Icons.skip_previous,
-                color: hasVideo ? Colors.white : Colors.white38,
+                color: hasVideo ? palette.textPrimary : palette.textDisabled,
               ),
               onPressed: hasVideo ? () => playerNotifier.stepBackward() : null,
               tooltip: 'Previous Frame (,) - Hold to repeat',
@@ -152,7 +154,7 @@ class PlaybackControls extends ConsumerWidget {
             _HoldableButton(
               icon: Icon(
                 Icons.skip_next,
-                color: hasVideo ? Colors.white : Colors.white38,
+                color: hasVideo ? palette.textPrimary : palette.textDisabled,
               ),
               onPressed: hasVideo ? () => playerNotifier.stepForward() : null,
               tooltip: 'Next Frame (.) - Hold to repeat',
@@ -164,7 +166,7 @@ class PlaybackControls extends ConsumerWidget {
             _HoldableButton(
               icon: Icon(
                 Icons.fast_rewind,
-                color: hasVideo ? Colors.white : Colors.white38,
+                color: hasVideo ? palette.textPrimary : palette.textDisabled,
               ),
               onPressed: hasVideo
                   ? () =>
@@ -179,7 +181,7 @@ class PlaybackControls extends ConsumerWidget {
             _HoldableButton(
               icon: Icon(
                 Icons.fast_forward,
-                color: hasVideo ? Colors.white : Colors.white38,
+                color: hasVideo ? palette.textPrimary : palette.textDisabled,
               ),
               onPressed: hasVideo
                   ? () => playerNotifier.jumpForward(const Duration(seconds: 1))
@@ -195,15 +197,15 @@ class PlaybackControls extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.black45,
+                color: palette.panelElevated,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
                 hasVideo
                     ? '${TimecodeFormatter.format(playerState.position)} / ${TimecodeFormatter.format(playerState.duration)}'
                     : '00:00:00.000 / 00:00:00.000',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: palette.textPrimary,
                   fontSize: 14,
                   fontFamily: 'monospace',
                 ),
@@ -220,13 +222,13 @@ class PlaybackControls extends ConsumerWidget {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.black45,
+                  color: palette.panelElevated,
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   'Frame ${playerNotifier.currentFrame} / ${playerState.metadata!.frameCount}',
-                  style: const TextStyle(
-                    color: Colors.white70,
+                  style: TextStyle(
+                    color: palette.textSecondary,
                     fontSize: 12,
                     fontFamily: 'monospace',
                   ),
@@ -246,13 +248,13 @@ class PlaybackControls extends ConsumerWidget {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.black45,
+                  color: palette.panelElevated,
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   '${playerState.metadata!.fps.toStringAsFixed(2)} FPS',
-                  style: const TextStyle(
-                    color: Colors.white70,
+                  style: TextStyle(
+                    color: palette.textSecondary,
                     fontSize: 12,
                     fontFamily: 'monospace',
                   ),
@@ -264,7 +266,7 @@ class PlaybackControls extends ConsumerWidget {
             IconButton(
               icon: Icon(
                 isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
-                color: Colors.white70,
+                color: palette.textSecondary,
               ),
               onPressed: onToggleFullscreen,
               tooltip: isFullscreen

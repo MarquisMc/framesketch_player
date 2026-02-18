@@ -21,6 +21,7 @@ import 'features/loop/providers/loop_provider.dart';
 import 'features/crop/providers/crop_provider.dart';
 import 'features/crop/widgets/crop_controls.dart';
 import 'core/services/file_association_service.dart';
+import 'core/theme/app_palette.dart';
 import 'dart:io' show File, Platform;
 
 /// Main application widget
@@ -45,12 +46,17 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   LogicalKeyboardKey? _lastPressedKey;
   bool _isFullscreen = false;
   bool _showExportHourglassBottom = false;
+  ThemeMode _themeMode = ThemeMode.dark;
+  AppPalette get _activePalette => AppPalette.forBrightness(
+    _themeMode == ThemeMode.dark ? Brightness.dark : Brightness.light,
+  );
 
   @override
   void initState() {
     super.initState();
     _shortcuts = defaultKeyboardShortcuts;
     _loadShortcuts();
+    _loadThemeMode();
     // Request focus on startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
@@ -91,6 +97,37 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     }
   }
 
+  Future<void> _loadThemeMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('theme_mode');
+      if (!mounted) return;
+      setState(() {
+        _themeMode = switch (saved) {
+          'light' => ThemeMode.light,
+          'dark' => ThemeMode.dark,
+          _ => ThemeMode.dark,
+        };
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _toggleThemeMode() async {
+    final next = _themeMode == ThemeMode.dark
+        ? ThemeMode.light
+        : ThemeMode.dark;
+    setState(() {
+      _themeMode = next;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'theme_mode',
+        next == ThemeMode.dark ? 'dark' : 'light',
+      );
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _keyRepeatTimer?.cancel();
@@ -115,13 +152,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       scaffoldMessengerKey: _scaffoldMessengerKey,
       title: 'FrameSketch Player',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(useMaterial3: true).copyWith(
-        scaffoldBackgroundColor: Colors.grey[900],
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.red,
-          brightness: Brightness.dark,
-        ),
-      ),
+      theme: AppPalette.themeData(Brightness.light),
+      darkTheme: AppPalette.themeData(Brightness.dark),
+      themeMode: _themeMode,
       home: Focus(
         focusNode: _focusNode,
         autofocus: true,
@@ -161,6 +194,18 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                       // Crop mode toggle button
                       const CropModeToggleButton(),
                       const SizedBox(width: 8),
+                      IconButton(
+                        icon: Icon(
+                          _themeMode == ThemeMode.dark
+                              ? Icons.light_mode
+                              : Icons.dark_mode,
+                        ),
+                        onPressed: _toggleThemeMode,
+                        tooltip: _themeMode == ThemeMode.dark
+                            ? 'Switch to Light Mode'
+                            : 'Switch to Dark Mode',
+                      ),
+                      const SizedBox(width: 4),
                       IconButton(
                         icon: const Icon(Icons.settings),
                         onPressed: () => _openSettings(context),
@@ -628,9 +673,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       if (mounted) {
         if (success) {
           _scaffoldMessengerKey.currentState?.showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text('Annotations saved successfully'),
-              backgroundColor: Colors.green,
+              backgroundColor: _activePalette.success,
             ),
           );
         } else {
@@ -699,15 +744,15 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
               content: Text(
                 'Export complete: ${updatedCropState.exportedFilePath ?? outputPath}',
               ),
-              backgroundColor: Colors.green,
+              backgroundColor: _activePalette.success,
             ),
           );
           break;
         case ExportStatus.cancelled:
           _scaffoldMessengerKey.currentState?.showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text('Export cancelled'),
-              backgroundColor: Colors.orange,
+              backgroundColor: _activePalette.warning,
             ),
           );
           break;
@@ -806,9 +851,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
           if (mounted) {
             if (success) {
               _scaffoldMessengerKey.currentState?.showSnackBar(
-                const SnackBar(
+                SnackBar(
                   content: Text('File associations removed successfully'),
-                  backgroundColor: Colors.green,
+                  backgroundColor: _activePalette.success,
                 ),
               );
             } else {

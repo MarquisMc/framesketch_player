@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/theme/app_palette.dart';
 import '../models/stroke.dart';
 import '../providers/annotation_provider.dart';
 import '../../player/providers/player_provider.dart';
@@ -14,6 +15,7 @@ class DrawingToolsPanel extends ConsumerStatefulWidget {
 
 class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
   bool _showMoreTools = false;
+  AppPalette get _palette => AppPalette.of(context);
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +34,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
 
     return Container(
       width: 250,
-      color: Colors.grey[850],
+      color: _palette.panel,
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -40,17 +42,17 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
             // Header
             Container(
               padding: const EdgeInsets.all(16),
-              child: const Text(
+              child: Text(
                 'Annotation Tools',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: _palette.textPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ),
 
-            const Divider(height: 1, color: Colors.white24),
+            Divider(height: 1, color: _palette.border),
 
             // Keyframe mode
             Padding(
@@ -58,10 +60,10 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Keyframe Mode',
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: _palette.textSecondary,
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                     ),
@@ -92,7 +94,10 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                     keyframeMode == KeyframeCreationMode.automatic
                         ? 'Drawing on a frame automatically creates/uses that frame keyframe.'
                         : 'Drawing edits the active keyframe. Use New Frame to create an empty keyframe at the playhead.',
-                    style: const TextStyle(color: Colors.white60, fontSize: 12),
+                    style: TextStyle(
+                      color: _palette.textSecondary,
+                      fontSize: 12,
+                    ),
                   ),
                   if (keyframeMode == KeyframeCreationMode.manual) ...[
                     const SizedBox(height: 10),
@@ -102,7 +107,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                                 .createManualKeyframeAtCurrentFrame()
                           : null,
                       icon: const Icon(Icons.add_circle_outline),
-                      label: const Text('New Frame'),
+                      label: Text('New Frame'),
                       style: ElevatedButton.styleFrom(
                         alignment: Alignment.centerLeft,
                       ),
@@ -114,17 +119,14 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                           : keyframeTimesMs.isEmpty
                           ? 'Create your first annotation to establish an initial keyframe.'
                           : 'A keyframe already exists at the current frame.',
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
-                      ),
+                      style: TextStyle(color: _palette.textMuted, fontSize: 11),
                     ),
                   ],
                 ],
               ),
             ),
 
-            const Divider(height: 1, color: Colors.white24),
+            Divider(height: 1, color: _palette.border),
 
             // Tool selection
             Padding(
@@ -132,10 +134,10 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Tool',
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: _palette.textSecondary,
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                     ),
@@ -180,21 +182,24 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                         horizontal: 12,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.grey[800],
+                        color: _palette.panelElevated,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
+                          Text(
                             'More Tools',
-                            style: TextStyle(color: Colors.white, fontSize: 14),
+                            style: TextStyle(
+                              color: _palette.textPrimary,
+                              fontSize: 14,
+                            ),
                           ),
                           Icon(
                             _showMoreTools
                                 ? Icons.expand_less
                                 : Icons.expand_more,
-                            color: Colors.white,
+                            color: _palette.textSecondary,
                           ),
                         ],
                       ),
@@ -254,7 +259,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
               ),
             ),
 
-            const Divider(height: 1, color: Colors.white24),
+            Divider(height: 1, color: _palette.border),
 
             // Color picker
             Padding(
@@ -262,10 +267,10 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Color',
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: _palette.textSecondary,
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                     ),
@@ -275,45 +280,12 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      _buildColorButton(
-                        Colors.red,
-                        annotationState,
-                        annotationNotifier,
-                      ),
-                      _buildColorButton(
-                        Colors.green,
-                        annotationState,
-                        annotationNotifier,
-                      ),
-                      _buildColorButton(
-                        Colors.blue,
-                        annotationState,
-                        annotationNotifier,
-                      ),
-                      _buildColorButton(
-                        Colors.yellow,
-                        annotationState,
-                        annotationNotifier,
-                      ),
-                      _buildColorButton(
-                        Colors.orange,
-                        annotationState,
-                        annotationNotifier,
-                      ),
-                      _buildColorButton(
-                        Colors.purple,
-                        annotationState,
-                        annotationNotifier,
-                      ),
-                      _buildColorButton(
-                        Colors.white,
-                        annotationState,
-                        annotationNotifier,
-                      ),
-                      _buildColorButton(
-                        Colors.black,
-                        annotationState,
-                        annotationNotifier,
+                      ..._palette.annotationSwatches.map(
+                        (color) => _buildColorButton(
+                          color,
+                          annotationState,
+                          annotationNotifier,
+                        ),
                       ),
                     ],
                   ),
@@ -321,7 +293,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
               ),
             ),
 
-            const Divider(height: 1, color: Colors.white24),
+            Divider(height: 1, color: _palette.border),
 
             // Stroke width
             Padding(
@@ -329,10 +301,10 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Stroke Width',
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: _palette.textSecondary,
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                     ),
@@ -356,8 +328,8 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                       const SizedBox(width: 8),
                       Text(
                         annotationState.currentStrokeWidth.toStringAsFixed(1),
-                        style: const TextStyle(
-                          color: Colors.white70,
+                        style: TextStyle(
+                          color: _palette.textSecondary,
                           fontSize: 14,
                         ),
                       ),
@@ -369,16 +341,16 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
 
             // Font size (visible when text tool is selected)
             if (annotationState.currentTool == DrawingTool.text) ...[
-              const Divider(height: 1, color: Colors.white24),
+              Divider(height: 1, color: _palette.border),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Font Size',
                       style: TextStyle(
-                        color: Colors.white70,
+                        color: _palette.textSecondary,
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
@@ -402,8 +374,8 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                         const SizedBox(width: 8),
                         Text(
                           annotationState.currentFontSize.toStringAsFixed(0),
-                          style: const TextStyle(
-                            color: Colors.white70,
+                          style: TextStyle(
+                            color: _palette.textSecondary,
                             fontSize: 14,
                           ),
                         ),
@@ -414,7 +386,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
               ),
             ],
 
-            const Divider(height: 1, color: Colors.white24),
+            Divider(height: 1, color: _palette.border),
 
             // Actions
             Padding(
@@ -422,10 +394,10 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
+                  Text(
                     'Actions',
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: _palette.textSecondary,
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                     ),
@@ -436,7 +408,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                         ? () => annotationNotifier.undo()
                         : null,
                     icon: const Icon(Icons.undo),
-                    label: const Text('Undo'),
+                    label: Text('Undo'),
                     style: ElevatedButton.styleFrom(
                       alignment: Alignment.centerLeft,
                     ),
@@ -447,7 +419,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                         ? () => annotationNotifier.redo()
                         : null,
                     icon: const Icon(Icons.redo),
-                    label: const Text('Redo'),
+                    label: Text('Redo'),
                     style: ElevatedButton.styleFrom(
                       alignment: Alignment.centerLeft,
                     ),
@@ -461,7 +433,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                           )
                         : null,
                     icon: const Icon(Icons.clear_all),
-                    label: const Text('Clear All'),
+                    label: Text('Clear All'),
                     style: ElevatedButton.styleFrom(
                       alignment: Alignment.centerLeft,
                     ),
@@ -470,7 +442,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
               ),
             ),
 
-            const Divider(height: 1, color: Colors.white24),
+            Divider(height: 1, color: _palette.border),
 
             // Status
             Padding(
@@ -480,17 +452,17 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                 children: [
                   Text(
                     'Strokes: ${annotationState.allStrokes.length}',
-                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    style: TextStyle(color: _palette.textMuted, fontSize: 12),
                   ),
                   Text(
                     'Keyframes: ${keyframeTimesMs.length}',
-                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    style: TextStyle(color: _palette.textMuted, fontSize: 12),
                   ),
                   if (activeKeyframeMs != null)
                     Text(
                       'Active frame: ${((activeKeyframeMs / 1000.0) * fps).round()}',
-                      style: const TextStyle(
-                        color: Colors.lightBlueAccent,
+                      style: TextStyle(
+                        color: _palette.accentBright,
                         fontSize: 12,
                       ),
                     ),
@@ -498,16 +470,16 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                     'Draw target: ${((drawingTargetKeyframeMs / 1000.0) * fps).round()}',
                     style: TextStyle(
                       color: keyframeMode == KeyframeCreationMode.manual
-                          ? Colors.amberAccent
-                          : Colors.white54,
+                          ? _palette.loopB
+                          : _palette.textMuted,
                       fontSize: 12,
                     ),
                   ),
                   if (annotationState.hasUnsavedChanges)
-                    const Text(
+                    Text(
                       'Unsaved changes',
                       style: TextStyle(
-                        color: Colors.orange,
+                        color: _palette.warning,
                         fontSize: 12,
                         fontStyle: FontStyle.italic,
                       ),
@@ -532,18 +504,18 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.blueGrey[600] : Colors.grey[800],
+            color: isSelected ? _palette.panelElevated : _palette.panel,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isSelected ? Colors.lightBlueAccent : Colors.transparent,
+              color: isSelected ? _palette.accentBright : Colors.transparent,
               width: 1.5,
             ),
           ),
           child: Text(
             label,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: _palette.textPrimary,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -565,21 +537,28 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.red[700] : Colors.grey[800],
+          color: isSelected ? _palette.accentSoft : _palette.panelElevated,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? Colors.red[400]! : Colors.transparent,
+            color: isSelected ? _palette.accent : Colors.transparent,
             width: 2,
           ),
         ),
         child: Row(
           children: [
-            Icon(icon, color: onTap != null ? Colors.white : Colors.white38),
+            Icon(
+              icon,
+              color: onTap != null
+                  ? _palette.textPrimary
+                  : _palette.textDisabled,
+            ),
             const SizedBox(width: 12),
             Text(
               label,
               style: TextStyle(
-                color: onTap != null ? Colors.white : Colors.white38,
+                color: onTap != null
+                    ? _palette.textPrimary
+                    : _palette.textDisabled,
                 fontSize: 14,
               ),
             ),
@@ -595,6 +574,12 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
     AnnotationNotifier notifier,
   ) {
     final isSelected = state.currentColor == color;
+    final isDarkSwatch = color.computeLuminance() < 0.08;
+    final isLightSwatch = color.computeLuminance() > 0.88;
+    final borderColor = isSelected
+        ? (isLightSwatch ? _palette.background : _palette.textPrimary)
+        : (isDarkSwatch ? _palette.border : Colors.transparent);
+    final borderWidth = isSelected ? 3.0 : (isDarkSwatch ? 1.5 : 0.0);
 
     return InkWell(
       onTap: () => notifier.setColor(color),
@@ -604,13 +589,10 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
-          border: Border.all(
-            color: isSelected ? Colors.white : Colors.transparent,
-            width: 3,
-          ),
+          border: Border.all(color: borderColor, width: borderWidth),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
+              color: Colors.black.withValues(alpha: 0.22),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -627,21 +609,21 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear All Annotations'),
-        content: const Text(
+        title: Text('Clear All Annotations'),
+        content: Text(
           'Are you sure you want to clear all annotations? This action cannot be undone.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
               notifier.clearAll();
               Navigator.of(context).pop();
             },
-            child: const Text('Clear All', style: TextStyle(color: Colors.red)),
+            child: Text('Clear All', style: TextStyle(color: _palette.error)),
           ),
         ],
       ),

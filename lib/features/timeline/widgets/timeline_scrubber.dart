@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/theme/app_palette.dart';
 import '../providers/timeline_provider.dart';
 import '../../player/providers/player_provider.dart';
 import '../../loop/providers/loop_provider.dart';
@@ -18,6 +19,7 @@ class TimelineScrubber extends ConsumerStatefulWidget {
 class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     final playerState = ref.watch(playerProvider);
     final timelineState = ref.watch(timelineProvider);
     final loopState = ref.watch(loopProvider);
@@ -53,7 +55,7 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.grey[900],
+      color: palette.background,
       child: LayoutBuilder(
         builder: (context, constraints) {
           return Column(
@@ -81,6 +83,7 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
                                     endNorm: loopEndNorm,
                                     isActive:
                                         loopState.mode == LoopMode.section,
+                                    loopColor: palette.loopA,
                                   ),
                                 ),
 
@@ -94,12 +97,10 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
                                   overlayShape: const RoundSliderOverlayShape(
                                     overlayRadius: 16,
                                   ),
-                                  activeTrackColor: Colors.red[400],
-                                  inactiveTrackColor: Colors.grey[700],
-                                  thumbColor: Colors.red[300],
-                                  overlayColor: Colors.red.withValues(
-                                    alpha: 0.3,
-                                  ),
+                                  activeTrackColor: palette.accent,
+                                  inactiveTrackColor: palette.border,
+                                  thumbColor: palette.accentBright,
+                                  overlayColor: palette.accentSoft,
                                 ),
                                 child: Slider(
                                   value: sliderValue,
@@ -138,7 +139,7 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
                                   normalizedPosition: loopStartNorm,
                                   trackWidth: trackWidth,
                                   label: 'A',
-                                  color: Colors.green,
+                                  color: palette.loopA,
                                   onDrag: hasVideo
                                       ? (delta) {
                                           final newNorm =
@@ -162,7 +163,7 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
                                   normalizedPosition: loopEndNorm,
                                   trackWidth: trackWidth,
                                   label: 'B',
-                                  color: Colors.orange,
+                                  color: palette.loopB,
                                   onDrag: hasVideo
                                       ? (delta) {
                                           final newNorm =
@@ -196,8 +197,8 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
                             ? Icons.timeline
                             : Icons.timeline_outlined,
                         color: showAnnotationTimeline
-                            ? Colors.lightBlueAccent
-                            : Colors.white70,
+                            ? palette.accentBright
+                            : palette.textSecondary,
                       ),
                       onPressed: hasVideo
                           ? () {
@@ -227,11 +228,13 @@ class _LoopRegionPainter extends StatelessWidget {
   final double startNorm;
   final double endNorm;
   final bool isActive;
+  final Color loopColor;
 
   const _LoopRegionPainter({
     required this.startNorm,
     required this.endNorm,
     required this.isActive,
+    required this.loopColor,
   });
 
   @override
@@ -241,6 +244,7 @@ class _LoopRegionPainter extends StatelessWidget {
         startNorm: startNorm,
         endNorm: endNorm,
         isActive: isActive,
+        loopColor: loopColor,
       ),
     );
   }
@@ -250,11 +254,13 @@ class _LoopRegionCustomPainter extends CustomPainter {
   final double startNorm;
   final double endNorm;
   final bool isActive;
+  final Color loopColor;
 
   _LoopRegionCustomPainter({
     required this.startNorm,
     required this.endNorm,
     required this.isActive,
+    required this.loopColor,
   });
 
   @override
@@ -269,8 +275,8 @@ class _LoopRegionCustomPainter extends CustomPainter {
 
     final paint = Paint()
       ..color = isActive
-          ? Colors.green.withValues(alpha: 0.25)
-          : Colors.green.withValues(alpha: 0.1)
+          ? loopColor.withValues(alpha: 0.24)
+          : loopColor.withValues(alpha: 0.1)
       ..style = PaintingStyle.fill;
 
     // Draw the highlighted region
@@ -282,7 +288,7 @@ class _LoopRegionCustomPainter extends CustomPainter {
 
     // Draw border
     final borderPaint = Paint()
-      ..color = isActive ? Colors.green : Colors.green.withValues(alpha: 0.5)
+      ..color = isActive ? loopColor : loopColor.withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
     canvas.drawRRect(rect, borderPaint);
@@ -292,7 +298,8 @@ class _LoopRegionCustomPainter extends CustomPainter {
   bool shouldRepaint(_LoopRegionCustomPainter oldDelegate) {
     return oldDelegate.startNorm != startNorm ||
         oldDelegate.endNorm != endNorm ||
-        oldDelegate.isActive != isActive;
+        oldDelegate.isActive != isActive ||
+        oldDelegate.loopColor != loopColor;
   }
 }
 
@@ -382,8 +389,8 @@ class _LoopMarkerState extends State<_LoopMarker> {
                   ),
                   child: Text(
                     widget.label,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: AppPalette.of(context).textPrimary,
                       fontSize: 7,
                       height: 1.0,
                       fontWeight: FontWeight.bold,

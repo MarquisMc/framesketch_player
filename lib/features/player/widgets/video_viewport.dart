@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import '../../../core/theme/app_palette.dart';
 import '../providers/player_provider.dart';
 import '../../annotations/widgets/annotation_overlay.dart';
 import '../../crop/widgets/crop_overlay.dart';
@@ -13,18 +14,19 @@ class VideoViewport extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppPalette.of(context);
     final playerState = ref.watch(playerProvider);
 
     if (playerState.error != null) {
-      return _buildError(playerState.error!);
+      return _buildError(playerState.error!, palette);
     }
 
     if (playerState.isLoading) {
-      return _buildLoading();
+      return _buildLoading(palette);
     }
 
     if (playerState.videoController == null) {
-      return _buildEmpty();
+      return _buildEmpty(palette);
     }
 
     return _buildPlayer(
@@ -71,23 +73,23 @@ class VideoViewport extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmpty() {
+  Widget _buildEmpty(AppPalette palette) {
     return Container(
-      color: Colors.grey[900],
-      child: const Center(
+      color: palette.background,
+      child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.video_library, size: 64, color: Colors.white54),
+            Icon(Icons.video_library, size: 64, color: palette.textMuted),
             SizedBox(height: 16),
             Text(
               'No video loaded',
-              style: TextStyle(color: Colors.white70, fontSize: 18),
+              style: TextStyle(color: palette.textSecondary, fontSize: 18),
             ),
             SizedBox(height: 8),
             Text(
               'Press Ctrl+O to open a video file',
-              style: TextStyle(color: Colors.white54, fontSize: 14),
+              style: TextStyle(color: palette.textMuted, fontSize: 14),
             ),
           ],
         ),
@@ -95,10 +97,10 @@ class VideoViewport extends ConsumerWidget {
     );
   }
 
-  Widget _buildLoading() {
+  Widget _buildLoading(AppPalette palette) {
     return Container(
-      color: Colors.grey[900],
-      child: const Center(
+      color: palette.background,
+      child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -106,7 +108,7 @@ class VideoViewport extends ConsumerWidget {
             SizedBox(height: 16),
             Text(
               'Loading video...',
-              style: TextStyle(color: Colors.white70, fontSize: 16),
+              style: TextStyle(color: palette.textSecondary, fontSize: 16),
             ),
           ],
         ),
@@ -114,19 +116,19 @@ class VideoViewport extends ConsumerWidget {
     );
   }
 
-  Widget _buildError(String error) {
+  Widget _buildError(String error, AppPalette palette) {
     return Container(
-      color: Colors.grey[900],
+      color: palette.background,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            Icon(Icons.error_outline, size: 64, color: palette.error),
             const SizedBox(height: 16),
             Text(
               'Error loading video',
               style: TextStyle(
-                color: Colors.red[300],
+                color: palette.error,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -137,7 +139,7 @@ class VideoViewport extends ConsumerWidget {
               child: Text(
                 error,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
+                style: TextStyle(color: palette.textSecondary, fontSize: 14),
               ),
             ),
           ],
