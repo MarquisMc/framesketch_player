@@ -203,8 +203,12 @@ class CropControlsPanel extends ConsumerWidget {
 
     if (result != null) {
       await ref.read(annotationProvider.notifier).saveAnnotations();
+      final currentAnnotationData = ref.read(annotationProvider).annotationData;
       // Start export
-      cropNotifier.exportCroppedVideo(result);
+      cropNotifier.exportCroppedVideo(
+        result,
+        annotationData: currentAnnotationData,
+      );
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../../../core/models/video_metadata.dart';
+import '../../../core/services/ffprobe_service.dart';
 import '../../loop/providers/loop_provider.dart';
 import '../../crop/providers/crop_provider.dart';
 
@@ -70,9 +71,41 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<bool>? _playingSubscription;
   StreamSubscription<double>? _volumeSubscription;
+  StreamSubscription<int?>? _widthSubscription;
+  StreamSubscription<int?>? _heightSubscription;
   double _lastNonZeroVolume = 100.0;
+  bool _allowStreamDimensionUpdates = false;
+  int? _streamVideoWidth;
+  int? _streamVideoHeight;
 
   PlayerNotifier(this._ref) : super(const PlayerState());
+
+  void _tryApplyStreamDimensions() {
+    if (!_allowStreamDimensionUpdates) {
+      return;
+    }
+
+    final metadata = state.metadata;
+    if (metadata == null) {
+      return;
+    }
+
+    final width = _streamVideoWidth;
+    final height = _streamVideoHeight;
+    if (width == null || height == null || width <= 0 || height <= 0) {
+      return;
+    }
+
+    if (metadata.width == width && metadata.height == height) {
+      _allowStreamDimensionUpdates = false;
+      return;
+    }
+
+    state = state.copyWith(
+      metadata: metadata.copyWith(width: width, height: height),
+    );
+    _allowStreamDimensionUpdates = false;
+  }
 
   /// Initialize media_kit (call once at app startup)
   static void initializeMediaKit() {
@@ -138,35 +171,74 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         );
       });
 
+      _widthSubscription = player.stream.width.listen((value) {
+        if (value == null || value <= 0) return;
+        _streamVideoWidth = value;
+        _tryApplyStreamDimensions();
+      });
+
+      _heightSubscription = player.stream.height.listen((value) {
+        if (value == null || value <= 0) return;
+        _streamVideoHeight = value;
+        _tryApplyStreamDimensions();
+      });
+
       // Open video first to get metadata from media_kit
       await player.open(Media(filePath));
 
-      // Wait a moment for streams to populate
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Wait for first frame when possible so width/height streams settle.
+      try {
+        await videoController.waitUntilFirstFrameRendered.timeout(
+          const Duration(seconds: 2),
+        );
+      } catch (_) {
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
 
-      // Get metadata from player streams
-      final videoDuration = player.state.duration;
-      final videoWidth = player.state.width;
-      final videoHeight = player.state.height;
+      final snapshot = player.state;
+      final rect = videoController.rect.value;
+      final probeMetadata = await FFprobeService().extractMetadata(filePath);
 
-      // Estimate FPS (default to 30 if not available)
-      // Note: media_kit doesn't directly expose FPS, so we use a reasonable default
-      const double fps = 30.0;
+      final widthFromPlayer =
+          snapshot.width ??
+          snapshot.videoParams.w ??
+          rect?.width.round();
+      final heightFromPlayer =
+          snapshot.height ??
+          snapshot.videoParams.h ??
+          rect?.height.round();
 
-      // Calculate frame count
-      final frameCount = (videoDuration.inSeconds * fps).round();
+      final videoDuration = probeMetadata?.duration ?? snapshot.duration;
+      final fps = (probeMetadata?.fps ?? 0) > 0 ? probeMetadata!.fps : 30.0;
+      final resolvedWidth = (probeMetadata?.width ?? 0) > 0
+          ? probeMetadata!.width
+          : (widthFromPlayer != null && widthFromPlayer > 0 ? widthFromPlayer : 1920);
+      final resolvedHeight = (probeMetadata?.height ?? 0) > 0
+          ? probeMetadata!.height
+          : (heightFromPlayer != null && heightFromPlayer > 0 ? heightFromPlayer : 1080);
+      final frameCount =
+          ((videoDuration.inMicroseconds / 1000000.0) * fps).round();
 
-      // Create metadata from media_kit data
+      // Allow one stream-driven width/height correction only when we had to
+      // fall back to placeholder dimensions.
+      _allowStreamDimensionUpdates =
+          probeMetadata == null &&
+          (widthFromPlayer == null ||
+              widthFromPlayer <= 0 ||
+              heightFromPlayer == null ||
+              heightFromPlayer <= 0);
+
+      // Create metadata from FFprobe/player data
       final metadata = VideoMetadata(
         filePath: filePath,
         duration: videoDuration,
         fps: fps,
-        width: videoWidth ?? 1920,
-        height: videoHeight ?? 1080,
-        codec: 'unknown', // media_kit doesn't expose codec easily
-        format: 'unknown', // media_kit doesn't expose format easily
+        width: resolvedWidth,
+        height: resolvedHeight,
+        codec: probeMetadata?.codec ?? 'unknown',
+        format: probeMetadata?.format ?? 'unknown',
         frameCount: frameCount,
-        timeBase: null,
+        timeBase: probeMetadata?.timeBase,
       );
 
       state = state.copyWith(
@@ -335,17 +407,26 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final durationSubscription = _durationSubscription;
     final playingSubscription = _playingSubscription;
     final volumeSubscription = _volumeSubscription;
+    final widthSubscription = _widthSubscription;
+    final heightSubscription = _heightSubscription;
     final player = state.player;
 
     _positionSubscription = null;
     _durationSubscription = null;
     _playingSubscription = null;
     _volumeSubscription = null;
+    _widthSubscription = null;
+    _heightSubscription = null;
+    _allowStreamDimensionUpdates = false;
+    _streamVideoWidth = null;
+    _streamVideoHeight = null;
 
     await positionSubscription?.cancel();
     await durationSubscription?.cancel();
     await playingSubscription?.cancel();
     await volumeSubscription?.cancel();
+    await widthSubscription?.cancel();
+    await heightSubscription?.cancel();
     await player?.dispose();
   }
 

@@ -19,16 +19,39 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
   DateTime? _lastTapTime;
   Offset? _lastTapPosition;
 
+  Size? _resolveVideoSize() {
+    final playerState = ref.read(playerProvider);
+    final rect = playerState.videoController?.rect.value;
+    if (rect != null && rect.width > 1 && rect.height > 1) {
+      return Size(rect.width, rect.height);
+    }
+
+    final metadata = playerState.metadata;
+    if (metadata == null || metadata.width <= 0 || metadata.height <= 0) {
+      return null;
+    }
+
+    return Size(metadata.width.toDouble(), metadata.height.toDouble());
+  }
+
   @override
   Widget build(BuildContext context) {
     final annotationState = ref.watch(annotationProvider);
     final visibleStrokes = ref.watch(visibleAnnotationStrokesProvider);
-    final videoMetadata = ref.watch(
+    final videoRect = ref.watch(
+      playerProvider.select((state) => state.videoController?.rect.value),
+    );
+    final fallbackMetadata = ref.watch(
       playerProvider.select((state) => state.metadata),
     );
-    final videoSize = videoMetadata == null
-        ? null
-        : Size(videoMetadata.width.toDouble(), videoMetadata.height.toDouble());
+    final videoSize = (videoRect != null && videoRect.width > 1 && videoRect.height > 1)
+        ? Size(videoRect.width, videoRect.height)
+        : (fallbackMetadata == null
+              ? null
+              : Size(
+                  fallbackMetadata.width.toDouble(),
+                  fallbackMetadata.height.toDouble(),
+                ));
 
     // Listen for pending text stroke changes to show dialog
     ref.listen<AnnotationState>(annotationProvider, (previous, next) {
@@ -88,10 +111,7 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
   }
 
   CoordinateTransformer _createTransformer(Size viewportSize) {
-    final metadata = ref.read(playerProvider).metadata;
-    final videoSize = metadata == null
-        ? null
-        : Size(metadata.width.toDouble(), metadata.height.toDouble());
+    final videoSize = _resolveVideoSize();
     return CoordinateTransformer(viewportSize, videoSize: videoSize);
   }
 

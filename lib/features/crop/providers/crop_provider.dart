@@ -692,7 +692,10 @@ class CropNotifier extends StateNotifier<CropState> {
   }
 
   /// Export cropped video using FFmpeg (bundled with media_kit)
-  Future<void> exportCroppedVideo(String outputPath) async {
+  Future<void> exportCroppedVideo(
+    String outputPath, {
+    AnnotationData? annotationData,
+  }) async {
     final playerState = _ref.read(playerProvider);
     if (playerState.currentVideoPath == null || playerState.metadata == null) {
       state = state.copyWith(
@@ -726,7 +729,9 @@ class CropNotifier extends StateNotifier<CropState> {
 
     final normalizedCropFilter = _buildNormalizedCropFilter(state.cropRect);
     final metadata = playerState.metadata!;
-    final annotationData = await AnnotationStorageService().loadAnnotations(inputPath);
+    final effectiveAnnotationData =
+        annotationData ??
+        await AnnotationStorageService().loadAnnotations(inputPath);
 
     state = state.copyWith(
       exportStatus: ExportStatus.preparing,
@@ -753,7 +758,7 @@ class CropNotifier extends StateNotifier<CropState> {
         'framesketch_annotation_overlays_',
       );
       final overlays = await _prepareAnnotationOverlays(
-        annotationData: annotationData,
+        annotationData: effectiveAnnotationData,
         videoWidth: metadata.width,
         videoHeight: metadata.height,
         startMs: startMs,
@@ -778,7 +783,10 @@ class CropNotifier extends StateNotifier<CropState> {
           '-i',
           overlay.path,
         ],
-        if (isSegmentedExport) ...[
+        // Annotation overlays are provided as looped still-image inputs.
+        // For full-range exports, adding an explicit duration prevents FFmpeg
+        // from waiting forever on those looped inputs.
+        if (isSegmentedExport || overlays.isNotEmpty) ...[
           '-t',
           (targetDurationMs / 1000.0).toStringAsFixed(3),
         ],
@@ -820,6 +828,8 @@ class CropNotifier extends StateNotifier<CropState> {
 
       // Start FFmpeg process
       _ffmpegProcess = await Process.start(ffmpegPath, args);
+      // Drain stdout to avoid process pipe backpressure deadlocks.
+      unawaited(_ffmpegProcess!.stdout.drain<void>());
 
       // Track duration for progress calculation
       final durationSeconds = targetDurationMs / 1000.0;

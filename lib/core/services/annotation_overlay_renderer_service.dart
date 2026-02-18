@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:math';
+import 'dart:math' show atan2, cos, sin;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../../features/annotations/models/stroke.dart';
@@ -31,22 +31,9 @@ class OverlayTransform {
   });
 
   Offset toOutputOffset(StrokePoint point) {
-    if (!usesViewportProjection ||
-        viewportWidth <= 0 ||
-        viewportHeight <= 0 ||
-        videoWidthInViewport <= 0 ||
-        videoHeightInViewport <= 0) {
-      return Offset(point.x * outputWidth, point.y * outputHeight);
-    }
-
-    final viewportX = point.x * viewportWidth;
-    final viewportY = point.y * viewportHeight;
-    final normalizedX =
-        (viewportX - videoLeftInViewport) / videoWidthInViewport;
-    final normalizedY =
-        (viewportY - videoTopInViewport) / videoHeightInViewport;
-
-    return Offset(normalizedX * outputWidth, normalizedY * outputHeight);
+    // Annotation points are stored in video-normalized space.
+    // Export should mirror in-app rendering exactly: direct [0..1] mapping.
+    return Offset(point.x * outputWidth, point.y * outputHeight);
   }
 }
 
@@ -98,66 +85,17 @@ class AnnotationOverlayRendererService {
     final safeOutputWidth = outputWidth > 0 ? outputWidth : 1;
     final safeOutputHeight = outputHeight > 0 ? outputHeight : 1;
 
-    final fallbackWidthScale = viewportWidth > 0
-        ? safeOutputWidth / viewportWidth
-        : 1.0;
-    final fallbackHeightScale = viewportHeight > 0
-        ? safeOutputHeight / viewportHeight
-        : 1.0;
-    final fallbackStyleScale = (fallbackWidthScale + fallbackHeightScale) / 2.0;
-
-    if (viewportWidth <= 0 || viewportHeight <= 0) {
-      return OverlayTransform(
-        outputWidth: safeOutputWidth,
-        outputHeight: safeOutputHeight,
-        viewportWidth: viewportWidth,
-        viewportHeight: viewportHeight,
-        videoLeftInViewport: 0.0,
-        videoTopInViewport: 0.0,
-        videoWidthInViewport: viewportWidth.toDouble(),
-        videoHeightInViewport: viewportHeight.toDouble(),
-        styleScaleFactor: fallbackStyleScale,
-        usesViewportProjection: false,
-      );
-    }
-
-    final scaleToViewport = min(
-      viewportWidth / safeOutputWidth,
-      viewportHeight / safeOutputHeight,
-    );
-
-    if (!scaleToViewport.isFinite || scaleToViewport <= 0) {
-      return OverlayTransform(
-        outputWidth: safeOutputWidth,
-        outputHeight: safeOutputHeight,
-        viewportWidth: viewportWidth,
-        viewportHeight: viewportHeight,
-        videoLeftInViewport: 0.0,
-        videoTopInViewport: 0.0,
-        videoWidthInViewport: viewportWidth.toDouble(),
-        videoHeightInViewport: viewportHeight.toDouble(),
-        styleScaleFactor: fallbackStyleScale,
-        usesViewportProjection: false,
-      );
-    }
-
-    final videoWidthInViewport = safeOutputWidth * scaleToViewport;
-    final videoHeightInViewport = safeOutputHeight * scaleToViewport;
-    final videoLeftInViewport = (viewportWidth - videoWidthInViewport) / 2.0;
-    final videoTopInViewport = (viewportHeight - videoHeightInViewport) / 2.0;
-    final styleScaleFactor = 1.0 / scaleToViewport;
-
     return OverlayTransform(
       outputWidth: safeOutputWidth,
       outputHeight: safeOutputHeight,
       viewportWidth: viewportWidth,
       viewportHeight: viewportHeight,
-      videoLeftInViewport: videoLeftInViewport,
-      videoTopInViewport: videoTopInViewport,
-      videoWidthInViewport: videoWidthInViewport,
-      videoHeightInViewport: videoHeightInViewport,
-      styleScaleFactor: styleScaleFactor,
-      usesViewportProjection: true,
+      videoLeftInViewport: 0.0,
+      videoTopInViewport: 0.0,
+      videoWidthInViewport: safeOutputWidth.toDouble(),
+      videoHeightInViewport: safeOutputHeight.toDouble(),
+      styleScaleFactor: 1.0,
+      usesViewportProjection: false,
     );
   }
 

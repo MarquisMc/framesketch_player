@@ -129,17 +129,32 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     : super(const AnnotationState());
 
   double get _effectiveFps {
-    final playerFps = ref.read(playerProvider).metadata?.fps;
-    if (playerFps != null && playerFps > 0) {
-      return playerFps;
-    }
-
     final annotationFps = state.annotationData?.fps;
     if (annotationFps != null && annotationFps > 0) {
       return annotationFps;
     }
 
+    final playerFps = ref.read(playerProvider).metadata?.fps;
+    if (playerFps != null && playerFps > 0) {
+      return playerFps;
+    }
+
     return 30.0;
+  }
+
+  Size? _effectiveVideoSizeForTransform() {
+    final playerState = ref.read(playerProvider);
+    final rect = playerState.videoController?.rect.value;
+    if (rect != null && rect.width > 1 && rect.height > 1) {
+      return Size(rect.width, rect.height);
+    }
+
+    final metadata = playerState.metadata;
+    if (metadata == null || metadata.width <= 0 || metadata.height <= 0) {
+      return null;
+    }
+
+    return Size(metadata.width.toDouble(), metadata.height.toDouble());
   }
 
   int _snapToFrameTimeMs(int positionMs, double fps) {
@@ -242,8 +257,10 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       return data;
     }
 
-    final metadata = ref.read(playerProvider).metadata;
-    if (metadata == null || metadata.width <= 0 || metadata.height <= 0) {
+    final effectiveVideoSize = _effectiveVideoSizeForTransform();
+    if (effectiveVideoSize == null ||
+        effectiveVideoSize.width <= 0 ||
+        effectiveVideoSize.height <= 0) {
       return data;
     }
 
@@ -255,8 +272,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
                   point: point,
                   legacyViewportWidth: data.viewportWidth,
                   legacyViewportHeight: data.viewportHeight,
-                  videoWidth: metadata.width,
-                  videoHeight: metadata.height,
+                  videoWidth: effectiveVideoSize.width.round(),
+                  videoHeight: effectiveVideoSize.height.round(),
                 ),
           )
           .toList();

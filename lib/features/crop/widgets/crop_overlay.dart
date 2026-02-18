@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/utils/coordinate_transformer.dart';
 import '../providers/crop_provider.dart';
 import '../../player/providers/player_provider.dart';
 
@@ -20,6 +21,7 @@ class _CropOverlayState extends ConsumerState<CropOverlay> {
   Widget build(BuildContext context) {
     final cropState = ref.watch(cropProvider);
     final cropNotifier = ref.read(cropProvider.notifier);
+    final playerState = ref.watch(playerProvider);
 
     if (!cropState.isCropModeActive) {
       return const SizedBox.shrink();
@@ -28,12 +30,19 @@ class _CropOverlayState extends ConsumerState<CropOverlay> {
     final rect = cropState.cropRect;
     final vw = widget.viewportSize.width;
     final vh = widget.viewportSize.height;
+    final videoRect = CoordinateTransformer(
+      widget.viewportSize,
+      videoSize: _resolveVideoSize(playerState),
+    ).videoRectInViewport;
+    final safeVideoRect = videoRect.width > 0 && videoRect.height > 0
+        ? videoRect
+        : Rect.fromLTWH(0, 0, vw, vh);
 
     // Convert normalized rect to pixel coordinates
-    final left = rect.left * vw;
-    final top = rect.top * vh;
-    final right = rect.right * vw;
-    final bottom = rect.bottom * vh;
+    final left = safeVideoRect.left + rect.left * safeVideoRect.width;
+    final top = safeVideoRect.top + rect.top * safeVideoRect.height;
+    final right = safeVideoRect.left + rect.right * safeVideoRect.width;
+    final bottom = safeVideoRect.top + rect.bottom * safeVideoRect.height;
     final width = right - left;
     final height = bottom - top;
 
@@ -54,7 +63,10 @@ class _CropOverlayState extends ConsumerState<CropOverlay> {
             onDragStart: cropNotifier.startDrag,
             onDragUpdate: (deltaX, deltaY) {
               // Convert pixel delta to normalized delta
-              cropNotifier.updateDrag(deltaX / vw, deltaY / vh);
+              cropNotifier.updateDrag(
+                safeVideoRect.width == 0 ? 0 : deltaX / safeVideoRect.width,
+                safeVideoRect.height == 0 ? 0 : deltaY / safeVideoRect.height,
+              );
             },
             onDragEnd: cropNotifier.endDrag,
             activeHandle: cropState.activeHandle,
@@ -81,8 +93,8 @@ class _CropOverlayState extends ConsumerState<CropOverlay> {
           bottom: vh - top + 4,
           child: _DimensionLabel(
             cropRect: rect,
-            viewportWidth: vw.toInt(),
-            viewportHeight: vh.toInt(),
+            viewportWidth: safeVideoRect.width.round(),
+            viewportHeight: safeVideoRect.height.round(),
           ),
         ),
       ],
@@ -109,6 +121,20 @@ class _CropOverlayState extends ConsumerState<CropOverlay> {
         ),
       ),
     );
+  }
+
+  Size? _resolveVideoSize(PlayerState playerState) {
+    final rect = playerState.videoController?.rect.value;
+    if (rect != null && rect.width > 1 && rect.height > 1) {
+      return Size(rect.width, rect.height);
+    }
+
+    final metadata = playerState.metadata;
+    if (metadata == null || metadata.width <= 0 || metadata.height <= 0) {
+      return null;
+    }
+
+    return Size(metadata.width.toDouble(), metadata.height.toDouble());
   }
 }
 

@@ -650,7 +650,10 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       }
 
       await ref.read(annotationProvider.notifier).saveAnnotations();
-      await cropNotifier.exportCroppedVideo(outputPath);
+      await cropNotifier.exportCroppedVideo(
+        outputPath,
+        annotationData: ref.read(annotationProvider).annotationData,
+      );
 
       if (!mounted) return;
 
