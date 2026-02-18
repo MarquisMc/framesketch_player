@@ -112,11 +112,17 @@ class AppPalette {
   }
 
   static AppPalette of(BuildContext context) {
+    final themedPalette = Theme.of(
+      context,
+    ).extension<AppPaletteThemeExtension>();
+    if (themedPalette != null) {
+      return themedPalette.palette;
+    }
     return forBrightness(Theme.of(context).brightness);
   }
 
-  static ThemeData themeData(Brightness brightness) {
-    final p = forBrightness(brightness);
+  static ThemeData themeData(Brightness brightness, {AppPalette? palette}) {
+    final p = palette ?? forBrightness(brightness);
     final isDark = brightness == Brightness.dark;
 
     return ThemeData(
@@ -165,6 +171,176 @@ class AppPalette {
           foregroundColor: isDark ? p.textPrimary : Colors.white,
         ),
       ),
+      extensions: <ThemeExtension<dynamic>>[
+        AppPaletteThemeExtension(palette: p),
+      ],
     );
+  }
+
+  static AppPalette fromSeed({
+    required Color seedColor,
+    required Brightness brightness,
+  }) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: brightness,
+    );
+    final isDark = brightness == Brightness.dark;
+
+    return AppPalette(
+      background: isDark ? const Color(0xFF181B20) : const Color(0xFFF4F6FA),
+      panel: isDark ? const Color(0xFF1F232B) : const Color(0xFFFFFFFF),
+      panelElevated: isDark ? const Color(0xFF292F38) : const Color(0xFFE9EEF5),
+      panelOverlay: isDark ? const Color(0x9910151D) : const Color(0xCCDFE6F0),
+      border: scheme.outlineVariant,
+      accent: scheme.primary,
+      accentBright: _shiftLightness(scheme.primary, isDark ? 0.18 : -0.08),
+      accentSoft: scheme.primary.withValues(alpha: isDark ? 0.35 : 0.2),
+      textPrimary: scheme.onSurface,
+      textSecondary: scheme.onSurfaceVariant,
+      textMuted: scheme.outline,
+      textDisabled: scheme.onSurface.withValues(alpha: 0.45),
+      success: isDark ? const Color(0xFF65D491) : const Color(0xFF2B9658),
+      warning: isDark ? const Color(0xFFF4B667) : const Color(0xFFC1711E),
+      error: scheme.error,
+      loopA: _mixColors(
+        scheme.primary,
+        isDark ? const Color(0xFF6ADB9A) : const Color(0xFF2E9E5E),
+        0.45,
+      ),
+      loopB: _mixColors(
+        scheme.primary,
+        isDark ? const Color(0xFFF2B061) : const Color(0xFFC77A22),
+        0.45,
+      ),
+      annotationSwatches: _buildAnnotationSwatches(seedColor),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'background': _colorToInt(background),
+      'panel': _colorToInt(panel),
+      'panelElevated': _colorToInt(panelElevated),
+      'panelOverlay': _colorToInt(panelOverlay),
+      'border': _colorToInt(border),
+      'accent': _colorToInt(accent),
+      'accentBright': _colorToInt(accentBright),
+      'accentSoft': _colorToInt(accentSoft),
+      'textPrimary': _colorToInt(textPrimary),
+      'textSecondary': _colorToInt(textSecondary),
+      'textMuted': _colorToInt(textMuted),
+      'textDisabled': _colorToInt(textDisabled),
+      'success': _colorToInt(success),
+      'warning': _colorToInt(warning),
+      'error': _colorToInt(error),
+      'loopA': _colorToInt(loopA),
+      'loopB': _colorToInt(loopB),
+      'annotationSwatches': annotationSwatches.map(_colorToInt).toList(),
+    };
+  }
+
+  factory AppPalette.fromJson(Map<String, dynamic> json) {
+    final swatchesRaw = json['annotationSwatches'];
+    return AppPalette(
+      background: Color((json['background'] as num).toInt()),
+      panel: Color((json['panel'] as num).toInt()),
+      panelElevated: Color((json['panelElevated'] as num).toInt()),
+      panelOverlay: Color((json['panelOverlay'] as num).toInt()),
+      border: Color((json['border'] as num).toInt()),
+      accent: Color((json['accent'] as num).toInt()),
+      accentBright: Color((json['accentBright'] as num).toInt()),
+      accentSoft: Color((json['accentSoft'] as num).toInt()),
+      textPrimary: Color((json['textPrimary'] as num).toInt()),
+      textSecondary: Color((json['textSecondary'] as num).toInt()),
+      textMuted: Color((json['textMuted'] as num).toInt()),
+      textDisabled: Color((json['textDisabled'] as num).toInt()),
+      success: Color((json['success'] as num).toInt()),
+      warning: Color((json['warning'] as num).toInt()),
+      error: Color((json['error'] as num).toInt()),
+      loopA: Color((json['loopA'] as num).toInt()),
+      loopB: Color((json['loopB'] as num).toInt()),
+      annotationSwatches: swatchesRaw is List
+          ? swatchesRaw.map((value) => Color((value as num).toInt())).toList()
+          : <Color>[
+              Colors.red,
+              Colors.green,
+              Colors.blue,
+              Colors.white,
+              Colors.black,
+              Colors.orange,
+              Colors.purple,
+              Colors.yellow,
+            ],
+    );
+  }
+
+  static int _colorToInt(Color color) {
+    int toChannel(double value) =>
+        (value * 255.0).round().clamp(0, 255).toInt();
+
+    final a = toChannel(color.a);
+    final r = toChannel(color.r);
+    final g = toChannel(color.g);
+    final b = toChannel(color.b);
+
+    return (a << 24) | (r << 16) | (g << 8) | b;
+  }
+
+  static Color _mixColors(Color a, Color b, double amount) {
+    return Color.lerp(a, b, amount) ?? a;
+  }
+
+  static Color _shiftLightness(Color color, double delta) {
+    final hsl = HSLColor.fromColor(color);
+    final lightness = (hsl.lightness + delta).clamp(0.0, 1.0);
+    return hsl.withLightness(lightness).toColor();
+  }
+
+  static List<Color> _buildAnnotationSwatches(Color seedColor) {
+    final hsl = HSLColor.fromColor(seedColor);
+    Color tone(double offset, double saturation, double lightness) {
+      final hue = (hsl.hue + offset) % 360;
+      return HSLColor.fromAHSL(
+        1.0,
+        hue,
+        saturation.clamp(0.0, 1.0),
+        lightness.clamp(0.0, 1.0),
+      ).toColor();
+    }
+
+    return <Color>[
+      tone(0, 0.72, 0.58),
+      tone(120, 0.65, 0.5),
+      tone(210, 0.72, 0.56),
+      tone(45, 0.8, 0.58),
+      tone(20, 0.78, 0.58),
+      tone(280, 0.6, 0.62),
+      const Color(0xFFF8FAFC),
+      const Color(0xFF13161B),
+    ];
+  }
+}
+
+class AppPaletteThemeExtension
+    extends ThemeExtension<AppPaletteThemeExtension> {
+  final AppPalette palette;
+
+  const AppPaletteThemeExtension({required this.palette});
+
+  @override
+  AppPaletteThemeExtension copyWith({AppPalette? palette}) {
+    return AppPaletteThemeExtension(palette: palette ?? this.palette);
+  }
+
+  @override
+  AppPaletteThemeExtension lerp(
+    covariant ThemeExtension<AppPaletteThemeExtension>? other,
+    double t,
+  ) {
+    if (other is! AppPaletteThemeExtension) {
+      return this;
+    }
+    return t < 0.5 ? this : other;
   }
 }
