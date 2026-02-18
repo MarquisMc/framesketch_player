@@ -59,6 +59,7 @@ class KeyboardShortcuts with _$KeyboardShortcuts {
     required KeyboardShortcut selectLineTool,
     required KeyboardShortcut selectArrowTool,
     required KeyboardShortcut selectTextTool,
+    required KeyboardShortcut toggleKeyframeMode,
     // Loop shortcuts
     required KeyboardShortcut toggleFullLoop,
     required KeyboardShortcut setLoopStart,
@@ -116,6 +117,7 @@ final defaultKeyboardShortcuts = KeyboardShortcuts(
   ),
   selectArrowTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyA),
   selectTextTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyT),
+  toggleKeyframeMode: const KeyboardShortcut(key: LogicalKeyboardKey.keyM),
   // Loop shortcuts
   toggleFullLoop: const KeyboardShortcut(key: LogicalKeyboardKey.keyL),
   setLoopStart: const KeyboardShortcut(key: LogicalKeyboardKey.keyI),

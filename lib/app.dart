@@ -41,8 +41,10 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       GlobalKey<ScaffoldMessengerState>();
   late KeyboardShortcuts _shortcuts;
   Timer? _keyRepeatTimer;
+  Timer? _exportIconTimer;
   LogicalKeyboardKey? _lastPressedKey;
   bool _isFullscreen = false;
+  bool _showExportHourglassBottom = false;
 
   @override
   void initState() {
@@ -92,6 +94,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   @override
   void dispose() {
     _keyRepeatTimer?.cancel();
+    _exportIconTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -105,6 +108,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     final cropState = ref.watch(cropProvider);
     final hasVideoLoaded = playerState.currentVideoPath != null;
     final isExporting = cropState.exportStatus == ExportStatus.exporting;
+    _syncExportIconAnimation(isExporting);
 
     return MaterialApp(
       navigatorKey: _navigatorKey,
@@ -130,6 +134,20 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                     title: const Text('FrameSketch Player'),
                     actions: [
                       IconButton(
+                        icon: Icon(
+                          isExporting
+                              ? (_showExportHourglassBottom
+                                    ? Icons.hourglass_bottom
+                                    : Icons.hourglass_top)
+                              : Icons.file_download,
+                        ),
+                        onPressed: hasVideoLoaded && !isExporting
+                            ? _exportVideoFromTopBar
+                            : null,
+                        tooltip: isExporting ? 'Exporting...' : 'Export Video',
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
                         icon: const Icon(Icons.folder_open),
                         onPressed: _openFile,
                         tooltip: 'Open Video (Ctrl+O)',
@@ -138,19 +156,6 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                         icon: const Icon(Icons.save),
                         onPressed: _saveAnnotations,
                         tooltip: 'Save Annotations (Ctrl+S)',
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        onPressed: hasVideoLoaded && !isExporting
-                            ? _exportVideoFromTopBar
-                            : null,
-                        icon: Icon(
-                          isExporting
-                              ? Icons.hourglass_bottom
-                              : Icons.file_download,
-                          size: 18,
-                        ),
-                        label: Text(isExporting ? 'Exporting...' : 'Export'),
                       ),
                       const SizedBox(width: 8),
                       // Crop mode toggle button
@@ -242,6 +247,24 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         ),
       ),
     );
+  }
+
+  void _syncExportIconAnimation(bool isExporting) {
+    if (isExporting) {
+      if (_exportIconTimer != null) return;
+      _showExportHourglassBottom = false;
+      _exportIconTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+        if (!mounted) return;
+        setState(() {
+          _showExportHourglassBottom = !_showExportHourglassBottom;
+        });
+      });
+      return;
+    }
+
+    _exportIconTimer?.cancel();
+    _exportIconTimer = null;
+    _showExportHourglassBottom = false;
   }
 
   KeyEventResult _handleKeyEvent(KeyEvent event) {
@@ -422,6 +445,17 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       // Select text tool (no repeat)
       if (matchesShortcut(_shortcuts.selectTextTool)) {
         annotationNotifier.setTool(DrawingTool.text);
+        return KeyEventResult.handled;
+      }
+
+      // Toggle keyframe creation mode (no repeat)
+      if (matchesShortcut(_shortcuts.toggleKeyframeMode)) {
+        final annotationState = ref.read(annotationProvider);
+        annotationNotifier.setKeyframeCreationMode(
+          annotationState.keyframeCreationMode == KeyframeCreationMode.manual
+              ? KeyframeCreationMode.automatic
+              : KeyframeCreationMode.manual,
+        );
         return KeyEventResult.handled;
       }
     }

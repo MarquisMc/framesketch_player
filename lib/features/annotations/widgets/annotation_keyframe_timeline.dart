@@ -18,7 +18,12 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final playerState = ref.watch(playerProvider);
     final timelineState = ref.watch(annotationKeyframeTimelineProvider);
-    final timelineNotifier = ref.read(annotationKeyframeTimelineProvider.notifier);
+    final timelineNotifier = ref.read(
+      annotationKeyframeTimelineProvider.notifier,
+    );
+    final annotationNotifier = ref.read(annotationProvider.notifier);
+    final keyframeMode = ref.watch(annotationKeyframeModeProvider);
+    final canCreateManualKeyframe = ref.watch(canCreateManualKeyframeProvider);
     final keyframeTimesMs = ref.watch(annotationKeyframeTimesProvider);
     final activeKeyframeMs = ref.watch(activeAnnotationKeyframeProvider);
 
@@ -26,8 +31,8 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
     final duration = playerState.duration;
     final displayPosition =
         timelineState.isScrubbing && timelineState.scrubbingPosition != null
-            ? timelineState.scrubbingPosition!
-            : playerState.position;
+        ? timelineState.scrubbingPosition!
+        : playerState.position;
 
     double sliderValue = 0.0;
     if (hasVideo && duration.inMicroseconds > 0) {
@@ -59,11 +64,69 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
               const SizedBox(width: 12),
               Text(
                 'Count: ${keyframeTimesMs.length}',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: keyframeMode == KeyframeCreationMode.manual
+                    ? 'Manual mode: drawing edits the active keyframe. Use New Frame to create an empty keyframe at the playhead.'
+                    : 'Automatic mode: drawing on a frame automatically creates or uses that frame keyframe.',
+                child: TextButton(
+                  onPressed: () {
+                    annotationNotifier.setKeyframeCreationMode(
+                      keyframeMode == KeyframeCreationMode.manual
+                          ? KeyframeCreationMode.automatic
+                          : KeyframeCreationMode.manual,
+                    );
+                  },
+                  style: TextButton.styleFrom(
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    backgroundColor: keyframeMode == KeyframeCreationMode.manual
+                        ? Colors.amber.withValues(alpha: 0.22)
+                        : Colors.lightBlueAccent.withValues(alpha: 0.2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: Text(
+                    keyframeMode == KeyframeCreationMode.manual
+                        ? 'Manual'
+                        : 'Automatic',
+                    style: TextStyle(
+                      color: keyframeMode == KeyframeCreationMode.manual
+                          ? Colors.amberAccent
+                          : Colors.lightBlueAccent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
+              if (keyframeMode == KeyframeCreationMode.manual) ...[
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: hasVideo && canCreateManualKeyframe
+                      ? () => annotationNotifier
+                            .createManualKeyframeAtCurrentFrame()
+                      : null,
+                  icon: const Icon(Icons.add_circle_outline, size: 16),
+                  label: const Text('New Frame'),
+                  style: TextButton.styleFrom(
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                  ),
+                ),
+              ],
               const Spacer(),
               if (activeKeyframeMs != null)
                 Text(
@@ -98,7 +161,9 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
                         activeTrackColor: Colors.lightBlueAccent,
                         inactiveTrackColor: Colors.grey[700],
                         thumbColor: Colors.blue[200],
-                        overlayColor: Colors.lightBlueAccent.withValues(alpha: 0.3),
+                        overlayColor: Colors.lightBlueAccent.withValues(
+                          alpha: 0.3,
+                        ),
                       ),
                       child: Slider(
                         value: sliderValue,
@@ -113,7 +178,9 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
                                   microseconds:
                                       (value * duration.inMicroseconds).round(),
                                 );
-                                timelineNotifier.updateScrubbingPosition(position);
+                                timelineNotifier.updateScrubbingPosition(
+                                  position,
+                                );
                               }
                             : null,
                         onChangeEnd: hasVideo
@@ -123,7 +190,10 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
                     ),
                     ...keyframeTimesMs.map((keyframeMs) {
                       final normalized = duration.inMilliseconds > 0
-                          ? (keyframeMs / duration.inMilliseconds).clamp(0.0, 1.0)
+                          ? (keyframeMs / duration.inMilliseconds).clamp(
+                              0.0,
+                              1.0,
+                            )
                           : 0.0;
                       final isActive = keyframeMs == activeKeyframeMs;
                       return _KeyframeMarker(
@@ -132,9 +202,9 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
                         isActive: isActive,
                         onTap: hasVideo
                             ? () => timelineNotifier.seekToKeyframeMs(
-                                  keyframeMs,
-                                  fps,
-                                )
+                                keyframeMs,
+                                fps,
+                              )
                             : null,
                       );
                     }),
@@ -183,10 +253,7 @@ class _KeyframeMarker extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: isActive ? Colors.orangeAccent : Colors.lightBlueAccent,
-              border: Border.all(
-                color: Colors.black87,
-                width: 1.5,
-              ),
+              border: Border.all(color: Colors.black87, width: 1.5),
             ),
           ),
         ),

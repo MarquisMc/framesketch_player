@@ -7,6 +7,8 @@ import '../../../core/services/annotation_storage_service.dart';
 import '../../../core/utils/coordinate_transformer.dart';
 import '../../player/providers/player_provider.dart';
 
+enum KeyframeCreationMode { automatic, manual }
+
 /// Annotation state
 class AnnotationState {
   final AnnotationData? annotationData;
@@ -28,6 +30,7 @@ class AnnotationState {
   final String? pendingTextStrokeId;
   final bool isScaling;
   final String? scalingCorner;
+  final KeyframeCreationMode keyframeCreationMode;
 
   const AnnotationState({
     this.annotationData,
@@ -49,6 +52,7 @@ class AnnotationState {
     this.pendingTextStrokeId,
     this.isScaling = false,
     this.scalingCorner,
+    this.keyframeCreationMode = KeyframeCreationMode.automatic,
   });
 
   AnnotationState copyWith({
@@ -76,6 +80,7 @@ class AnnotationState {
     bool? isScaling,
     String? scalingCorner,
     bool clearScalingCorner = false,
+    KeyframeCreationMode? keyframeCreationMode,
   }) {
     return AnnotationState(
       annotationData: annotationData ?? this.annotationData,
@@ -111,6 +116,7 @@ class AnnotationState {
       scalingCorner: clearScalingCorner
           ? null
           : (scalingCorner ?? this.scalingCorner),
+      keyframeCreationMode: keyframeCreationMode ?? this.keyframeCreationMode,
     );
   }
 
@@ -167,6 +173,17 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   int _currentFrameTimeMs() {
     final currentPositionMs = ref.read(playerProvider).position.inMilliseconds;
     return _snapToFrameTimeMs(currentPositionMs, _effectiveFps);
+  }
+
+  int _strokeFrameTimeMs() {
+    final currentPositionMs = ref.read(playerProvider).position.inMilliseconds;
+    if (state.keyframeCreationMode == KeyframeCreationMode.automatic) {
+      return _snapToFrameTimeMs(currentPositionMs, _effectiveFps);
+    }
+
+    final activeKeyframeMs = _activeKeyframeTimeMsAt(currentPositionMs);
+    return activeKeyframeMs ??
+        _snapToFrameTimeMs(currentPositionMs, _effectiveFps);
   }
 
   List<int> _sortedKeyframeTimesMs() {
@@ -295,6 +312,65 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     state = state.copyWith(currentTool: tool);
   }
 
+  /// Toggle whether keyframes are created automatically while drawing.
+  void setKeyframeCreationMode(KeyframeCreationMode mode) {
+    if (state.keyframeCreationMode == mode) return;
+    state = state.copyWith(keyframeCreationMode: mode);
+  }
+
+  /// Creates a keyframe at the current frame in manual mode by duplicating
+  /// no annotation content, matching automatic keyframe behavior.
+  void createManualKeyframeAtCurrentFrame() {
+    if (state.keyframeCreationMode != KeyframeCreationMode.manual ||
+        state.annotationData == null) {
+      return;
+    }
+
+    final currentFrameMs = _currentFrameTimeMs();
+    final keyframes = _sortedKeyframeTimesMs();
+    if (keyframes.contains(currentFrameMs)) {
+      return;
+    }
+
+    final markerStroke = Stroke(
+      id: _uuid.v4(),
+      tool: DrawingTool.text,
+      color: Colors.transparent,
+      strokeWidth: 0,
+      points: const [StrokePoint(x: 0, y: 0)],
+      startTimeMs: currentFrameMs,
+      endTimeMs: currentFrameMs,
+      text: '',
+      fontSize: 1,
+    );
+
+    final updatedData = state.annotationData!.copyWith(
+      strokes: [...state.allStrokes, markerStroke],
+      updatedAt: DateTime.now(),
+    );
+
+    state = state.copyWith(
+      annotationData: updatedData,
+      hasUnsavedChanges: true,
+      redoStack: [],
+    );
+  }
+
+  /// Whether creating a manual keyframe at the current frame is possible.
+  bool canCreateManualKeyframeAtCurrentFrame() {
+    if (state.keyframeCreationMode != KeyframeCreationMode.manual ||
+        state.annotationData == null) {
+      return false;
+    }
+
+    final currentFrameMs = _currentFrameTimeMs();
+    if (_sortedKeyframeTimesMs().contains(currentFrameMs)) {
+      return false;
+    }
+
+    return true;
+  }
+
   /// Set current color
   void setColor(Color color) {
     state = state.copyWith(currentColor: color);
@@ -312,7 +388,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Start drawing a new stroke
   void startStroke(StrokePoint point) {
-    final currentTimeMs = _currentFrameTimeMs();
+    final currentTimeMs = _strokeFrameTimeMs();
 
     // If eraser tool, start erasing strokes instead of drawing
     if (state.currentTool == DrawingTool.eraser) {
@@ -1134,6 +1210,22 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     return _sortedKeyframeTimesMs();
   }
 
+  /// Keyframe targeted by new drawing operations at the given position.
+  int getDrawingTargetKeyframeTimeMs([Duration? position]) {
+    final targetPosition = position ?? ref.read(playerProvider).position;
+    final snappedTargetMs = _snapToFrameTimeMs(
+      targetPosition.inMilliseconds,
+      _effectiveFps,
+    );
+
+    if (state.keyframeCreationMode == KeyframeCreationMode.automatic) {
+      return snappedTargetMs;
+    }
+
+    return _activeKeyframeTimeMsAt(targetPosition.inMilliseconds) ??
+        snappedTargetMs;
+  }
+
   /// Active annotation keyframe at the given playback position.
   int? getActiveKeyframeTimeMs([Duration? position]) {
     final targetPosition = position ?? ref.read(playerProvider).position;
@@ -1153,6 +1245,12 @@ final annotationProvider =
     StateNotifierProvider<AnnotationNotifier, AnnotationState>((ref) {
       return AnnotationNotifier(AnnotationStorageService(), ref);
     });
+
+final annotationKeyframeModeProvider = Provider<KeyframeCreationMode>((ref) {
+  return ref.watch(
+    annotationProvider.select((state) => state.keyframeCreationMode),
+  );
+});
 
 /// Sorted keyframes that contain at least one annotation stroke.
 final annotationKeyframeTimesProvider = Provider<List<int>>((ref) {
@@ -1174,4 +1272,21 @@ final visibleAnnotationStrokesProvider = Provider<List<Stroke>>((ref) {
   ref.watch(annotationProvider);
   final position = ref.watch(playerProvider.select((state) => state.position));
   return ref.read(annotationProvider.notifier).getVisibleStrokes(position);
+});
+
+/// The frame that new drawing actions will target.
+final drawingTargetAnnotationKeyframeProvider = Provider<int>((ref) {
+  ref.watch(annotationProvider);
+  final position = ref.watch(playerProvider.select((state) => state.position));
+  return ref
+      .read(annotationProvider.notifier)
+      .getDrawingTargetKeyframeTimeMs(position);
+});
+
+/// Whether the manual "new keyframe" action is currently available.
+final canCreateManualKeyframeProvider = Provider<bool>((ref) {
+  ref.watch(annotationProvider);
+  return ref
+      .read(annotationProvider.notifier)
+      .canCreateManualKeyframeAtCurrentFrame();
 });
