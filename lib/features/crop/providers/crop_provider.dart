@@ -89,11 +89,7 @@ class CropRect {
   });
 
   /// Create a default crop rect covering the entire video
-  const CropRect.full()
-      : left = 0.0,
-        top = 0.0,
-        right = 1.0,
-        bottom = 1.0;
+  const CropRect.full() : left = 0.0, top = 0.0, right = 1.0, bottom = 1.0;
 
   /// Width as a normalized value (0-1)
   double get width => right - left;
@@ -145,7 +141,10 @@ class CropRect {
   }
 
   /// Convert to pixel values given video dimensions
-  ({int x, int y, int width, int height}) toPixels(int videoWidth, int videoHeight) {
+  ({int x, int y, int width, int height}) toPixels(
+    int videoWidth,
+    int videoHeight,
+  ) {
     return (
       x: (left * videoWidth).round(),
       y: (top * videoHeight).round(),
@@ -161,14 +160,7 @@ class CropRect {
 }
 
 /// Export status for tracking FFmpeg progress
-enum ExportStatus {
-  idle,
-  preparing,
-  exporting,
-  success,
-  cancelled,
-  error,
-}
+enum ExportStatus { idle, preparing, exporting, success, cancelled, error }
 
 /// State for crop functionality
 class CropState {
@@ -236,7 +228,9 @@ class CropState {
       isCropModeActive: isCropModeActive ?? this.isCropModeActive,
       cropRect: cropRect ?? this.cropRect,
       aspectRatio: aspectRatio ?? this.aspectRatio,
-      activeHandle: clearActiveHandle ? null : (activeHandle ?? this.activeHandle),
+      activeHandle: clearActiveHandle
+          ? null
+          : (activeHandle ?? this.activeHandle),
       exportStatus: exportStatus ?? this.exportStatus,
       exportProgress: exportProgress ?? this.exportProgress,
       exportError: clearExportError ? null : (exportError ?? this.exportError),
@@ -426,23 +420,47 @@ class CropNotifier extends StateNotifier<CropState> {
         break;
 
       case CropHandle.topLeft:
-        rect = _resizeFromCorner(rect, deltaX, deltaY, targetRatio,
-            anchorRight: true, anchorBottom: true);
+        rect = _resizeFromCorner(
+          rect,
+          deltaX,
+          deltaY,
+          targetRatio,
+          anchorRight: true,
+          anchorBottom: true,
+        );
         break;
 
       case CropHandle.topRight:
-        rect = _resizeFromCorner(rect, deltaX, deltaY, targetRatio,
-            anchorLeft: true, anchorBottom: true);
+        rect = _resizeFromCorner(
+          rect,
+          deltaX,
+          deltaY,
+          targetRatio,
+          anchorLeft: true,
+          anchorBottom: true,
+        );
         break;
 
       case CropHandle.bottomLeft:
-        rect = _resizeFromCorner(rect, deltaX, deltaY, targetRatio,
-            anchorRight: true, anchorTop: true);
+        rect = _resizeFromCorner(
+          rect,
+          deltaX,
+          deltaY,
+          targetRatio,
+          anchorRight: true,
+          anchorTop: true,
+        );
         break;
 
       case CropHandle.bottomRight:
-        rect = _resizeFromCorner(rect, deltaX, deltaY, targetRatio,
-            anchorLeft: true, anchorTop: true);
+        rect = _resizeFromCorner(
+          rect,
+          deltaX,
+          deltaY,
+          targetRatio,
+          anchorLeft: true,
+          anchorTop: true,
+        );
         break;
 
       case CropHandle.top:
@@ -534,10 +552,13 @@ class CropNotifier extends StateNotifier<CropState> {
     double newRight = rect.right;
     double newBottom = rect.bottom;
 
-    if (!anchorLeft) newLeft = (rect.left + deltaX).clamp(0.0, rect.right - 0.05);
-    if (!anchorRight) newRight = (rect.right + deltaX).clamp(rect.left + 0.05, 1.0);
+    if (!anchorLeft)
+      newLeft = (rect.left + deltaX).clamp(0.0, rect.right - 0.05);
+    if (!anchorRight)
+      newRight = (rect.right + deltaX).clamp(rect.left + 0.05, 1.0);
     if (!anchorTop) newTop = (rect.top + deltaY).clamp(0.0, rect.bottom - 0.05);
-    if (!anchorBottom) newBottom = (rect.bottom + deltaY).clamp(rect.top + 0.05, 1.0);
+    if (!anchorBottom)
+      newBottom = (rect.bottom + deltaY).clamp(rect.top + 0.05, 1.0);
 
     if (targetRatio != null) {
       // Maintain aspect ratio - use the larger dimension change
@@ -583,18 +604,12 @@ class CropNotifier extends StateNotifier<CropState> {
   }
 
   /// Set export segment range. Pass null values for full-range defaults.
-  void setExportRange({
-    Duration? start,
-    Duration? end,
-  }) {
+  void setExportRange({Duration? start, Duration? end}) {
     final playerState = _ref.read(playerProvider);
     final fullDuration = playerState.duration;
 
     if (fullDuration <= Duration.zero) {
-      state = state.copyWith(
-        exportStart: start,
-        exportEnd: end,
-      );
+      state = state.copyWith(exportStart: start, exportEnd: end);
       return;
     }
 
@@ -627,10 +642,7 @@ class CropNotifier extends StateNotifier<CropState> {
 
   /// Reset export segment to full video range.
   void resetExportRange() {
-    state = state.copyWith(
-      clearExportStart: true,
-      clearExportEnd: true,
-    );
+    state = state.copyWith(clearExportStart: true, clearExportEnd: true);
   }
 
   /// Find FFmpeg executable (bundled with media_kit or system)
@@ -652,7 +664,14 @@ class CropNotifier extends StateNotifier<CropState> {
       // Check for FFmpeg in the same directory as the exe
       final possiblePaths = [
         path.join(exeDir, 'ffmpeg.exe'),
-        path.join(exeDir, 'data', 'flutter_assets', 'packages', 'media_kit_libs_windows_video', 'ffmpeg.exe'),
+        path.join(
+          exeDir,
+          'data',
+          'flutter_assets',
+          'packages',
+          'media_kit_libs_windows_video',
+          'ffmpeg.exe',
+        ),
       ];
 
       for (final ffmpegPath in possiblePaths) {
@@ -676,10 +695,7 @@ class CropNotifier extends StateNotifier<CropState> {
         }
       }
     } else if (Platform.isLinux) {
-      final possiblePaths = [
-        '/usr/bin/ffmpeg',
-        '/usr/local/bin/ffmpeg',
-      ];
+      final possiblePaths = ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg'];
 
       for (final ffmpegPath in possiblePaths) {
         if (await File(ffmpegPath).exists()) {
@@ -728,10 +744,17 @@ class CropNotifier extends StateNotifier<CropState> {
     }
 
     final normalizedCropFilter = _buildNormalizedCropFilter(state.cropRect);
+    final isFullFrameCrop = _isFullFrameCrop(state.cropRect);
     final metadata = playerState.metadata!;
     final effectiveAnnotationData =
         annotationData ??
         await AnnotationStorageService().loadAnnotations(inputPath);
+    final hasActiveAnnotations = _hasAnnotationsInRange(
+      annotationData: effectiveAnnotationData,
+      startMs: startMs,
+      endMs: endMs,
+    );
+    final useStreamCopy = isFullFrameCrop && !hasActiveAnnotations;
 
     state = state.copyWith(
       exportStatus: ExportStatus.preparing,
@@ -749,80 +772,130 @@ class CropNotifier extends StateNotifier<CropState> {
       if (ffmpegPath == null) {
         state = state.copyWith(
           exportStatus: ExportStatus.error,
-          exportError: 'FFmpeg not found. Please ensure media_kit libraries are properly installed.',
+          exportError:
+              'FFmpeg not found. Please ensure media_kit libraries are properly installed.',
         );
         return;
       }
 
-      overlayTempDir = await Directory.systemTemp.createTemp(
-        'framesketch_annotation_overlays_',
-      );
-      final overlays = await _prepareAnnotationOverlays(
-        annotationData: effectiveAnnotationData,
-        videoWidth: metadata.width,
-        videoHeight: metadata.height,
-        startMs: startMs,
-        endMs: endMs,
-        tempDir: overlayTempDir,
-      );
-
-      // Build FFmpeg arguments
-      final args = [
-        '-hide_banner',
-        '-fflags',
-        '+genpts',
-        if (startMs > 0) ...[
-          '-ss',
-          (startMs / 1000.0).toStringAsFixed(3),
-        ],
-        '-i',
-        inputPath,
-        for (final overlay in overlays) ...[
-          '-loop',
-          '1',
-          '-i',
-          overlay.path,
-        ],
-        // Annotation overlays are provided as looped still-image inputs.
-        // For full-range exports, adding an explicit duration prevents FFmpeg
-        // from waiting forever on those looped inputs.
-        if (isSegmentedExport || overlays.isNotEmpty) ...[
-          '-t',
-          (targetDurationMs / 1000.0).toStringAsFixed(3),
-        ],
-        if (overlays.isNotEmpty) ...[
-          '-filter_complex',
-          _buildFilterComplex(
-            overlays: overlays,
-            cropFilter: normalizedCropFilter,
+      final overlays = <_TimedOverlay>[];
+      if (!useStreamCopy) {
+        overlayTempDir = await Directory.systemTemp.createTemp(
+          'framesketch_annotation_overlays_',
+        );
+        overlays.addAll(
+          await _prepareAnnotationOverlays(
+            annotationData: effectiveAnnotationData,
+            videoWidth: metadata.width,
+            videoHeight: metadata.height,
+            startMs: startMs,
+            endMs: endMs,
+            tempDir: overlayTempDir,
           ),
-          '-map', '[vout]',
-        ] else ...[
-          '-vf',
-          '$normalizedCropFilter,setsar=1',
-          '-map',
-          '0:v:0',
-        ],
-        '-map', '0:a:0?',
-        // Use broadly compatible encoding so exported files open reliably
-        // in default OS players outside the app.
-        '-c:v', 'libx264',
-        '-preset', 'medium',
-        '-crf', '20',
-        '-profile:v', 'baseline',
-        '-level', '3.0',
-        '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac',
-        '-profile:a', 'aac_low',
-        '-ar', '44100',
-        '-ac', '2',
-        '-b:a', '192k',
-        '-f', 'mp4',
-        '-movflags', '+faststart',
-        '-avoid_negative_ts', 'make_zero',
-        '-y', // Overwrite output
-        normalizedOutputPath,
-      ];
+        );
+      }
+
+      // Smart export strategy:
+      // 1) Stream copy when no visual transform is needed for same quality + speed.
+      // 2) Re-encode only when crop/overlay processing is required.
+      final args = useStreamCopy
+          ? <String>[
+              '-hide_banner',
+              if (startMs > 0) ...[
+                '-ss',
+                (startMs / 1000.0).toStringAsFixed(3),
+              ],
+              '-i',
+              inputPath,
+              if (isSegmentedExport) ...[
+                '-t',
+                (targetDurationMs / 1000.0).toStringAsFixed(3),
+              ],
+              '-map',
+              '0:v:0',
+              '-map',
+              '0:a:0?',
+              '-c',
+              'copy',
+              '-movflags',
+              '+faststart',
+              '-avoid_negative_ts',
+              'make_zero',
+              '-y',
+              normalizedOutputPath,
+            ]
+          : <String>[
+              '-hide_banner',
+              '-fflags',
+              '+genpts',
+              if (startMs > 0) ...[
+                '-ss',
+                (startMs / 1000.0).toStringAsFixed(3),
+              ],
+              '-i',
+              inputPath,
+              for (final overlay in overlays) ...[
+                '-loop',
+                '1',
+                '-i',
+                overlay.path,
+              ],
+              // Annotation overlays are provided as looped still-image inputs.
+              // For full-range exports, adding an explicit duration prevents FFmpeg
+              // from waiting forever on those looped inputs.
+              if (isSegmentedExport || overlays.isNotEmpty) ...[
+                '-t',
+                (targetDurationMs / 1000.0).toStringAsFixed(3),
+              ],
+              if (overlays.isNotEmpty) ...[
+                '-filter_complex',
+                _buildFilterComplex(
+                  overlays: overlays,
+                  cropFilter: normalizedCropFilter,
+                ),
+                '-map',
+                '[vout]',
+              ] else ...[
+                '-vf',
+                '$normalizedCropFilter,setsar=1',
+                '-map',
+                '0:v:0',
+              ],
+              '-map',
+              '0:a:0?',
+              // Use broadly compatible encoding so exported files open reliably
+              // in default OS players outside the app.
+              '-c:v',
+              'libx264',
+              '-preset',
+              'medium',
+              '-crf',
+              '20',
+              '-profile:v',
+              'baseline',
+              '-level',
+              '3.0',
+              '-pix_fmt',
+              'yuv420p',
+              '-c:a',
+              'aac',
+              '-profile:a',
+              'aac_low',
+              '-ar',
+              '44100',
+              '-ac',
+              '2',
+              '-b:a',
+              '192k',
+              '-f',
+              'mp4',
+              '-movflags',
+              '+faststart',
+              '-avoid_negative_ts',
+              'make_zero',
+              '-y', // Overwrite output
+              normalizedOutputPath,
+            ];
 
       state = state.copyWith(exportStatus: ExportStatus.exporting);
 
@@ -836,11 +909,15 @@ class CropNotifier extends StateNotifier<CropState> {
 
       // Monitor stderr for progress (FFmpeg outputs progress to stderr)
       final stderrLines = <String>[];
-      _ffmpegProcess!.stderr.transform(const SystemEncoding().decoder).listen((data) {
+      _ffmpegProcess!.stderr.transform(const SystemEncoding().decoder).listen((
+        data,
+      ) {
         stderrLines.add(data);
 
         // Parse progress: look for "time=" in output
-        final timeMatch = RegExp(r'time=(\d+):(\d+):(\d+\.\d+)').firstMatch(data);
+        final timeMatch = RegExp(
+          r'time=(\d+):(\d+):(\d+\.\d+)',
+        ).firstMatch(data);
         if (timeMatch != null && durationSeconds > 0) {
           final hours = int.parse(timeMatch.group(1)!);
           final minutes = int.parse(timeMatch.group(2)!);
@@ -873,10 +950,15 @@ class CropNotifier extends StateNotifier<CropState> {
           return;
         }
 
-        final validation = await Process.run(
-          ffmpegPath,
-          ['-v', 'error', '-i', normalizedOutputPath, '-f', 'null', '-'],
-        );
+        final validation = await Process.run(ffmpegPath, [
+          '-v',
+          'error',
+          '-i',
+          normalizedOutputPath,
+          '-f',
+          'null',
+          '-',
+        ]);
         if (validation.exitCode != 0) {
           final validationOutput = (validation.stderr ?? '').toString();
           final validationMessage = validationOutput.isEmpty
@@ -932,6 +1014,35 @@ class CropNotifier extends StateNotifier<CropState> {
     }
   }
 
+  bool _isFullFrameCrop(CropRect rect) {
+    const epsilon = 0.0005;
+    return rect.left.abs() <= epsilon &&
+        rect.top.abs() <= epsilon &&
+        (1.0 - rect.right).abs() <= epsilon &&
+        (1.0 - rect.bottom).abs() <= epsilon;
+  }
+
+  bool _hasAnnotationsInRange({
+    required AnnotationData? annotationData,
+    required int startMs,
+    required int endMs,
+  }) {
+    if (annotationData == null || annotationData.strokes.isEmpty) return false;
+
+    for (final stroke in annotationData.strokes) {
+      final strokeStart = stroke.startTimeMs;
+      final strokeEnd = stroke.endTimeMs > strokeStart
+          ? stroke.endTimeMs
+          : strokeStart + 1;
+      if (strokeEnd <= startMs || strokeStart >= endMs) {
+        continue;
+      }
+      return true;
+    }
+
+    return false;
+  }
+
   Future<List<_TimedOverlay>> _prepareAnnotationOverlays({
     required AnnotationData? annotationData,
     required int videoWidth,
@@ -964,7 +1075,9 @@ class CropNotifier extends StateNotifier<CropState> {
 
     for (int i = 0; i < keyframes.length; i++) {
       final keyframeMs = keyframes[i];
-      final nextKeyframeMs = i + 1 < keyframes.length ? keyframes[i + 1] : endMs;
+      final nextKeyframeMs = i + 1 < keyframes.length
+          ? keyframes[i + 1]
+          : endMs;
 
       final intervalStartMs = keyframeMs > startMs ? keyframeMs : startMs;
       final intervalEndMs = nextKeyframeMs < endMs ? nextKeyframeMs : endMs;
@@ -1046,14 +1159,19 @@ class CropNotifier extends StateNotifier<CropState> {
     final extension = path.extension(trimmed).toLowerCase();
 
     final hasValidExtension =
-        extension.isNotEmpty && extension != '.' && RegExp(r'^\.[a-z0-9]+$').hasMatch(extension);
+        extension.isNotEmpty &&
+        extension != '.' &&
+        RegExp(r'^\.[a-z0-9]+$').hasMatch(extension);
 
     if (!hasValidExtension) {
       return '${trimmed.replaceAll(RegExp(r'[. ]+$'), '')}.mp4';
     }
 
     if (extension != '.mp4') {
-      final withoutExt = trimmed.substring(0, trimmed.length - extension.length);
+      final withoutExt = trimmed.substring(
+        0,
+        trimmed.length - extension.length,
+      );
       return '$withoutExt.mp4';
     }
 
