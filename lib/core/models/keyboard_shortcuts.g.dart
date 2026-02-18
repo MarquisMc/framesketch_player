@@ -80,6 +80,9 @@ _$KeyboardShortcutsImpl _$$KeyboardShortcutsImplFromJson(
   toggleKeyframeMode: KeyboardShortcut.fromJson(
     json['toggleKeyframeMode'] as Map<String, dynamic>,
   ),
+  createManualKeyframe: KeyboardShortcut.fromJson(
+    json['createManualKeyframe'] as Map<String, dynamic>,
+  ),
   toggleFullLoop: KeyboardShortcut.fromJson(
     json['toggleFullLoop'] as Map<String, dynamic>,
   ),
@@ -126,6 +129,7 @@ Map<String, dynamic> _$$KeyboardShortcutsImplToJson(
   'selectArrowTool': instance.selectArrowTool,
   'selectTextTool': instance.selectTextTool,
   'toggleKeyframeMode': instance.toggleKeyframeMode,
+  'createManualKeyframe': instance.createManualKeyframe,
   'toggleFullLoop': instance.toggleFullLoop,
   'setLoopStart': instance.setLoopStart,
   'setLoopEnd': instance.setLoopEnd,

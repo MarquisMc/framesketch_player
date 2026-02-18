@@ -46,6 +46,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   Timer? _keyRepeatTimer;
   Timer? _exportIconTimer;
   LogicalKeyboardKey? _lastPressedKey;
+  int _keyRepeatGeneration = 0;
   bool _isFullscreen = false;
   bool _showExportHourglassBottom = false;
   AppPalette get _activePalette =>
@@ -114,6 +115,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     );
     final hasVideoLoaded = ref.watch(
       playerProvider.select((state) => state.currentVideoPath != null),
+    );
+    final isCropModeActive = ref.watch(
+      cropProvider.select((state) => state.isCropModeActive),
     );
     final isExporting = ref.watch(
       cropProvider.select(
@@ -252,7 +256,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                       ),
 
                       // Drawing tools panel
-                      if (!_isFullscreen) const DrawingToolsPanel(),
+                      if (!_isFullscreen && !isCropModeActive)
+                        const DrawingToolsPanel(),
                     ],
                   ),
                 ),
@@ -317,26 +322,38 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
           isAlt == shortcut.altPressed;
     }
 
-    // Helper to start key repeat
-    void startKeyRepeat(VoidCallback action, {Duration? interval}) {
+    // Helper to start key repeat.
+    // Repeats are chained after each action completes, so seeks never overlap.
+    void startKeyRepeat(Future<void> Function() action, {Duration? interval}) {
+      // Ignore OS key-repeat KeyDown events while this key is already active.
+      if (_lastPressedKey == event.logicalKey) {
+        return;
+      }
+
       _keyRepeatTimer?.cancel();
       _lastPressedKey = event.logicalKey;
+      final generation = ++_keyRepeatGeneration;
+      final repeatInterval = interval ?? const Duration(milliseconds: 50);
 
-      // Execute immediately
-      action();
+      Future<void> runAndSchedule({required bool initial}) async {
+        if (generation != _keyRepeatGeneration) return;
+        await action();
+        if (generation != _keyRepeatGeneration) return;
 
-      // Start repeating after initial delay
-      _keyRepeatTimer = Timer(const Duration(milliseconds: 500), () {
-        _keyRepeatTimer = Timer.periodic(
-          interval ?? const Duration(milliseconds: 50),
-          (timer) => action(),
+        _keyRepeatTimer = Timer(
+          initial ? const Duration(milliseconds: 500) : repeatInterval,
+          () => unawaited(runAndSchedule(initial: false)),
         );
-      });
+      }
+
+      // Execute immediately, then schedule repeat chain.
+      unawaited(runAndSchedule(initial: true));
     }
 
     // Handle key up events - stop repeat
     if (event is KeyUpEvent) {
       if (_lastPressedKey == event.logicalKey) {
+        _keyRepeatGeneration++;
         _keyRepeatTimer?.cancel();
         _keyRepeatTimer = null;
         _lastPressedKey = null;
@@ -356,13 +373,13 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     if (_shortcuts.generalShortcutsEnabled) {
       // Next frame (with repeat)
       if (matchesShortcut(_shortcuts.nextFrame)) {
-        startKeyRepeat(() => playerNotifier.stepForward());
+        startKeyRepeat(() async => playerNotifier.stepForward());
         return KeyEventResult.handled;
       }
 
       // Previous frame (with repeat)
       if (matchesShortcut(_shortcuts.previousFrame)) {
-        startKeyRepeat(() => playerNotifier.stepBackward());
+        startKeyRepeat(() async => playerNotifier.stepBackward());
         return KeyEventResult.handled;
       }
 
@@ -375,7 +392,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       // Jump forward (with repeat, slower)
       if (matchesShortcut(_shortcuts.jumpForward)) {
         startKeyRepeat(
-          () => playerNotifier.jumpForward(const Duration(seconds: 1)),
+          () async => playerNotifier.jumpForward(const Duration(seconds: 1)),
           interval: const Duration(milliseconds: 100),
         );
         return KeyEventResult.handled;
@@ -384,7 +401,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       // Jump backward (with repeat, slower)
       if (matchesShortcut(_shortcuts.jumpBackward)) {
         startKeyRepeat(
-          () => playerNotifier.jumpBackward(const Duration(seconds: 1)),
+          () async => playerNotifier.jumpBackward(const Duration(seconds: 1)),
           interval: const Duration(milliseconds: 100),
         );
         return KeyEventResult.handled;
@@ -487,6 +504,12 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
               ? KeyframeCreationMode.automatic
               : KeyframeCreationMode.manual,
         );
+        return KeyEventResult.handled;
+      }
+
+      // Create manual keyframe at current frame (no repeat)
+      if (matchesShortcut(_shortcuts.createManualKeyframe)) {
+        annotationNotifier.createManualKeyframeAtCurrentFrame();
         return KeyEventResult.handled;
       }
     }

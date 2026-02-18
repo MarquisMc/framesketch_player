@@ -7,19 +7,86 @@ import '../providers/annotation_keyframe_timeline_provider.dart';
 import '../providers/annotation_provider.dart';
 
 /// Separate timeline for annotation keyframes.
-class AnnotationKeyframeTimeline extends ConsumerWidget {
+class AnnotationKeyframeTimeline extends ConsumerStatefulWidget {
   const AnnotationKeyframeTimeline({super.key});
+
+  @override
+  ConsumerState<AnnotationKeyframeTimeline> createState() =>
+      _AnnotationKeyframeTimelineState();
+}
+
+class _AnnotationKeyframeTimelineState
+    extends ConsumerState<AnnotationKeyframeTimeline> {
+  int? _draggingKeyframeMs;
+  double? _draggingNormalizedPosition;
+  bool _dragMoved = false;
 
   int _frameFromMs(int milliseconds, double fps) {
     if (fps <= 0) return 0;
     return ((milliseconds / 1000.0) * fps).round();
   }
 
+  void _startKeyframeDrag(int keyframeMs, double normalizedPosition) {
+    setState(() {
+      _draggingKeyframeMs = keyframeMs;
+      _draggingNormalizedPosition = normalizedPosition.clamp(0.0, 1.0);
+      _dragMoved = false;
+    });
+  }
+
+  void _updateKeyframeDrag(double deltaDx, double trackWidth) {
+    final draggingNormalizedPosition = _draggingNormalizedPosition;
+    if (draggingNormalizedPosition == null) return;
+
+    const horizontalPadding = 12.0;
+    final effectiveWidth = (trackWidth - (horizontalPadding * 2)).clamp(
+      1.0,
+      double.infinity,
+    );
+    final deltaNormalized = deltaDx / effectiveWidth;
+
+    setState(() {
+      _draggingNormalizedPosition =
+          (draggingNormalizedPosition + deltaNormalized).clamp(0.0, 1.0);
+      _dragMoved = true;
+    });
+  }
+
+  void _endKeyframeDrag(Duration duration) {
+    final fromKeyframeMs = _draggingKeyframeMs;
+    final normalizedPosition = _draggingNormalizedPosition;
+    if (fromKeyframeMs == null || normalizedPosition == null) {
+      return _clearKeyframeDragState();
+    }
+
+    if (duration.inMilliseconds <= 0) {
+      return _clearKeyframeDragState();
+    }
+
+    final toKeyframeMs = (normalizedPosition * duration.inMilliseconds).round();
+    ref
+        .read(annotationProvider.notifier)
+        .moveKeyframe(
+          fromKeyframeMs: fromKeyframeMs,
+          toKeyframeMs: toKeyframeMs,
+        );
+
+    _clearKeyframeDragState();
+  }
+
+  void _clearKeyframeDragState() {
+    if (!mounted) return;
+    setState(() {
+      _draggingKeyframeMs = null;
+      _draggingNormalizedPosition = null;
+      _dragMoved = false;
+    });
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
     final playerState = ref.watch(playerProvider);
-    final timelineState = ref.watch(annotationKeyframeTimelineProvider);
     final timelineNotifier = ref.read(
       annotationKeyframeTimelineProvider.notifier,
     );
@@ -31,10 +98,7 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
 
     final hasVideo = playerState.player != null;
     final duration = playerState.duration;
-    final displayPosition =
-        timelineState.isScrubbing && timelineState.scrubbingPosition != null
-        ? timelineState.scrubbingPosition!
-        : playerState.position;
+    final displayPosition = playerState.position;
 
     double sliderValue = 0.0;
     if (hasVideo && duration.inMicroseconds > 0) {
@@ -165,46 +229,78 @@ class AnnotationKeyframeTimeline extends ConsumerWidget {
                         thumbColor: palette.accentBright,
                         overlayColor: palette.accentSoft,
                       ),
-                      child: Slider(
-                        value: sliderValue,
-                        min: 0.0,
-                        max: 1.0,
-                        onChangeStart: hasVideo
-                            ? (_) => timelineNotifier.startScrubbing()
-                            : null,
-                        onChanged: hasVideo
-                            ? (value) {
-                                final position = Duration(
-                                  microseconds:
-                                      (value * duration.inMicroseconds).round(),
-                                );
-                                timelineNotifier.updateScrubbingPosition(
-                                  position,
-                                );
-                              }
-                            : null,
-                        onChangeEnd: hasVideo
-                            ? (_) => timelineNotifier.endScrubbing()
-                            : null,
+                      child: IgnorePointer(
+                        // Annotation timeline is read-only for scrubbing.
+                        // Playback timeline controls position; keyframe markers
+                        // remain interactive for exact keyframe jumps.
+                        child: Slider(
+                          value: sliderValue,
+                          min: 0.0,
+                          max: 1.0,
+                          onChangeStart: hasVideo
+                              ? (_) => timelineNotifier.startScrubbing()
+                              : null,
+                          onChanged: hasVideo
+                              ? (value) {
+                                  final position = Duration(
+                                    microseconds:
+                                        (value * duration.inMicroseconds)
+                                            .round(),
+                                  );
+                                  timelineNotifier.updateScrubbingPosition(
+                                    position,
+                                  );
+                                }
+                              : null,
+                          onChangeEnd: hasVideo
+                              ? (_) => timelineNotifier.endScrubbing()
+                              : null,
+                        ),
                       ),
                     ),
                     ...keyframeTimesMs.map((keyframeMs) {
-                      final normalized = duration.inMilliseconds > 0
+                      final computedNormalized = duration.inMilliseconds > 0
                           ? (keyframeMs / duration.inMilliseconds).clamp(
                               0.0,
                               1.0,
                             )
                           : 0.0;
+                      final isBeingDragged = keyframeMs == _draggingKeyframeMs;
+                      final normalized =
+                          isBeingDragged && _draggingNormalizedPosition != null
+                          ? _draggingNormalizedPosition!
+                          : computedNormalized;
                       final isActive = keyframeMs == activeKeyframeMs;
                       return _KeyframeMarker(
                         normalizedPosition: normalized,
                         trackWidth: trackWidth,
                         isActive: isActive,
-                        onTap: hasVideo
-                            ? () => timelineNotifier.seekToKeyframeMs(
+                        isDragging: isBeingDragged,
+                        onDragStart: hasVideo
+                            ? () => _startKeyframeDrag(
                                 keyframeMs,
-                                fps,
+                                computedNormalized,
                               )
+                            : null,
+                        onDragUpdate: hasVideo
+                            ? (deltaDx) =>
+                                  _updateKeyframeDrag(deltaDx, trackWidth)
+                            : null,
+                        onDragEnd: hasVideo
+                            ? () => _endKeyframeDrag(duration)
+                            : null,
+                        onTap: hasVideo
+                            ? () {
+                                // Ignore tap if this interaction was a drag.
+                                if (_dragMoved) {
+                                  _dragMoved = false;
+                                  return;
+                                }
+                                timelineNotifier.seekToKeyframeMs(
+                                  keyframeMs,
+                                  fps,
+                                );
+                              }
                             : null,
                       );
                     }),
@@ -223,12 +319,20 @@ class _KeyframeMarker extends StatelessWidget {
   final double normalizedPosition;
   final double trackWidth;
   final bool isActive;
+  final bool isDragging;
+  final VoidCallback? onDragStart;
+  final ValueChanged<double>? onDragUpdate;
+  final VoidCallback? onDragEnd;
   final VoidCallback? onTap;
 
   const _KeyframeMarker({
     required this.normalizedPosition,
     required this.trackWidth,
     required this.isActive,
+    required this.isDragging,
+    this.onDragStart,
+    this.onDragUpdate,
+    this.onDragEnd,
     this.onTap,
   });
 
@@ -243,9 +347,22 @@ class _KeyframeMarker extends StatelessWidget {
       left: xPosition - 6,
       top: 9,
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: onDragStart != null
+            ? (_) => onDragStart!()
+            : null,
+        onHorizontalDragUpdate: onDragUpdate != null
+            ? (details) => onDragUpdate!(details.delta.dx)
+            : null,
+        onHorizontalDragEnd: onDragEnd != null ? (_) => onDragEnd!() : null,
+        onHorizontalDragCancel: onDragEnd,
         onTap: onTap,
         child: MouseRegion(
-          cursor: onTap != null
+          cursor: onDragUpdate != null
+              ? (isDragging
+                    ? SystemMouseCursors.grabbing
+                    : SystemMouseCursors.click)
+              : onTap != null
               ? SystemMouseCursors.click
               : SystemMouseCursors.basic,
           child: Container(

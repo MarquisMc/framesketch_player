@@ -356,6 +356,49 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     );
   }
 
+  /// Move all strokes assigned to a keyframe to a new timeline position.
+  void moveKeyframe({required int fromKeyframeMs, required int toKeyframeMs}) {
+    if (state.annotationData == null) return;
+
+    final fps = _effectiveFps;
+    final fromSnappedMs = _snapToFrameTimeMs(fromKeyframeMs, fps);
+    final toSnappedMs = _snapToFrameTimeMs(toKeyframeMs, fps);
+    if (fromSnappedMs == toSnappedMs) return;
+
+    final deltaMs = toSnappedMs - fromSnappedMs;
+    var changed = false;
+    final updatedStrokes = state.allStrokes.map((stroke) {
+      final strokeKeyframeMs = _snapToFrameTimeMs(stroke.startTimeMs, fps);
+      if (strokeKeyframeMs != fromSnappedMs) {
+        return stroke;
+      }
+
+      changed = true;
+      final nextStartMs = (stroke.startTimeMs + deltaMs)
+          .clamp(0, 1 << 30)
+          .toInt();
+      var nextEndMs = (stroke.endTimeMs + deltaMs).clamp(0, 1 << 30).toInt();
+      if (nextEndMs < nextStartMs) {
+        nextEndMs = nextStartMs;
+      }
+
+      return stroke.copyWith(startTimeMs: nextStartMs, endTimeMs: nextEndMs);
+    }).toList();
+
+    if (!changed) return;
+
+    final updatedData = state.annotationData!.copyWith(
+      strokes: updatedStrokes,
+      updatedAt: DateTime.now(),
+    );
+
+    state = state.copyWith(
+      annotationData: updatedData,
+      hasUnsavedChanges: true,
+      redoStack: [],
+    );
+  }
+
   /// Whether creating a manual keyframe at the current frame is possible.
   bool canCreateManualKeyframeAtCurrentFrame() {
     if (state.keyframeCreationMode != KeyframeCreationMode.manual ||
@@ -901,8 +944,9 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Check if point is near a text stroke bounding box
   bool _isPointNearText(Stroke stroke, StrokePoint point, double threshold) {
-    if (stroke.points.isEmpty || stroke.text == null || stroke.text!.isEmpty)
+    if (stroke.points.isEmpty || stroke.text == null || stroke.text!.isEmpty) {
       return false;
+    }
 
     final anchor = stroke.points.first;
     // Approximate text bounding box in normalized coordinates
@@ -1026,8 +1070,9 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Delete the currently selected stroke
   void deleteSelectedStroke() {
-    if (state.selectedStrokeIds.isEmpty && state.selectedStrokeId == null)
+    if (state.selectedStrokeIds.isEmpty && state.selectedStrokeId == null) {
       return;
+    }
     final selectedIds = state.selectedStrokeIds.isNotEmpty
         ? state.selectedStrokeIds.toSet()
         : <String>{if (state.selectedStrokeId != null) state.selectedStrokeId!};
@@ -1062,8 +1107,9 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   void updateScaling(StrokePoint currentPoint) {
     if (!state.isScaling ||
         state.selectedStrokeId == null ||
-        state.scalingCorner == null)
+        state.scalingCorner == null) {
       return;
+    }
 
     final strokeIndex = state.allStrokes.indexWhere(
       (s) => s.id == state.selectedStrokeId,

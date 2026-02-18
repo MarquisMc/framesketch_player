@@ -274,6 +274,18 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                   });
                 },
               ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Create Manual Keyframe',
+                shortcut: _shortcuts.createManualKeyframe,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(
+                      createManualKeyframe: shortcut,
+                    );
+                  });
+                },
+              ),
               const SizedBox(height: 24),
               const Divider(),
               const SizedBox(height: 8),
@@ -539,6 +551,7 @@ class _ShortcutRowState extends State<_ShortcutRow> {
     if (key == LogicalKeyboardKey.keyR) return 'R';
     if (key == LogicalKeyboardKey.keyA) return 'A';
     if (key == LogicalKeyboardKey.keyM) return 'M';
+    if (key == LogicalKeyboardKey.keyN) return 'N';
     if (key == LogicalKeyboardKey.keyL) return 'L';
     if (key == LogicalKeyboardKey.keyI) return 'I';
     if (key == LogicalKeyboardKey.keyC) return 'C';

@@ -78,6 +78,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   int? _streamVideoWidth;
   int? _streamVideoHeight;
   int _lastPublishedPositionMs = -1;
+  bool? _supportsNativeFrameStep;
+  bool _stillFrameAudioMuted = false;
+  Future<void> _frameStepQueue = Future<void>.value();
 
   PlayerNotifier(this._ref) : super(const PlayerState());
 
@@ -108,6 +111,106 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _allowStreamDimensionUpdates = false;
   }
 
+  Duration _frameDurationFor(VideoMetadata metadata) {
+    return Duration(microseconds: (1000000 / metadata.fps).round());
+  }
+
+  Duration _clampToDuration(Duration value) {
+    final maxUs = state.duration.inMicroseconds;
+    if (maxUs <= 0) {
+      return value.isNegative ? Duration.zero : value;
+    }
+    final clampedUs = value.inMicroseconds.clamp(0, maxUs);
+    return Duration(
+      microseconds: clampedUs,
+    );
+  }
+
+  Future<void> _enqueueFrameStep(Future<void> Function() operation) {
+    final queued = _frameStepQueue.then((_) => operation());
+    _frameStepQueue = queued.catchError((_) {});
+    return queued;
+  }
+
+  Future<bool> _tryNativeFrameStep({required bool forward}) async {
+    final player = state.player;
+    if (player == null) return false;
+    if (_supportsNativeFrameStep == false) return false;
+
+    final dynamic platform = player.platform;
+    if (platform == null) {
+      _supportsNativeFrameStep = false;
+      return false;
+    }
+
+    if (_supportsNativeFrameStep == null) {
+      final runtimeName = platform.runtimeType.toString().toLowerCase();
+      _supportsNativeFrameStep = runtimeName.contains('nativeplayer');
+    }
+    if (_supportsNativeFrameStep != true) {
+      return false;
+    }
+
+    try {
+      await platform.command(
+        forward
+            ? const <String>['frame-step']
+            : const <String>['frame-back-step'],
+      );
+      return true;
+    } catch (_) {
+      _supportsNativeFrameStep = false;
+      return false;
+    }
+  }
+
+  String _secondsArgument(Duration value) {
+    final seconds = value.inMicroseconds / 1000000.0;
+    var text = seconds.toStringAsFixed(6);
+    text = text.replaceFirst(RegExp(r'0+$'), '');
+    text = text.replaceFirst(RegExp(r'\.$'), '');
+    if (text == '-0') return '0';
+    return text;
+  }
+
+  Future<bool> _tryNativeExactRelativeSeek(Duration delta) async {
+    if (delta == Duration.zero) {
+      return true;
+    }
+
+    final dynamic platform = state.player?.platform;
+    if (platform == null) return false;
+
+    final runtimeName = platform.runtimeType.toString().toLowerCase();
+    if (!runtimeName.contains('nativeplayer')) return false;
+
+    try {
+      await platform.command(<String>[
+        'seek',
+        _secondsArgument(delta),
+        'relative+exact',
+      ]);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _setStillFrameAudioMuted(bool muted) async {
+    if (_stillFrameAudioMuted == muted) return;
+
+    final dynamic platform = state.player?.platform;
+    if (platform == null) return;
+
+    final runtimeName = platform.runtimeType.toString().toLowerCase();
+    if (!runtimeName.contains('nativeplayer')) return;
+
+    try {
+      await platform.setProperty('mute', muted ? 'yes' : 'no');
+      _stillFrameAudioMuted = muted;
+    } catch (_) {}
+  }
+
   /// Initialize media_kit (call once at app startup)
   static void initializeMediaKit() {
     MediaKit.ensureInitialized();
@@ -130,6 +233,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // Create new player
       final player = Player();
       final videoController = VideoController(player);
+      _supportsNativeFrameStep = null;
 
       // Listen to streams immediately with loop boundary checking
       _positionSubscription = player.stream.position.listen((position) {
@@ -171,6 +275,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       _playingSubscription = player.stream.playing.listen((isPlaying) {
         if (state.isPlaying == isPlaying) return;
         state = state.copyWith(isPlaying: isPlaying);
+        unawaited(_setStillFrameAudioMuted(!isPlaying));
       });
 
       _volumeSubscription = player.stream.volume.listen((volume) {
@@ -270,12 +375,14 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// Play video
   Future<void> play() async {
+    await _setStillFrameAudioMuted(false);
     await state.player?.play();
   }
 
   /// Pause video
   Future<void> pause() async {
     await state.player?.pause();
+    await _setStillFrameAudioMuted(true);
   }
 
   /// Toggle play/pause
@@ -290,90 +397,132 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// Stop and reset to beginning
   Future<void> stop() async {
     await state.player?.pause();
+    await _setStillFrameAudioMuted(true);
     await seek(Duration.zero);
   }
 
   /// Seek to position
   Future<void> seek(Duration position) async {
-    final clampedPosition = Duration(
-      milliseconds: position.inMilliseconds.clamp(
-        0,
-        state.duration.inMilliseconds,
-      ),
-    );
+    if (!state.isPlaying) {
+      await _setStillFrameAudioMuted(true);
+    }
+    final clampedPosition = _clampToDuration(position);
+    // Optimistically publish target position so frame-step UI updates
+    // immediately, then let stream events reconcile actual playback state.
+    if (state.position != clampedPosition) {
+      state = state.copyWith(position: clampedPosition);
+    }
     await state.player?.seek(clampedPosition);
   }
 
   /// Step forward by one frame
   Future<void> stepForward() async {
-    final metadata = state.metadata;
-    if (metadata == null) return;
+    return _enqueueFrameStep(() async {
+      final metadata = state.metadata;
+      if (metadata == null) return;
 
-    // Calculate frame duration
-    final frameDuration = Duration(
-      microseconds: (1000000 / metadata.fps).round(),
-    );
+      final frameDuration = _frameDurationFor(metadata);
+      final basePosition = state.player?.state.position ?? state.position;
+      final nextPosition = _clampToDuration(basePosition + frameDuration);
 
-    // Calculate next frame position
-    final nextPosition = state.position + frameDuration;
+      if (state.isPlaying) {
+        await pause();
+        state = state.copyWith(isPlaying: false);
+      } else {
+        await _setStillFrameAudioMuted(true);
+      }
 
-    // Clamp to video duration
-    final clampedPosition = Duration(
-      milliseconds: nextPosition.inMilliseconds.clamp(
-        0,
-        state.duration.inMilliseconds,
-      ),
-    );
+      if (await _tryNativeFrameStep(forward: true)) {
+        final resolvedPosition = state.player?.state.position;
+        final targetPosition = (resolvedPosition != null &&
+                resolvedPosition != basePosition)
+            ? _clampToDuration(resolvedPosition)
+            : nextPosition;
+        if (state.position != targetPosition) {
+          state = state.copyWith(position: targetPosition);
+        }
+        return;
+      }
 
-    // Pause if playing
-    if (state.isPlaying) {
-      await pause();
-    }
-
-    // Seek to next frame
-    await seek(clampedPosition);
+      await seek(nextPosition);
+    });
   }
 
   /// Step backward by one frame
   Future<void> stepBackward() async {
-    final metadata = state.metadata;
-    if (metadata == null) return;
+    return _enqueueFrameStep(() async {
+      final metadata = state.metadata;
+      if (metadata == null) return;
 
-    // Calculate frame duration
-    final frameDuration = Duration(
-      microseconds: (1000000 / metadata.fps).round(),
-    );
+      final frameDuration = _frameDurationFor(metadata);
+      final basePosition = state.player?.state.position ?? state.position;
+      final prevPosition = _clampToDuration(basePosition - frameDuration);
 
-    // Calculate previous frame position
-    final prevPosition = state.position - frameDuration;
+      if (state.isPlaying) {
+        await pause();
+        state = state.copyWith(isPlaying: false);
+      } else {
+        await _setStillFrameAudioMuted(true);
+      }
 
-    // Clamp to 0
-    final clampedPosition = Duration(
-      milliseconds: prevPosition.inMilliseconds.clamp(
-        0,
-        state.duration.inMilliseconds,
-      ),
-    );
+      if (await _tryNativeFrameStep(forward: false)) {
+        final resolvedPosition = state.player?.state.position;
+        final targetPosition = (resolvedPosition != null &&
+                resolvedPosition != basePosition)
+            ? _clampToDuration(resolvedPosition)
+            : prevPosition;
+        if (state.position != targetPosition) {
+          state = state.copyWith(position: targetPosition);
+        }
+        return;
+      }
 
-    // Pause if playing
-    if (state.isPlaying) {
-      await pause();
-    }
-
-    // Seek to previous frame
-    await seek(clampedPosition);
+      await seek(prevPosition);
+    });
   }
 
   /// Jump forward by duration
   Future<void> jumpForward(Duration amount) async {
-    final newPosition = state.position + amount;
-    await seek(newPosition);
+    return _enqueueFrameStep(() async {
+      final basePosition = state.position;
+      final newPosition = _clampToDuration(basePosition + amount);
+      final delta = newPosition - basePosition;
+      if (state.isPlaying) {
+        await pause();
+        state = state.copyWith(isPlaying: false);
+      } else {
+        await _setStillFrameAudioMuted(true);
+      }
+      if (await _tryNativeExactRelativeSeek(delta)) {
+        if (state.position != newPosition) {
+          state = state.copyWith(position: newPosition);
+        }
+        return;
+      }
+      await seek(newPosition);
+    });
   }
 
   /// Jump backward by duration
   Future<void> jumpBackward(Duration amount) async {
-    final newPosition = state.position - amount;
-    await seek(newPosition);
+    return _enqueueFrameStep(() async {
+      final basePosition = state.position;
+      final newPosition = _clampToDuration(basePosition - amount);
+      final delta = newPosition - basePosition;
+      if (state.isPlaying) {
+        await pause();
+        state = state.copyWith(isPlaying: false);
+      } else {
+        await _setStillFrameAudioMuted(true);
+      }
+      if (await _tryNativeExactRelativeSeek(delta)) {
+        if (state.position != newPosition) {
+          state = state.copyWith(position: newPosition);
+        }
+        return;
+      }
+      await seek(newPosition);
+    });
   }
 
   /// Toggle mute/unmute for app-only audio control.
@@ -427,6 +576,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _streamVideoWidth = null;
     _streamVideoHeight = null;
     _lastPublishedPositionMs = -1;
+    _supportsNativeFrameStep = null;
+    _stillFrameAudioMuted = false;
+    _frameStepQueue = Future<void>.value();
 
     await positionSubscription?.cancel();
     await durationSubscription?.cancel();
