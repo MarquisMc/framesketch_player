@@ -72,6 +72,148 @@ class _HoldableButtonState extends State<_HoldableButton> {
   }
 }
 
+class _EditableFpsDisplay extends ConsumerStatefulWidget {
+  const _EditableFpsDisplay();
+
+  @override
+  ConsumerState<_EditableFpsDisplay> createState() => _EditableFpsDisplayState();
+}
+
+class _EditableFpsDisplayState extends ConsumerState<_EditableFpsDisplay> {
+  final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  bool _isEditing = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _startEditing(double fps) {
+    setState(() {
+      _isEditing = true;
+      _controller.text = fps.toStringAsFixed(2);
+      _controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _controller.text.length,
+      );
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focusNode.requestFocus();
+      }
+    });
+  }
+
+  void _commit() {
+    if (!_isEditing) return;
+    final raw = _controller.text.trim();
+    final parsed = double.tryParse(raw);
+    if (parsed != null && parsed.isFinite && parsed > 0) {
+      ref.read(playerProvider.notifier).setPlaybackFps(parsed);
+    }
+    if (!mounted) return;
+    setState(() {
+      _isEditing = false;
+    });
+  }
+
+  void _cancel() {
+    if (!mounted) return;
+    setState(() {
+      _isEditing = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
+    final playerState = ref.watch(playerProvider);
+    final metadata = playerState.metadata;
+    if (metadata == null) {
+      return const SizedBox.shrink();
+    }
+
+    final sourceFps = playerState.sourceFps;
+    final isModified =
+        sourceFps != null && (metadata.fps - sourceFps).abs() > 0.0001;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: palette.panelElevated,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: _isEditing
+              ? SizedBox(
+                  width: 72,
+                  height: 22,
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    autofocus: true,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: palette.textSecondary,
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onSubmitted: (_) => _commit(),
+                    onTapOutside: (_) => _commit(),
+                    onEditingComplete: _commit,
+                  ),
+                )
+              : MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => _startEditing(metadata.fps),
+                    child: Text(
+                      '${metadata.fps.toStringAsFixed(2)} FPS',
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                ),
+        ),
+        const SizedBox(width: 4),
+        IconButton(
+          icon: Icon(
+            Icons.replay,
+            size: 18,
+            color: isModified ? palette.textSecondary : palette.textDisabled,
+          ),
+          onPressed: isModified
+              ? () {
+                  _cancel();
+                  ref.read(playerProvider.notifier).resetPlaybackFps();
+                }
+              : null,
+          tooltip: 'Reset FPS to detected default',
+          constraints: const BoxConstraints(minHeight: 28, minWidth: 28),
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+        ),
+      ],
+    );
+  }
+}
+
 /// Playback controls widget
 class PlaybackControls extends ConsumerWidget {
   final bool isFullscreen;
@@ -240,26 +382,8 @@ class PlaybackControls extends ConsumerWidget {
 
             const SizedBox(width: 24),
 
-            // FPS display
-            if (hasVideo && playerState.metadata != null)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: palette.panelElevated,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '${playerState.metadata!.fps.toStringAsFixed(2)} FPS',
-                  style: TextStyle(
-                    color: palette.textSecondary,
-                    fontSize: 12,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ),
+            // FPS display (click to edit) + reset button
+            if (hasVideo && playerState.metadata != null) const _EditableFpsDisplay(),
 
             const SizedBox(width: 12),
 

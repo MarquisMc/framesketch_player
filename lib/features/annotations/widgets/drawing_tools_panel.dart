@@ -218,6 +218,17 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                     ),
                     const SizedBox(height: 8),
                     _buildToolButton(
+                      icon: Icons.square,
+                      label: 'Filled Square',
+                      tool: DrawingTool.filledSquare,
+                      isSelected:
+                          annotationState.currentTool ==
+                          DrawingTool.filledSquare,
+                      onTap: () =>
+                          annotationNotifier.setTool(DrawingTool.filledSquare),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildToolButton(
                       icon: Icons.circle_outlined,
                       label: 'Circle',
                       tool: DrawingTool.circle,
@@ -225,6 +236,17 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                           annotationState.currentTool == DrawingTool.circle,
                       onTap: () =>
                           annotationNotifier.setTool(DrawingTool.circle),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildToolButton(
+                      icon: Icons.circle,
+                      label: 'Filled Circle',
+                      tool: DrawingTool.filledCircle,
+                      isSelected:
+                          annotationState.currentTool ==
+                          DrawingTool.filledCircle,
+                      onTap: () =>
+                          annotationNotifier.setTool(DrawingTool.filledCircle),
                     ),
                     const SizedBox(height: 8),
                     _buildToolButton(

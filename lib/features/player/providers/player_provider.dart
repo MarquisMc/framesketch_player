@@ -19,6 +19,7 @@ class PlayerState {
   final bool isMuted;
   final String? error;
   final String? currentVideoPath;
+  final double? sourceFps;
 
   const PlayerState({
     this.player,
@@ -32,6 +33,7 @@ class PlayerState {
     this.isMuted = false,
     this.error,
     this.currentVideoPath,
+    this.sourceFps,
   });
 
   PlayerState copyWith({
@@ -46,6 +48,7 @@ class PlayerState {
     bool? isMuted,
     String? error,
     String? currentVideoPath,
+    double? sourceFps,
   }) {
     return PlayerState(
       player: player ?? this.player,
@@ -59,6 +62,7 @@ class PlayerState {
       isMuted: isMuted ?? this.isMuted,
       error: error,
       currentVideoPath: currentVideoPath ?? this.currentVideoPath,
+      sourceFps: sourceFps ?? this.sourceFps,
     );
   }
 }
@@ -361,6 +365,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         metadata: metadata,
         isLoading: false,
         currentVideoPath: filePath,
+        sourceFps: fps,
       );
 
       // Ensure player starts with the app's current volume preference.
@@ -534,6 +539,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       _lastNonZeroVolume = state.volume;
       await setVolume(0.0);
     }
+  }
+
+  /// Set effective playback FPS used for frame calculations.
+  void setPlaybackFps(double fps) {
+    final metadata = state.metadata;
+    if (metadata == null) return;
+    if (!fps.isFinite) return;
+    final clamped = fps.clamp(1.0, 240.0);
+    if ((metadata.fps - clamped).abs() < 0.0001) return;
+    state = state.copyWith(metadata: metadata.copyWith(fps: clamped));
+  }
+
+  /// Restore FPS to the originally detected value for the loaded video.
+  void resetPlaybackFps() {
+    final sourceFps = state.sourceFps;
+    if (sourceFps == null) return;
+    setPlaybackFps(sourceFps);
   }
 
   /// Set player volume (0-100).

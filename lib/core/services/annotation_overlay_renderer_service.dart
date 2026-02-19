@@ -133,8 +133,14 @@ class AnnotationOverlayRendererService {
       case DrawingTool.rectangle:
         _drawRectangle(canvas, stroke, transform, strokeWidth);
         break;
+      case DrawingTool.filledSquare:
+        _drawFilledSquare(canvas, stroke, transform);
+        break;
       case DrawingTool.circle:
         _drawCircle(canvas, stroke, transform, strokeWidth);
+        break;
+      case DrawingTool.filledCircle:
+        _drawFilledCircle(canvas, stroke, transform);
         break;
       case DrawingTool.line:
         _drawLine(canvas, stroke, transform, strokeWidth);
@@ -208,6 +214,38 @@ class AnnotationOverlayRendererService {
       ..color = stroke.color
       ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke;
+    canvas.drawOval(
+      Rect.fromCenter(center: center, width: rx * 2, height: ry * 2),
+      paint,
+    );
+  }
+
+  void _drawFilledSquare(
+    Canvas canvas,
+    Stroke stroke,
+    OverlayTransform transform,
+  ) {
+    final p1 = _toOffset(stroke.points.first, transform);
+    final p2 = _toOffset(stroke.points.last, transform);
+    final paint = Paint()
+      ..color = stroke.color
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromPoints(p1, p2), paint);
+  }
+
+  void _drawFilledCircle(
+    Canvas canvas,
+    Stroke stroke,
+    OverlayTransform transform,
+  ) {
+    final p1 = _toOffset(stroke.points.first, transform);
+    final p2 = _toOffset(stroke.points.last, transform);
+    final center = Offset((p1.dx + p2.dx) / 2, (p1.dy + p2.dy) / 2);
+    final rx = (p2.dx - p1.dx).abs() / 2;
+    final ry = (p2.dy - p1.dy).abs() / 2;
+    final paint = Paint()
+      ..color = stroke.color
+      ..style = PaintingStyle.fill;
     canvas.drawOval(
       Rect.fromCenter(center: center, width: rx * 2, height: ry * 2),
       paint,

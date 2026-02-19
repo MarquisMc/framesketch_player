@@ -170,6 +170,47 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     return (frameIndex * frameDurationMs).round();
   }
 
+  StrokePoint _squareConstrainedPoint(StrokePoint start, StrokePoint point) {
+    final dx = point.x - start.x;
+    final dy = point.y - start.y;
+    final side = dx.abs() < dy.abs() ? dx.abs() : dy.abs();
+    final signedDx = dx < 0 ? -side : side;
+    final signedDy = dy < 0 ? -side : side;
+    return StrokePoint(
+      x: start.x + signedDx,
+      y: start.y + signedDy,
+      timestampMs: point.timestampMs,
+    );
+  }
+
+  Size _estimateTextBounds(Stroke stroke) {
+    final textLength = stroke.text?.length ?? 0;
+    final effectiveFontSize = stroke.fontSize;
+    final estimatedWidth = textLength * 0.008 * (effectiveFontSize / 16.0);
+    final estimatedHeight = 0.025 * (effectiveFontSize / 16.0);
+    return Size(estimatedWidth, estimatedHeight);
+  }
+
+  Rect _textBoundsRect(Stroke stroke) {
+    final anchor = stroke.points.first;
+    if (stroke.points.length >= 2) {
+      final p2 = stroke.points.last;
+      final left = anchor.x < p2.x ? anchor.x : p2.x;
+      final right = anchor.x > p2.x ? anchor.x : p2.x;
+      final top = anchor.y < p2.y ? anchor.y : p2.y;
+      final bottom = anchor.y > p2.y ? anchor.y : p2.y;
+      return Rect.fromLTRB(left, top, right, bottom);
+    }
+
+    final textBounds = _estimateTextBounds(stroke);
+    return Rect.fromLTRB(
+      anchor.x,
+      anchor.y,
+      anchor.x + textBounds.width,
+      anchor.y + textBounds.height,
+    );
+  }
+
   int _currentFrameTimeMs() {
     final currentPositionMs = ref.read(playerProvider).position.inMilliseconds;
     return _snapToFrameTimeMs(currentPositionMs, _effectiveFps);
@@ -474,12 +515,21 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     // If text tool, create stroke at click position and trigger dialog
     if (state.currentTool == DrawingTool.text) {
+      final initialHeight = 0.025 * (state.currentFontSize / 16.0);
+      const initialWidth = 0.08;
       final newStroke = Stroke(
         id: _uuid.v4(),
         tool: DrawingTool.text,
         color: state.currentColor,
         strokeWidth: state.currentStrokeWidth,
-        points: [point],
+        points: [
+          point,
+          StrokePoint(
+            x: point.x + initialWidth,
+            y: point.y + initialHeight,
+            timestampMs: point.timestampMs,
+          ),
+        ],
         startTimeMs: currentTimeMs,
         endTimeMs: currentTimeMs,
         text: '',
@@ -542,14 +592,20 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     // For shape tools (rectangle, circle, line, arrow), keep only start and end points
     final isShapeTool =
         state.currentTool == DrawingTool.rectangle ||
+        state.currentTool == DrawingTool.filledSquare ||
         state.currentTool == DrawingTool.circle ||
+        state.currentTool == DrawingTool.filledCircle ||
         state.currentTool == DrawingTool.line ||
         state.currentTool == DrawingTool.arrow;
 
     final List<StrokePoint> updatedPoints;
     if (isShapeTool) {
       // Replace the last point for shapes (start point stays, end point updates)
-      updatedPoints = [state.currentStroke!.points.first, point];
+      final start = state.currentStroke!.points.first;
+      final constrainedPoint = state.currentTool == DrawingTool.filledSquare
+          ? _squareConstrainedPoint(start, point)
+          : point;
+      updatedPoints = [start, constrainedPoint];
     } else {
       // Add all points for pen tool (freehand drawing)
       updatedPoints = [...state.currentStroke!.points, point];
@@ -803,6 +859,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       endTimeMs: original.endTimeMs,
       text: original.text,
       fontSize: original.fontSize,
+      scale: original.scale,
     );
   }
 
@@ -834,11 +891,13 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       final stroke = visibleStrokes[i];
 
       // For shape tools, check if point is near the shape boundary
-      if (stroke.tool == DrawingTool.rectangle) {
+      if (stroke.tool == DrawingTool.rectangle ||
+          stroke.tool == DrawingTool.filledSquare) {
         if (_isPointNearRectangle(stroke, point, selectionRadius)) {
           return stroke;
         }
-      } else if (stroke.tool == DrawingTool.circle) {
+      } else if (stroke.tool == DrawingTool.circle ||
+          stroke.tool == DrawingTool.filledCircle) {
         if (_isPointNearCircle(stroke, point, selectionRadius)) {
           return stroke;
         }
@@ -948,16 +1007,12 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       return false;
     }
 
-    final anchor = stroke.points.first;
-    // Approximate text bounding box in normalized coordinates
-    final textLength = stroke.text!.length;
-    final estimatedWidth = textLength * 0.008 * (stroke.fontSize / 16.0);
-    final estimatedHeight = 0.025 * (stroke.fontSize / 16.0);
+    final bounds = _textBoundsRect(stroke);
 
-    return point.x >= anchor.x - threshold &&
-        point.x <= anchor.x + estimatedWidth + threshold &&
-        point.y >= anchor.y - threshold &&
-        point.y <= anchor.y + estimatedHeight + threshold;
+    return point.x >= bounds.left - threshold &&
+        point.x <= bounds.right + threshold &&
+        point.y >= bounds.top - threshold &&
+        point.y <= bounds.bottom + threshold;
   }
 
   /// Move the selected stroke by the drag offset
@@ -1032,16 +1087,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     if (stroke.points.isEmpty) return null;
 
     if (stroke.tool == DrawingTool.text) {
-      final anchor = stroke.points.first;
-      final textLength = stroke.text?.length ?? 0;
-      final estimatedWidth = textLength * 0.008 * (stroke.fontSize / 16.0);
-      final estimatedHeight = 0.025 * (stroke.fontSize / 16.0);
-      return Rect.fromLTRB(
-        anchor.x,
-        anchor.y,
-        anchor.x + estimatedWidth,
-        anchor.y + estimatedHeight,
-      );
+      return _textBoundsRect(stroke);
     }
 
     double minX = double.infinity;
@@ -1118,6 +1164,66 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     final stroke = state.allStrokes[strokeIndex];
 
+    if (stroke.tool == DrawingTool.text) {
+      final rect = _textBoundsRect(stroke);
+      final corner = state.scalingCorner!;
+      final fixedCorner = switch (corner) {
+        'topLeft' => StrokePoint(x: rect.right, y: rect.bottom),
+        'topRight' => StrokePoint(x: rect.left, y: rect.bottom),
+        'bottomLeft' => StrokePoint(x: rect.right, y: rect.top),
+        _ => StrokePoint(x: rect.left, y: rect.top),
+      };
+
+      final left = currentPoint.x < fixedCorner.x
+          ? currentPoint.x
+          : fixedCorner.x;
+      final right = currentPoint.x > fixedCorner.x
+          ? currentPoint.x
+          : fixedCorner.x;
+      final top = currentPoint.y < fixedCorner.y
+          ? currentPoint.y
+          : fixedCorner.y;
+      final bottom = currentPoint.y > fixedCorner.y
+          ? currentPoint.y
+          : fixedCorner.y;
+
+      const minSize = 0.005;
+      final safeRight = (right - left) < minSize ? left + minSize : right;
+      final safeBottom = (bottom - top) < minSize ? top + minSize : bottom;
+
+      final updatedStroke = stroke.copyWith(
+        points: [
+          StrokePoint(
+            x: left,
+            y: top,
+            timestampMs: stroke.points.first.timestampMs,
+          ),
+          StrokePoint(
+            x: safeRight,
+            y: safeBottom,
+            timestampMs: stroke.points.length > 1
+                ? stroke.points.last.timestampMs
+                : stroke.points.first.timestampMs,
+          ),
+        ],
+        scale: 1.0,
+      );
+      final updatedStrokes = List<Stroke>.from(state.allStrokes);
+      updatedStrokes[strokeIndex] = updatedStroke;
+
+      final updatedData = state.annotationData!.copyWith(
+        strokes: updatedStrokes,
+        updatedAt: DateTime.now(),
+      );
+
+      state = state.copyWith(
+        annotationData: updatedData,
+        dragStartPoint: currentPoint,
+        hasUnsavedChanges: true,
+      );
+      return;
+    }
+
     // Calculate the center point of the annotation
     final center = _getStrokeCenter(stroke);
 
@@ -1141,7 +1247,6 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
         timestampMs: p.timestampMs,
       );
     }).toList();
-
     final updatedStroke = stroke.copyWith(
       points: scaledPoints,
       scale: newScale,
@@ -1209,9 +1314,24 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     );
     if (strokeIndex == -1) return;
 
-    final updatedStroke = state.allStrokes[strokeIndex].copyWith(
-      text: textContent,
-    );
+    final existing = state.allStrokes[strokeIndex];
+    Stroke updatedStroke = existing.copyWith(text: textContent);
+    final bounds = _textBoundsRect(updatedStroke);
+    final hasUsableBox = bounds.width > 0.006 && bounds.height > 0.006;
+    if (!hasUsableBox) {
+      final estimated = _estimateTextBounds(updatedStroke);
+      final anchor = updatedStroke.points.first;
+      updatedStroke = updatedStroke.copyWith(
+        points: [
+          anchor,
+          StrokePoint(
+            x: anchor.x + estimated.width,
+            y: anchor.y + estimated.height,
+            timestampMs: anchor.timestampMs,
+          ),
+        ],
+      );
+    }
     final updatedStrokes = List<Stroke>.from(state.allStrokes);
     updatedStrokes[strokeIndex] = updatedStroke;
 

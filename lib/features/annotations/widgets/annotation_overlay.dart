@@ -19,6 +19,41 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
   DateTime? _lastTapTime;
   Offset? _lastTapPosition;
 
+  Size _estimateTextSize(Stroke stroke) {
+    final effectiveFontSize = stroke.fontSize;
+    final textSpan = TextSpan(
+      text: stroke.text ?? '',
+      style: TextStyle(color: stroke.color, fontSize: effectiveFontSize),
+    );
+    final textPainter = TextPainter(
+      text: textSpan,
+      textDirection: TextDirection.ltr,
+    )..layout();
+    return Size(textPainter.width, textPainter.height);
+  }
+
+  Rect _textBoundsNormalized(Stroke stroke, Size viewportSize) {
+    final anchor = stroke.points.first;
+    if (stroke.points.length >= 2) {
+      final p2 = stroke.points.last;
+      final left = anchor.x < p2.x ? anchor.x : p2.x;
+      final right = anchor.x > p2.x ? anchor.x : p2.x;
+      final top = anchor.y < p2.y ? anchor.y : p2.y;
+      final bottom = anchor.y > p2.y ? anchor.y : p2.y;
+      return Rect.fromLTRB(left, top, right, bottom);
+    }
+
+    final estimatedSize = _estimateTextSize(stroke);
+    final width = estimatedSize.width / viewportSize.width;
+    final height = estimatedSize.height / viewportSize.height;
+    return Rect.fromLTRB(
+      anchor.x,
+      anchor.y,
+      anchor.x + width,
+      anchor.y + height,
+    );
+  }
+
   Size? _resolveVideoSize() {
     final playerState = ref.read(playerProvider);
     final rect = playerState.videoController?.rect.value;
@@ -44,7 +79,8 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     final fallbackMetadata = ref.watch(
       playerProvider.select((state) => state.metadata),
     );
-    final videoSize = (videoRect != null && videoRect.width > 1 && videoRect.height > 1)
+    final videoSize =
+        (videoRect != null && videoRect.width > 1 && videoRect.height > 1)
         ? Size(videoRect.width, videoRect.height)
         : (fallbackMetadata == null
               ? null
@@ -175,17 +211,13 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
       if (stroke.tool == DrawingTool.text &&
           stroke.text != null &&
           stroke.text!.isNotEmpty) {
-        // Approximate hit-test for text bounding box
-        final anchor = stroke.points.first;
-        final textLength = stroke.text!.length;
-        final estimatedWidth = textLength * 0.008 * (stroke.fontSize / 16.0);
-        final estimatedHeight = 0.025 * (stroke.fontSize / 16.0);
+        final bounds = _textBoundsNormalized(stroke, viewportSize);
         const threshold = 0.02;
 
-        if (normalizedPoint.x >= anchor.x - threshold &&
-            normalizedPoint.x <= anchor.x + estimatedWidth + threshold &&
-            normalizedPoint.y >= anchor.y - threshold &&
-            normalizedPoint.y <= anchor.y + estimatedHeight + threshold) {
+        if (normalizedPoint.x >= bounds.left - threshold &&
+            normalizedPoint.x <= bounds.right + threshold &&
+            normalizedPoint.y >= bounds.top - threshold &&
+            normalizedPoint.y <= bounds.bottom + threshold) {
           notifier.editTextStroke(stroke.id);
           return;
         }
@@ -309,25 +341,37 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     if (stroke.tool == DrawingTool.text &&
         stroke.text != null &&
         stroke.text!.isNotEmpty) {
-      // Text bounding box
-      final position = transformer.toViewport(stroke.points.first);
-      final textSpan = TextSpan(
-        text: stroke.text!,
-        style: TextStyle(color: stroke.color, fontSize: stroke.fontSize),
-      );
-      final textPainter = TextPainter(
-        text: textSpan,
-        textDirection: TextDirection.ltr,
-      );
-      textPainter.layout();
-      boundingBox = Rect.fromLTWH(
-        position.dx - 4,
-        position.dy - 4,
-        textPainter.width + 8,
-        textPainter.height + 8,
-      );
+      if (stroke.points.length >= 2) {
+        final start = transformer.toViewport(stroke.points.first);
+        final end = transformer.toViewport(stroke.points.last);
+        final left = start.dx < end.dx ? start.dx : end.dx;
+        final top = start.dy < end.dy ? start.dy : end.dy;
+        final right = start.dx > end.dx ? start.dx : end.dx;
+        final bottom = start.dy > end.dy ? start.dy : end.dy;
+        boundingBox = Rect.fromLTRB(left - 4, top - 4, right + 4, bottom + 4);
+      } else {
+        // Text bounding box fallback
+        final position = transformer.toViewport(stroke.points.first);
+        final textSpan = TextSpan(
+          text: stroke.text!,
+          style: TextStyle(color: stroke.color, fontSize: stroke.fontSize),
+        );
+        final textPainter = TextPainter(
+          text: textSpan,
+          textDirection: TextDirection.ltr,
+        );
+        textPainter.layout();
+        boundingBox = Rect.fromLTWH(
+          position.dx - 4,
+          position.dy - 4,
+          textPainter.width + 8,
+          textPainter.height + 8,
+        );
+      }
     } else if (stroke.tool == DrawingTool.rectangle ||
+        stroke.tool == DrawingTool.filledSquare ||
         stroke.tool == DrawingTool.circle ||
+        stroke.tool == DrawingTool.filledCircle ||
         stroke.tool == DrawingTool.line ||
         stroke.tool == DrawingTool.arrow) {
       // Shape bounding box
@@ -501,8 +545,14 @@ class AnnotationPainter extends CustomPainter {
       case DrawingTool.rectangle:
         _drawRectangle(canvas, stroke, transformer);
         break;
+      case DrawingTool.filledSquare:
+        _drawFilledSquare(canvas, stroke, transformer);
+        break;
       case DrawingTool.circle:
         _drawCircle(canvas, stroke, transformer);
+        break;
+      case DrawingTool.filledCircle:
+        _drawFilledCircle(canvas, stroke, transformer);
         break;
       case DrawingTool.line:
         _drawLine(canvas, stroke, transformer);
@@ -591,6 +641,47 @@ class AnnotationPainter extends CustomPainter {
     );
   }
 
+  void _drawFilledSquare(
+    Canvas canvas,
+    Stroke stroke,
+    CoordinateTransformer transformer,
+  ) {
+    if (stroke.points.length < 2) return;
+
+    final start = transformer.toViewport(stroke.points.first);
+    final end = transformer.toViewport(stroke.points.last);
+    final rect = Rect.fromPoints(start, end);
+    final paint = Paint()
+      ..color = stroke.color
+      ..style = PaintingStyle.fill;
+
+    canvas.drawRect(rect, paint);
+  }
+
+  void _drawFilledCircle(
+    Canvas canvas,
+    Stroke stroke,
+    CoordinateTransformer transformer,
+  ) {
+    if (stroke.points.length < 2) return;
+
+    final start = transformer.toViewport(stroke.points.first);
+    final end = transformer.toViewport(stroke.points.last);
+
+    final center = Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
+    final radiusX = (end.dx - start.dx).abs() / 2;
+    final radiusY = (end.dy - start.dy).abs() / 2;
+
+    final paint = Paint()
+      ..color = stroke.color
+      ..style = PaintingStyle.fill;
+
+    canvas.drawOval(
+      Rect.fromCenter(center: center, width: radiusX * 2, height: radiusY * 2),
+      paint,
+    );
+  }
+
   void _drawLine(
     Canvas canvas,
     Stroke stroke,
@@ -662,8 +753,9 @@ class AnnotationPainter extends CustomPainter {
     Stroke stroke,
     CoordinateTransformer transformer,
   ) {
-    if (stroke.points.isEmpty || stroke.text == null || stroke.text!.isEmpty)
+    if (stroke.points.isEmpty || stroke.text == null || stroke.text!.isEmpty) {
       return;
+    }
 
     final position = transformer.toViewport(stroke.points.first);
 
@@ -711,13 +803,17 @@ class AnnotationPainter extends CustomPainter {
           textDirection: TextDirection.ltr,
         );
         textPainter.layout();
-
-        final selectionRect = Rect.fromLTWH(
-          position.dx - 4,
-          position.dy - 4,
-          textPainter.width + 8,
-          textPainter.height + 8,
-        );
+        final selectionRect = stroke.points.length >= 2
+            ? Rect.fromPoints(
+                transformer.toViewport(stroke.points.first),
+                transformer.toViewport(stroke.points.last),
+              )
+            : Rect.fromLTWH(
+                position.dx - 4,
+                position.dy - 4,
+                textPainter.width + 8,
+                textPainter.height + 8,
+              );
 
         final selectionPaint = Paint()
           ..color = Colors.blue.withValues(alpha: 0.5)
@@ -778,7 +874,9 @@ class AnnotationPainter extends CustomPainter {
     } else
     // Draw bounding box for shapes
     if (stroke.tool == DrawingTool.rectangle ||
+        stroke.tool == DrawingTool.filledSquare ||
         stroke.tool == DrawingTool.circle ||
+        stroke.tool == DrawingTool.filledCircle ||
         stroke.tool == DrawingTool.line ||
         stroke.tool == DrawingTool.arrow) {
       if (stroke.points.length >= 2) {
