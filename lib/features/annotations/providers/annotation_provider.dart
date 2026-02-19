@@ -184,10 +184,19 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   }
 
   Size _estimateTextBounds(Stroke stroke) {
-    final textLength = stroke.text?.length ?? 0;
+    final rawText = stroke.text ?? '';
+    final lines = rawText.split('\n');
+    var longestLineLength = 0;
+    for (final line in lines) {
+      if (line.length > longestLineLength) {
+        longestLineLength = line.length;
+      }
+    }
+    final effectiveChars = longestLineLength == 0 ? 1 : longestLineLength;
+    final lineCount = lines.isEmpty ? 1 : lines.length;
     final effectiveFontSize = stroke.fontSize;
-    final estimatedWidth = textLength * 0.008 * (effectiveFontSize / 16.0);
-    final estimatedHeight = 0.025 * (effectiveFontSize / 16.0);
+    final estimatedWidth = effectiveChars * 0.008 * (effectiveFontSize / 16.0);
+    final estimatedHeight = lineCount * 0.028 * (effectiveFontSize / 16.0);
     return Size(estimatedWidth, estimatedHeight);
   }
 
@@ -513,7 +522,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       return;
     }
 
-    // If text tool, create stroke at click position and trigger dialog
+    // If text tool, create stroke at click position and enter inline edit mode
     if (state.currentTool == DrawingTool.text) {
       final initialHeight = 0.025 * (state.currentFontSize / 16.0);
       const initialWidth = 0.08;
@@ -1305,29 +1314,161 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     return (dx * dx + dy * dy);
   }
 
-  /// Confirm text for a pending text stroke
-  void confirmTextStroke(String textContent) {
+  /// Update text content for the currently edited text stroke.
+  void updatePendingTextStrokeText(String textContent) {
     if (state.pendingTextStrokeId == null) return;
 
     final strokeIndex = state.allStrokes.indexWhere(
       (s) => s.id == state.pendingTextStrokeId,
     );
-    if (strokeIndex == -1) return;
+    if (strokeIndex == -1) {
+      state = state.copyWith(clearPendingTextStrokeId: true);
+      return;
+    }
 
     final existing = state.allStrokes[strokeIndex];
-    Stroke updatedStroke = existing.copyWith(text: textContent);
+    if ((existing.text ?? '') == textContent) return;
+
+    final updatedStroke = existing.copyWith(text: textContent);
+    final updatedStrokes = List<Stroke>.from(state.allStrokes);
+    updatedStrokes[strokeIndex] = updatedStroke;
+
+    final updatedData = state.annotationData!.copyWith(
+      strokes: updatedStrokes,
+      updatedAt: DateTime.now(),
+    );
+
+    state = state.copyWith(
+      annotationData: updatedData,
+      hasUnsavedChanges: true,
+    );
+  }
+
+  /// Update the edited text stroke bounding box in normalized coordinates.
+  void updatePendingTextStrokeBounds({
+    required double left,
+    required double top,
+    required double right,
+    required double bottom,
+  }) {
+    if (state.pendingTextStrokeId == null) return;
+
+    final strokeIndex = state.allStrokes.indexWhere(
+      (s) => s.id == state.pendingTextStrokeId,
+    );
+    if (strokeIndex == -1) {
+      state = state.copyWith(clearPendingTextStrokeId: true);
+      return;
+    }
+
+    final existing = state.allStrokes[strokeIndex];
+    if (existing.points.isEmpty) return;
+
+    final normalizedLeft = left < right ? left : right;
+    final normalizedRight = left > right ? left : right;
+    final normalizedTop = top < bottom ? top : bottom;
+    final normalizedBottom = top > bottom ? top : bottom;
+
+    final oldBounds = _textBoundsRect(existing);
+    const epsilon = 0.0001;
+    if ((oldBounds.left - normalizedLeft).abs() < epsilon &&
+        (oldBounds.top - normalizedTop).abs() < epsilon &&
+        (oldBounds.right - normalizedRight).abs() < epsilon &&
+        (oldBounds.bottom - normalizedBottom).abs() < epsilon) {
+      return;
+    }
+
+    final firstTimestamp = existing.points.first.timestampMs;
+    final secondTimestamp = existing.points.length > 1
+        ? existing.points.last.timestampMs
+        : firstTimestamp;
+    final updatedStroke = existing.copyWith(
+      points: [
+        StrokePoint(
+          x: normalizedLeft,
+          y: normalizedTop,
+          timestampMs: firstTimestamp,
+        ),
+        StrokePoint(
+          x: normalizedRight,
+          y: normalizedBottom,
+          timestampMs: secondTimestamp,
+        ),
+      ],
+    );
+
+    final updatedStrokes = List<Stroke>.from(state.allStrokes);
+    updatedStrokes[strokeIndex] = updatedStroke;
+
+    final updatedData = state.annotationData!.copyWith(
+      strokes: updatedStrokes,
+      updatedAt: DateTime.now(),
+    );
+
+    state = state.copyWith(
+      annotationData: updatedData,
+      hasUnsavedChanges: true,
+    );
+  }
+
+  /// Finalize inline text editing. Empty text removes the stroke.
+  void finalizePendingTextStroke() {
+    if (state.pendingTextStrokeId == null) return;
+
+    final strokeIndex = state.allStrokes.indexWhere(
+      (s) => s.id == state.pendingTextStrokeId,
+    );
+    if (strokeIndex == -1) {
+      state = state.copyWith(clearPendingTextStrokeId: true);
+      return;
+    }
+
+    final existing = state.allStrokes[strokeIndex];
+    final normalizedText = (existing.text ?? '').trim();
+
+    if (normalizedText.isEmpty) {
+      final updatedStrokes = state.allStrokes
+          .where((s) => s.id != existing.id)
+          .toList();
+      final clearSelected =
+          state.selectedStrokeId == existing.id ||
+          state.selectedStrokeIds.contains(existing.id);
+      final updatedData = state.annotationData!.copyWith(
+        strokes: updatedStrokes,
+        updatedAt: DateTime.now(),
+      );
+
+      state = state.copyWith(
+        annotationData: updatedData,
+        clearPendingTextStrokeId: true,
+        clearSelectedStroke: clearSelected,
+        hasUnsavedChanges: true,
+      );
+      return;
+    }
+
+    Stroke updatedStroke = existing.copyWith(text: normalizedText);
     final bounds = _textBoundsRect(updatedStroke);
+    final estimated = _estimateTextBounds(updatedStroke);
     final hasUsableBox = bounds.width > 0.006 && bounds.height > 0.006;
-    if (!hasUsableBox) {
-      final estimated = _estimateTextBounds(updatedStroke);
-      final anchor = updatedStroke.points.first;
+    final needsWidthExpand = bounds.width < estimated.width;
+    final needsHeightExpand = bounds.height < estimated.height;
+    if (!hasUsableBox || needsWidthExpand || needsHeightExpand) {
+      final left = bounds.left;
+      final top = bounds.top;
+      final right = needsWidthExpand ? left + estimated.width : bounds.right;
+      final bottom = needsHeightExpand ? top + estimated.height : bounds.bottom;
+      final firstTimestamp = updatedStroke.points.first.timestampMs;
+      final secondTimestamp = updatedStroke.points.length > 1
+          ? updatedStroke.points.last.timestampMs
+          : firstTimestamp;
       updatedStroke = updatedStroke.copyWith(
         points: [
-          anchor,
+          StrokePoint(x: left, y: top, timestampMs: firstTimestamp),
           StrokePoint(
-            x: anchor.x + estimated.width,
-            y: anchor.y + estimated.height,
-            timestampMs: anchor.timestampMs,
+            x: right.clamp(0.0, 1.0),
+            y: bottom.clamp(0.0, 1.0),
+            timestampMs: secondTimestamp,
           ),
         ],
       );
@@ -1347,23 +1488,15 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     );
   }
 
+  /// Backwards-compatible confirmation API.
+  void confirmTextStroke(String textContent) {
+    updatePendingTextStrokeText(textContent);
+    finalizePendingTextStroke();
+  }
+
   /// Cancel a pending text stroke (remove it)
   void cancelTextStroke() {
-    if (state.pendingTextStrokeId == null) return;
-
-    final updatedStrokes = state.allStrokes
-        .where((s) => s.id != state.pendingTextStrokeId)
-        .toList();
-
-    final updatedData = state.annotationData!.copyWith(
-      strokes: updatedStrokes,
-      updatedAt: DateTime.now(),
-    );
-
-    state = state.copyWith(
-      annotationData: updatedData,
-      clearPendingTextStrokeId: true,
-    );
+    finalizePendingTextStroke();
   }
 
   /// Set a text stroke for editing (triggered by double-tap)

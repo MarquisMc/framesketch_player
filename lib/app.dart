@@ -308,6 +308,17 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     final annotationNotifier = ref.read(annotationProvider.notifier);
     final loopNotifier = ref.read(loopProvider.notifier);
     final cropNotifier = ref.read(cropProvider.notifier);
+    final annotationState = ref.read(annotationProvider);
+
+    // While editing a text annotation, disable all global shortcuts so
+    // the text field can consume normal character input.
+    if (annotationState.pendingTextStrokeId != null) {
+      _keyRepeatGeneration++;
+      _keyRepeatTimer?.cancel();
+      _keyRepeatTimer = null;
+      _lastPressedKey = null;
+      return KeyEventResult.ignored;
+    }
 
     // Check for modifiers
     final isCtrl = HardwareKeyboard.instance.isControlPressed;
@@ -437,7 +448,6 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
       // Delete selected annotation (no repeat)
       if (event.logicalKey == LogicalKeyboardKey.delete) {
-        final annotationState = ref.read(annotationProvider);
         if (annotationState.selectedStrokeId != null ||
             annotationState.selectedStrokeIds.isNotEmpty) {
           annotationNotifier.deleteSelectedStroke();
@@ -498,7 +508,6 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
       // Toggle keyframe creation mode (no repeat)
       if (matchesShortcut(_shortcuts.toggleKeyframeMode)) {
-        final annotationState = ref.read(annotationProvider);
         annotationNotifier.setKeyframeCreationMode(
           annotationState.keyframeCreationMode == KeyframeCreationMode.manual
               ? KeyframeCreationMode.automatic

@@ -125,9 +125,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       return value.isNegative ? Duration.zero : value;
     }
     final clampedUs = value.inMicroseconds.clamp(0, maxUs);
-    return Duration(
-      microseconds: clampedUs,
-    );
+    return Duration(microseconds: clampedUs);
   }
 
   Future<void> _enqueueFrameStep(Future<void> Function() operation) {
@@ -305,8 +303,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         _tryApplyStreamDimensions();
       });
 
-      // Open video first to get metadata from media_kit
-      await player.open(Media(filePath));
+      // Open paused so loading a new video does not auto-play.
+      await player.open(Media(filePath), play: false);
 
       // Wait for first frame when possible so width/height streams settle.
       try {
@@ -439,8 +437,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
       if (await _tryNativeFrameStep(forward: true)) {
         final resolvedPosition = state.player?.state.position;
-        final targetPosition = (resolvedPosition != null &&
-                resolvedPosition != basePosition)
+        final targetPosition =
+            (resolvedPosition != null && resolvedPosition != basePosition)
             ? _clampToDuration(resolvedPosition)
             : nextPosition;
         if (state.position != targetPosition) {
@@ -472,8 +470,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
       if (await _tryNativeFrameStep(forward: false)) {
         final resolvedPosition = state.player?.state.position;
-        final targetPosition = (resolvedPosition != null &&
-                resolvedPosition != basePosition)
+        final targetPosition =
+            (resolvedPosition != null && resolvedPosition != basePosition)
             ? _clampToDuration(resolvedPosition)
             : prevPosition;
         if (state.position != targetPosition) {

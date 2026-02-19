@@ -18,6 +18,26 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
   Offset? _currentCursorPosition;
   DateTime? _lastTapTime;
   Offset? _lastTapPosition;
+  Size? _lastViewportSize;
+  late final TextEditingController _inlineTextController;
+  late final FocusNode _inlineTextFocusNode;
+  String? _editingStrokeId;
+
+  @override
+  void initState() {
+    super.initState();
+    _inlineTextController = TextEditingController();
+    _inlineTextFocusNode = FocusNode();
+    _inlineTextFocusNode.addListener(_handleInlineTextFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _inlineTextFocusNode.removeListener(_handleInlineTextFocusChange);
+    _inlineTextController.dispose();
+    _inlineTextFocusNode.dispose();
+    super.dispose();
+  }
 
   Size _estimateTextSize(Stroke stroke) {
     final effectiveFontSize = stroke.fontSize;
@@ -89,17 +109,20 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
                   fallbackMetadata.height.toDouble(),
                 ));
 
-    // Listen for pending text stroke changes to show dialog
     ref.listen<AnnotationState>(annotationProvider, (previous, next) {
-      if (next.pendingTextStrokeId != null &&
-          (previous?.pendingTextStrokeId != next.pendingTextStrokeId)) {
-        _showTextInputDialog(context, next.pendingTextStrokeId!);
-      }
+      _syncInlineTextEditor(next);
     });
+    _syncInlineTextEditor(annotationState);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
+        _lastViewportSize = viewportSize;
+        final editingStroke = annotationState.pendingTextStrokeId == null
+            ? null
+            : annotationState.allStrokes
+                  .where((s) => s.id == annotationState.pendingTextStrokeId)
+                  .firstOrNull;
 
         return MouseRegion(
           onHover: (event) {
@@ -119,27 +142,37 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
               : annotationState.currentTool == DrawingTool.text
               ? SystemMouseCursors.text
               : MouseCursor.defer,
-          child: GestureDetector(
-            onPanStart: (details) => _handlePanStart(details, viewportSize),
-            onPanUpdate: (details) => _handlePanUpdate(details, viewportSize),
-            onPanEnd: (_) => _handlePanEnd(),
-            onPanCancel: () => _handlePanCancel(),
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: AnnotationPainter(
-                strokes: visibleStrokes,
-                currentStroke: annotationState.currentStroke,
-                viewportSize: viewportSize,
-                videoSize: videoSize,
-                currentTool: annotationState.currentTool,
-                eraserPosition: _currentCursorPosition,
-                selectedStrokeId: annotationState.selectedStrokeId,
-                selectedStrokeIds: annotationState.selectedStrokeIds,
-                selectionBoxStartPoint: annotationState.selectionBoxStartPoint,
-                selectionBoxEndPoint: annotationState.selectionBoxEndPoint,
-                isBoxSelecting: annotationState.isBoxSelecting,
+          child: Stack(
+            children: [
+              GestureDetector(
+                onPanStart: (details) => _handlePanStart(details, viewportSize),
+                onPanUpdate: (details) =>
+                    _handlePanUpdate(details, viewportSize),
+                onPanEnd: (_) => _handlePanEnd(),
+                onPanCancel: () => _handlePanCancel(),
+                child: CustomPaint(
+                  size: Size.infinite,
+                  painter: AnnotationPainter(
+                    strokes: visibleStrokes,
+                    currentStroke: annotationState.currentStroke,
+                    viewportSize: viewportSize,
+                    videoSize: videoSize,
+                    currentTool: annotationState.currentTool,
+                    eraserPosition: _currentCursorPosition,
+                    selectedStrokeId: annotationState.selectedStrokeId,
+                    selectedStrokeIds: annotationState.selectedStrokeIds,
+                    selectionBoxStartPoint:
+                        annotationState.selectionBoxStartPoint,
+                    selectionBoxEndPoint: annotationState.selectionBoxEndPoint,
+                    isBoxSelecting: annotationState.isBoxSelecting,
+                    editingTextStrokeId: annotationState.pendingTextStrokeId,
+                  ),
+                ),
               ),
-            ),
+              if (editingStroke != null) ...[
+                _buildInlineTextEditor(editingStroke, viewportSize),
+              ],
+            ],
           ),
         );
       },
@@ -151,7 +184,225 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     return CoordinateTransformer(viewportSize, videoSize: videoSize);
   }
 
+  void _syncInlineTextEditor(AnnotationState state) {
+    final pendingId = state.pendingTextStrokeId;
+    if (pendingId == null) {
+      _editingStrokeId = null;
+      return;
+    }
+
+    final editingStroke = state.allStrokes
+        .where((s) => s.id == pendingId)
+        .firstOrNull;
+    if (editingStroke == null) {
+      _editingStrokeId = null;
+      return;
+    }
+
+    if (_editingStrokeId != pendingId) {
+      _editingStrokeId = pendingId;
+      _inlineTextController.text = editingStroke.text ?? '';
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _editingStrokeId != pendingId) return;
+        _inlineTextFocusNode.requestFocus();
+        _inlineTextController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _inlineTextController.text.length,
+        );
+        final size = _lastViewportSize;
+        final latestStroke = ref
+            .read(annotationProvider)
+            .allStrokes
+            .where((s) => s.id == pendingId)
+            .firstOrNull;
+        if (size != null && latestStroke != null) {
+          _autoGrowEditingTextBox(
+            latestStroke,
+            size,
+            _inlineTextController.text,
+          );
+        }
+      });
+      return;
+    }
+
+    final latestText = editingStroke.text ?? '';
+    if (_inlineTextController.text != latestText) {
+      _inlineTextController.text = latestText;
+      _inlineTextController.selection = TextSelection.collapsed(
+        offset: latestText.length,
+      );
+    }
+  }
+
+  void _handleInlineTextFocusChange() {
+    if (_inlineTextFocusNode.hasFocus) return;
+    if (_editingStrokeId == null) return;
+    final size = _lastViewportSize;
+    final stroke = ref
+        .read(annotationProvider)
+        .allStrokes
+        .where((s) => s.id == _editingStrokeId)
+        .firstOrNull;
+    if (size != null && stroke != null) {
+      _autoGrowEditingTextBox(stroke, size, _inlineTextController.text);
+    }
+    ref.read(annotationProvider.notifier).finalizePendingTextStroke();
+  }
+
+  Widget _buildInlineTextEditor(Stroke stroke, Size viewportSize) {
+    final transformer = _createTransformer(viewportSize);
+    final anchor = transformer.toViewport(stroke.points.first);
+    final bottomRight = stroke.points.length >= 2
+        ? transformer.toViewport(stroke.points.last)
+        : Offset(anchor.dx + 120, anchor.dy + max(stroke.fontSize + 12, 36));
+    final rect = Rect.fromPoints(anchor, bottomRight);
+    final minWidth = max(120.0, stroke.fontSize * 4.0);
+    final minHeight = max(36.0, stroke.fontSize * 1.8);
+    final width = max(rect.width, minWidth).clamp(80.0, viewportSize.width);
+    final height = max(rect.height, minHeight).clamp(32.0, viewportSize.height);
+    final maxLeft = max(0.0, viewportSize.width - width);
+    final maxTop = max(0.0, viewportSize.height - height);
+    final left = rect.left.clamp(0.0, maxLeft);
+    final top = rect.top.clamp(0.0, maxTop);
+
+    return Positioned(
+      left: left,
+      top: top,
+      width: width,
+      height: height,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.18),
+            border: Border.all(
+              color: stroke.color.withValues(alpha: 0.85),
+              width: 1.5,
+            ),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: TextField(
+            controller: _inlineTextController,
+            focusNode: _inlineTextFocusNode,
+            onChanged: (value) {
+              final notifier = ref.read(annotationProvider.notifier);
+              notifier.updatePendingTextStrokeText(value);
+              _autoGrowEditingTextBox(stroke, viewportSize, value);
+            },
+            onSubmitted: (_) => _inlineTextFocusNode.unfocus(),
+            onTapOutside: (_) => _inlineTextFocusNode.unfocus(),
+            minLines: 1,
+            maxLines: null,
+            style: TextStyle(
+              color: stroke.color,
+              fontSize: stroke.fontSize,
+              height: 1.2,
+            ),
+            decoration: InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 4,
+              ),
+              hintText: 'Type text...',
+              hintStyle: TextStyle(
+                color: stroke.color.withValues(alpha: 0.6),
+                fontSize: stroke.fontSize,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _autoGrowEditingTextBox(Stroke stroke, Size viewportSize, String text) {
+    final transformer = _createTransformer(viewportSize);
+    final anchor = transformer.toViewport(stroke.points.first);
+    final bottomRight = stroke.points.length >= 2
+        ? transformer.toViewport(stroke.points.last)
+        : Offset(anchor.dx + 120, anchor.dy + max(stroke.fontSize + 12, 36));
+    final currentRect = Rect.fromPoints(anchor, bottomRight);
+
+    final minWidth = max(120.0, stroke.fontSize * 4.0);
+    final minHeight = max(36.0, stroke.fontSize * 1.8);
+    final currentWidth = max(currentRect.width, minWidth);
+    final currentHeight = max(currentRect.height, minHeight);
+
+    final left = currentRect.left.clamp(0.0, viewportSize.width);
+    final top = currentRect.top.clamp(0.0, viewportSize.height);
+    final availableWidth = max(80.0, viewportSize.width - left);
+    final availableHeight = max(32.0, viewportSize.height - top);
+
+    const horizontalPadding = 12.0;
+    const verticalPadding = 8.0;
+    // Include hint text sizing so empty boxes still show "Type text...".
+    final measuredText = text.isEmpty ? 'Type text...' : text;
+    final baseSpan = TextSpan(
+      text: measuredText,
+      style: TextStyle(fontSize: stroke.fontSize, height: 1.2),
+    );
+
+    final naturalPainter = TextPainter(
+      text: baseSpan,
+      textDirection: TextDirection.ltr,
+    )..layout();
+    double targetWidth = max(
+      currentWidth,
+      naturalPainter.width + horizontalPadding,
+    ).clamp(minWidth, availableWidth).toDouble();
+
+    final wrappedPainter = TextPainter(
+      text: baseSpan,
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: max(1.0, targetWidth - horizontalPadding));
+    double targetHeight = max(
+      currentHeight,
+      wrappedPainter.height + verticalPadding,
+    ).clamp(minHeight, availableHeight).toDouble();
+
+    final widthDelta = (targetWidth - currentWidth).abs();
+    final heightDelta = (targetHeight - currentHeight).abs();
+    if (widthDelta < 0.5 && heightDelta < 0.5) {
+      return;
+    }
+
+    final clampedLeft = left
+        .clamp(0.0, max(0.0, viewportSize.width - targetWidth))
+        .toDouble();
+    final clampedTop = top
+        .clamp(0.0, max(0.0, viewportSize.height - targetHeight))
+        .toDouble();
+    final normalizedTopLeft = transformer.toNormalized(
+      Offset(clampedLeft, clampedTop),
+    );
+    final normalizedBottomRight = transformer.toNormalized(
+      Offset(clampedLeft + targetWidth, clampedTop + targetHeight),
+    );
+
+    ref
+        .read(annotationProvider.notifier)
+        .updatePendingTextStrokeBounds(
+          left: normalizedTopLeft.x,
+          top: normalizedTopLeft.y,
+          right: normalizedBottomRight.x,
+          bottom: normalizedBottomRight.y,
+        );
+  }
+
   void _handlePanStart(DragStartDetails details, Size viewportSize) {
+    final annotationState = ref.read(annotationProvider);
+    final notifier = ref.read(annotationProvider.notifier);
+
+    if (annotationState.pendingTextStrokeId != null) {
+      _inlineTextFocusNode.unfocus();
+      notifier.finalizePendingTextStroke();
+      return;
+    }
+
     final now = DateTime.now();
     final position = details.localPosition;
 
@@ -171,8 +422,6 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
 
     final transformer = _createTransformer(viewportSize);
     final normalizedPoint = transformer.toNormalized(details.localPosition);
-    final annotationState = ref.read(annotationProvider);
-    final notifier = ref.read(annotationProvider.notifier);
 
     // Check if user clicked on a corner handle of a selected stroke
     if (annotationState.currentTool == DrawingTool.select &&
@@ -223,64 +472,6 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
         }
       }
     }
-  }
-
-  void _showTextInputDialog(BuildContext context, String strokeId) {
-    final notifier = ref.read(annotationProvider.notifier);
-    final existingStroke = ref
-        .read(annotationProvider)
-        .allStrokes
-        .where((s) => s.id == strokeId)
-        .firstOrNull;
-    final existingText = existingStroke?.text ?? '';
-
-    final controller = TextEditingController(text: existingText);
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(existingText.isEmpty ? 'Add Text' : 'Edit Text'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'Enter annotation text...',
-            border: OutlineInputBorder(),
-          ),
-          maxLines: 3,
-          onSubmitted: (value) {
-            if (value.trim().isNotEmpty) {
-              notifier.confirmTextStroke(value.trim());
-            } else {
-              notifier.cancelTextStroke();
-            }
-            Navigator.of(dialogContext).pop();
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              notifier.cancelTextStroke();
-              Navigator.of(dialogContext).pop();
-            },
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isNotEmpty) {
-                notifier.confirmTextStroke(value);
-              } else {
-                notifier.cancelTextStroke();
-              }
-              Navigator.of(dialogContext).pop();
-            },
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _handlePanUpdate(DragUpdateDetails details, Size viewportSize) {
@@ -441,6 +632,7 @@ class AnnotationPainter extends CustomPainter {
   final StrokePoint? selectionBoxStartPoint;
   final StrokePoint? selectionBoxEndPoint;
   final bool isBoxSelecting;
+  final String? editingTextStrokeId;
 
   AnnotationPainter({
     required this.strokes,
@@ -454,6 +646,7 @@ class AnnotationPainter extends CustomPainter {
     this.selectionBoxStartPoint,
     this.selectionBoxEndPoint,
     this.isBoxSelecting = false,
+    this.editingTextStrokeId,
   });
 
   @override
@@ -466,6 +659,14 @@ class AnnotationPainter extends CustomPainter {
     // Draw completed strokes
     final selectedSet = selectedStrokeIds.toSet();
     for (final stroke in strokes) {
+      final isEditingTextStroke =
+          editingTextStrokeId != null &&
+          stroke.id == editingTextStrokeId &&
+          stroke.tool == DrawingTool.text;
+      if (isEditingTextStroke) {
+        continue;
+      }
+
       _drawStroke(canvas, stroke, transformer);
 
       // Draw selection highlight if this stroke is selected
@@ -768,6 +969,20 @@ class AnnotationPainter extends CustomPainter {
       text: textSpan,
       textDirection: TextDirection.ltr,
     );
+    if (stroke.points.length >= 2) {
+      final textRect = Rect.fromPoints(
+        transformer.toViewport(stroke.points.first),
+        transformer.toViewport(stroke.points.last),
+      );
+      final maxWidth = textRect.width <= 1 ? 1.0 : textRect.width;
+      textPainter.layout(maxWidth: maxWidth);
+
+      canvas.save();
+      canvas.clipRect(textRect);
+      textPainter.paint(canvas, textRect.topLeft);
+      canvas.restore();
+      return;
+    }
 
     textPainter.layout();
     textPainter.paint(canvas, position);
@@ -1020,6 +1235,7 @@ class AnnotationPainter extends CustomPainter {
         oldDelegate.selectedStrokeIds != selectedStrokeIds ||
         oldDelegate.selectionBoxStartPoint != selectionBoxStartPoint ||
         oldDelegate.selectionBoxEndPoint != selectionBoxEndPoint ||
-        oldDelegate.isBoxSelecting != isBoxSelecting;
+        oldDelegate.isBoxSelecting != isBoxSelecting ||
+        oldDelegate.editingTextStrokeId != editingTextStrokeId;
   }
 }
