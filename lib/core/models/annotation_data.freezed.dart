@@ -23,6 +23,7 @@ AnnotationData _$AnnotationDataFromJson(Map<String, dynamic> json) {
 mixin _$AnnotationData {
   String get videoId => throw _privateConstructorUsedError;
   String get videoPath => throw _privateConstructorUsedError;
+  String? get youtubeUrl => throw _privateConstructorUsedError;
   double get fps => throw _privateConstructorUsedError;
   DateTime get createdAt => throw _privateConstructorUsedError;
   DateTime get updatedAt => throw _privateConstructorUsedError;
@@ -50,6 +51,7 @@ abstract class $AnnotationDataCopyWith<$Res> {
   $Res call({
     String videoId,
     String videoPath,
+    String? youtubeUrl,
     double fps,
     DateTime createdAt,
     DateTime updatedAt,
@@ -76,6 +78,7 @@ class _$AnnotationDataCopyWithImpl<$Res, $Val extends AnnotationData>
   $Res call({
     Object? videoId = null,
     Object? videoPath = null,
+    Object? youtubeUrl = freezed,
     Object? fps = null,
     Object? createdAt = null,
     Object? updatedAt = null,
@@ -93,6 +96,10 @@ class _$AnnotationDataCopyWithImpl<$Res, $Val extends AnnotationData>
                 ? _value.videoPath
                 : videoPath // ignore: cast_nullable_to_non_nullable
                       as String,
+            youtubeUrl: freezed == youtubeUrl
+                ? _value.youtubeUrl
+                : youtubeUrl // ignore: cast_nullable_to_non_nullable
+                      as String?,
             fps: null == fps
                 ? _value.fps
                 : fps // ignore: cast_nullable_to_non_nullable
@@ -135,6 +142,7 @@ abstract class _$$AnnotationDataImplCopyWith<$Res>
   $Res call({
     String videoId,
     String videoPath,
+    String? youtubeUrl,
     double fps,
     DateTime createdAt,
     DateTime updatedAt,
@@ -160,6 +168,7 @@ class __$$AnnotationDataImplCopyWithImpl<$Res>
   $Res call({
     Object? videoId = null,
     Object? videoPath = null,
+    Object? youtubeUrl = freezed,
     Object? fps = null,
     Object? createdAt = null,
     Object? updatedAt = null,
@@ -177,6 +186,10 @@ class __$$AnnotationDataImplCopyWithImpl<$Res>
             ? _value.videoPath
             : videoPath // ignore: cast_nullable_to_non_nullable
                   as String,
+        youtubeUrl: freezed == youtubeUrl
+            ? _value.youtubeUrl
+            : youtubeUrl // ignore: cast_nullable_to_non_nullable
+                  as String?,
         fps: null == fps
             ? _value.fps
             : fps // ignore: cast_nullable_to_non_nullable
@@ -212,6 +225,7 @@ class _$AnnotationDataImpl implements _AnnotationData {
   const _$AnnotationDataImpl({
     required this.videoId,
     required this.videoPath,
+    this.youtubeUrl,
     required this.fps,
     required this.createdAt,
     required this.updatedAt,
@@ -227,6 +241,8 @@ class _$AnnotationDataImpl implements _AnnotationData {
   final String videoId;
   @override
   final String videoPath;
+  @override
+  final String? youtubeUrl;
   @override
   final double fps;
   @override
@@ -251,7 +267,7 @@ class _$AnnotationDataImpl implements _AnnotationData {
 
   @override
   String toString() {
-    return 'AnnotationData(videoId: $videoId, videoPath: $videoPath, fps: $fps, createdAt: $createdAt, updatedAt: $updatedAt, strokes: $strokes, viewportWidth: $viewportWidth, viewportHeight: $viewportHeight)';
+    return 'AnnotationData(videoId: $videoId, videoPath: $videoPath, youtubeUrl: $youtubeUrl, fps: $fps, createdAt: $createdAt, updatedAt: $updatedAt, strokes: $strokes, viewportWidth: $viewportWidth, viewportHeight: $viewportHeight)';
   }
 
   @override
@@ -262,6 +278,8 @@ class _$AnnotationDataImpl implements _AnnotationData {
             (identical(other.videoId, videoId) || other.videoId == videoId) &&
             (identical(other.videoPath, videoPath) ||
                 other.videoPath == videoPath) &&
+            (identical(other.youtubeUrl, youtubeUrl) ||
+                other.youtubeUrl == youtubeUrl) &&
             (identical(other.fps, fps) || other.fps == fps) &&
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
@@ -280,6 +298,7 @@ class _$AnnotationDataImpl implements _AnnotationData {
     runtimeType,
     videoId,
     videoPath,
+    youtubeUrl,
     fps,
     createdAt,
     updatedAt,
@@ -309,6 +328,7 @@ abstract class _AnnotationData implements AnnotationData {
   const factory _AnnotationData({
     required final String videoId,
     required final String videoPath,
+    final String? youtubeUrl,
     required final double fps,
     required final DateTime createdAt,
     required final DateTime updatedAt,
@@ -324,6 +344,8 @@ abstract class _AnnotationData implements AnnotationData {
   String get videoId;
   @override
   String get videoPath;
+  @override
+  String? get youtubeUrl;
   @override
   double get fps;
   @override

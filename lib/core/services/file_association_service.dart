@@ -5,8 +5,10 @@ import 'package:win32/win32.dart' hide DocumentProperties;
 
 /// Service for managing Windows file associations
 class FileAssociationService {
-  static const String progId = 'FrameSketchPlayer.VideoFile';
+  static const String videoProgId = 'FrameSketchPlayer.VideoFile';
+  static const String annotationProgId = 'FrameSketchPlayer.AnnotationFile';
   static const String appName = 'FrameSketch Player';
+  static const String annotationExtension = '.framesketch';
   static const List<String> videoExtensions = [
     '.mp4',
     '.mov',
@@ -31,13 +33,15 @@ class FileAssociationService {
     try {
       final exePath = _getExecutablePath();
 
-      // Create ProgID
-      _createProgId(exePath);
+      // Create ProgIDs
+      _createVideoProgId(exePath);
+      _createAnnotationProgId(exePath);
 
       // Register each extension
       for (final ext in videoExtensions) {
-        _registerExtension(ext);
+        _registerVideoExtension(ext);
       }
+      _registerAnnotationExtension();
 
       // Register in Applications list
       _registerApplication(exePath);
@@ -60,12 +64,17 @@ class FileAssociationService {
 
     try {
       // Remove ProgID
-      _deleteRegistryKey(HKEY_CURRENT_USER, 'Software\\Classes\\$progId');
+      _deleteRegistryKey(HKEY_CURRENT_USER, 'Software\\Classes\\$videoProgId');
+      _deleteRegistryKey(
+        HKEY_CURRENT_USER,
+        'Software\\Classes\\$annotationProgId',
+      );
 
       // Remove from each extension
       for (final ext in videoExtensions) {
-        _removeExtensionAssociation(ext);
+        _removeVideoExtensionAssociation(ext);
       }
+      _removeAnnotationExtensionAssociation();
 
       // Remove from Applications
       _deleteRegistryKey(
@@ -90,37 +99,26 @@ class FileAssociationService {
     }
 
     try {
-      final keyPath = 'Software\\Classes\\$progId';
-      final hKey = calloc<HKEY>();
-
-      try {
-        final result = RegOpenKeyEx(
-          HKEY_CURRENT_USER,
-          keyPath.toNativeUtf16(),
-          0,
-          KEY_READ,
-          hKey,
-        );
-
-        if (result == ERROR_SUCCESS) {
-          RegCloseKey(hKey.value);
-          return true;
-        }
-        return false;
-      } finally {
-        calloc.free(hKey);
-      }
+      final hasVideoProgId = _registryKeyExists(
+        HKEY_CURRENT_USER,
+        'Software\\Classes\\$videoProgId',
+      );
+      final hasAnnotationProgId = _registryKeyExists(
+        HKEY_CURRENT_USER,
+        'Software\\Classes\\$annotationProgId',
+      );
+      return hasVideoProgId && hasAnnotationProgId;
     } catch (e) {
       // Rethrow to allow proper error handling
       rethrow;
     }
   }
 
-  void _createProgId(String exePath) {
+  void _createVideoProgId(String exePath) {
     // Create main ProgID key
     _setRegistryValue(
       HKEY_CURRENT_USER,
-      'Software\\Classes\\$progId',
+      'Software\\Classes\\$videoProgId',
       '',
       '$appName Video File',
     );
@@ -128,7 +126,7 @@ class FileAssociationService {
     // Set icon
     _setRegistryValue(
       HKEY_CURRENT_USER,
-      'Software\\Classes\\$progId\\DefaultIcon',
+      'Software\\Classes\\$videoProgId\\DefaultIcon',
       '',
       '"$exePath",0',
     );
@@ -136,18 +134,64 @@ class FileAssociationService {
     // Set open command
     _setRegistryValue(
       HKEY_CURRENT_USER,
-      'Software\\Classes\\$progId\\shell\\open\\command',
+      'Software\\Classes\\$videoProgId\\shell\\open\\command',
       '',
       '"$exePath" "%1"',
     );
   }
 
-  void _registerExtension(String ext) {
+  void _createAnnotationProgId(String exePath) {
+    _setRegistryValue(
+      HKEY_CURRENT_USER,
+      'Software\\Classes\\$annotationProgId',
+      '',
+      '$appName Annotation File',
+    );
+
+    _setRegistryValue(
+      HKEY_CURRENT_USER,
+      'Software\\Classes\\$annotationProgId\\DefaultIcon',
+      '',
+      '"$exePath",0',
+    );
+
+    _setRegistryValue(
+      HKEY_CURRENT_USER,
+      'Software\\Classes\\$annotationProgId\\shell\\open\\command',
+      '',
+      '"$exePath" "%1"',
+    );
+  }
+
+  void _registerVideoExtension(String ext) {
     // Add to OpenWithProgids
     _setRegistryValue(
       HKEY_CURRENT_USER,
       'Software\\Classes\\$ext\\OpenWithProgids',
-      progId,
+      videoProgId,
+      '',
+      valueType: REG_SZ,
+    );
+  }
+
+  void _registerAnnotationExtension() {
+    // Make the app the default handler for the app-specific annotation format.
+    _setRegistryValue(
+      HKEY_CURRENT_USER,
+      'Software\\Classes\\$annotationExtension',
+      '',
+      annotationProgId,
+    );
+    _setRegistryValue(
+      HKEY_CURRENT_USER,
+      'Software\\Classes\\$annotationExtension',
+      'PerceivedType',
+      'text',
+    );
+    _setRegistryValue(
+      HKEY_CURRENT_USER,
+      'Software\\Classes\\$annotationExtension\\OpenWithProgids',
+      annotationProgId,
       '',
       valueType: REG_SZ,
     );
@@ -171,6 +215,12 @@ class FileAssociationService {
         '',
       );
     }
+    _setRegistryValue(
+      HKEY_CURRENT_USER,
+      'Software\\Classes\\Applications\\framesketch_player.exe\\SupportedTypes',
+      annotationExtension,
+      '',
+    );
 
     // Set shell command
     _setRegistryValue(
@@ -181,17 +231,26 @@ class FileAssociationService {
     );
   }
 
-  void _removeExtensionAssociation(String ext) {
+  void _removeVideoExtensionAssociation(String ext) {
     try {
       // Remove from OpenWithProgids
       _deleteRegistryValue(
         HKEY_CURRENT_USER,
         'Software\\Classes\\$ext\\OpenWithProgids',
-        progId,
+        videoProgId,
       );
     } catch (e) {
       // Ignore errors - key might not exist
     }
+  }
+
+  void _removeAnnotationExtensionAssociation() {
+    try {
+      _deleteRegistryKey(
+        HKEY_CURRENT_USER,
+        'Software\\Classes\\$annotationExtension',
+      );
+    } catch (_) {}
   }
 
   void _setRegistryValue(
@@ -272,6 +331,22 @@ class FileAssociationService {
     } finally {
       calloc.free(lpSubKey);
       calloc.free(hKeyResult);
+    }
+  }
+
+  bool _registryKeyExists(int hKeyRoot, String keyPath) {
+    final hKey = calloc<HKEY>();
+    final keyPathPtr = keyPath.toNativeUtf16();
+    try {
+      final result = RegOpenKeyEx(hKeyRoot, keyPathPtr, 0, KEY_READ, hKey);
+      if (result == ERROR_SUCCESS) {
+        RegCloseKey(hKey.value);
+        return true;
+      }
+      return false;
+    } finally {
+      calloc.free(keyPathPtr);
+      calloc.free(hKey);
     }
   }
 

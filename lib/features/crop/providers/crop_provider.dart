@@ -681,12 +681,14 @@ class CropNotifier extends StateNotifier<CropState> {
     AnnotationData? annotationData,
   }) async {
     final playerState = _ref.read(playerProvider);
-    if (playerState.currentVideoPath == null || playerState.metadata == null) {
+    if (playerState.currentVideoPath == null ||
+        playerState.metadata == null ||
+        !playerState.isLocalFileSource) {
       state = state.copyWith(
         exportStatus: ExportStatus.error,
         clearPreparationMessage: true,
         clearPreparationProgress: true,
-        exportError: 'No video loaded',
+        exportError: 'Export requires a local video file',
       );
       return;
     }

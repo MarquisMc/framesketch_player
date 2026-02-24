@@ -15,6 +15,8 @@ import 'features/annotations/providers/annotation_provider.dart';
 import 'features/annotations/providers/annotation_keyframe_timeline_provider.dart';
 import 'features/annotations/models/stroke.dart';
 import 'core/services/annotation_storage_service.dart';
+import 'core/services/youtube_video_source_service.dart';
+import 'core/models/annotation_data.dart';
 import 'core/models/keyboard_shortcuts.dart';
 import 'features/settings/widgets/settings_dialog.dart';
 import 'features/settings/widgets/theme_dialog.dart';
@@ -114,7 +116,10 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       annotationKeyframeTimelineVisibleProvider,
     );
     final hasVideoLoaded = ref.watch(
-      playerProvider.select((state) => state.currentVideoPath != null),
+      playerProvider.select((state) => state.hasLoadedSource),
+    );
+    final hasLocalVideoLoaded = ref.watch(
+      playerProvider.select((state) => state.isLocalFileSource),
     );
     final isCropModeActive = ref.watch(
       cropProvider.select((state) => state.isCropModeActive),
@@ -160,7 +165,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                               : Icons.file_download,
                         ),
                         onPressed: hasVideoLoaded && !isExporting
-                            ? _exportVideoFromTopBar
+                            ? (hasLocalVideoLoaded ? _exportVideoFromTopBar : null)
                             : null,
                         tooltip: isExporting ? 'Exporting...' : 'Export Video',
                       ),
@@ -171,9 +176,24 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                         tooltip: 'Open Video (Ctrl+O)',
                       ),
                       IconButton(
+                        icon: const Icon(Icons.link),
+                        onPressed: _openYouTubeUrl,
+                        tooltip: 'Open YouTube URL',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.data_object),
+                        onPressed: _openAnnotationJson,
+                        tooltip: 'Open Annotation File',
+                      ),
+                      IconButton(
                         icon: const Icon(Icons.save),
                         onPressed: _saveAnnotations,
                         tooltip: 'Save Annotations (Ctrl+S)',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.save_as),
+                        onPressed: _saveAnnotationsAs,
+                        tooltip: 'Save Annotation As...',
                       ),
                       const SizedBox(width: 8),
                       // Crop mode toggle button
@@ -215,7 +235,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                                 children: [
                                   Icon(Icons.check_circle_outline),
                                   SizedBox(width: 8),
-                                  Text('Set as Default Video Player'),
+                                  Text('Register Video + Annotation Files'),
                                 ],
                               ),
                             ),
@@ -600,6 +620,19 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
   Future<void> _loadInitialVideo(String filePath) async {
     try {
+      if (_isAnnotationJsonPath(filePath)) {
+        await _openAnnotationJsonPath(filePath);
+        return;
+      }
+
+      final uri = Uri.tryParse(filePath);
+      if (uri != null &&
+          (uri.scheme == 'http' || uri.scheme == 'https') &&
+          _looksLikeYouTubeUrl(filePath)) {
+        await _loadYouTubeUrl(filePath);
+        return;
+      }
+
       // Load video
       final playerNotifier = ref.read(playerProvider.notifier);
       await playerNotifier.loadVideo(filePath);
@@ -683,6 +716,208 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     }
   }
 
+  Future<void> _openYouTubeUrl() async {
+    final dialogHostContext = _navigatorKey.currentContext;
+    if (dialogHostContext == null || !mounted) {
+      return;
+    }
+
+    final controller = TextEditingController();
+    final url = await showDialog<String>(
+      context: dialogHostContext,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Open YouTube URL'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'https://www.youtube.com/watch?v=...',
+            ),
+            onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+              child: const Text('Open'),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (url == null || url.trim().isEmpty) {
+      _focusNode.requestFocus();
+      return;
+    }
+
+    await _loadYouTubeUrl(url);
+  }
+
+  Future<void> _loadYouTubeUrl(String url) async {
+    try {
+      if (!_looksLikeYouTubeUrl(url)) {
+        _showErrorDialog('Please enter a valid YouTube URL.');
+        return;
+      }
+
+      final youtubeService = YouTubeVideoSourceService();
+      final resolved = await youtubeService.resolve(url);
+
+      final playerNotifier = ref.read(playerProvider.notifier);
+      await playerNotifier.loadNetworkVideo(
+        mediaUrl: resolved.streamUri.toString(),
+        sourceLabel: resolved.canonicalUrl,
+      );
+
+      final playerState = ref.read(playerProvider);
+      if (playerState.metadata == null) {
+        if (mounted) {
+          _showErrorDialog('Failed to load YouTube video stream.');
+        }
+        return;
+      }
+
+      final annotationNotifier = ref.read(annotationProvider.notifier);
+      await annotationNotifier.initializeForYouTubeVideo(
+        youtubeVideoId: resolved.videoId,
+        youtubeUrl: resolved.canonicalUrl,
+        fps: playerState.metadata!.fps,
+      );
+
+      if (mounted) {
+        _scaffoldMessengerKey.currentState?.showSnackBar(
+          SnackBar(
+            content: Text('Loaded YouTube video: ${resolved.title}'),
+            backgroundColor: _activePalette.success,
+          ),
+        );
+      }
+
+      _focusNode.requestFocus();
+    } catch (e) {
+      if (mounted) {
+        if (e is YouTubeSourceLoadException) {
+          _showErrorDialog(e.userMessage);
+        } else {
+          _showErrorDialog('Error loading YouTube URL: $e');
+        }
+      }
+    }
+  }
+
+  Future<void> _openAnnotationJson() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['framesketch', 'json'],
+        dialogTitle: 'Select Annotation File',
+      );
+
+      if (result == null || result.files.isEmpty) return;
+      final filePath = result.files.first.path;
+      if (filePath == null) return;
+
+      await _openAnnotationJsonPath(filePath);
+    } catch (e) {
+      if (mounted) {
+        if (e is YouTubeSourceLoadException) {
+          _showErrorDialog(
+            'The annotation file was loaded, but the linked YouTube video could not be opened.\n\n${e.userMessage}',
+          );
+        } else {
+          _showErrorDialog('Error opening annotation file: $e');
+        }
+      }
+    }
+  }
+
+  Future<void> _openAnnotationJsonPath(String annotationPath) async {
+    try {
+      final storageService = AnnotationStorageService();
+      final data = await storageService.loadAnnotationsFromFile(annotationPath);
+      if (data == null) {
+        _showErrorDialog('Unable to read annotation file.');
+        return;
+      }
+
+      await _loadSourceForAnnotationData(data);
+
+      if (mounted) {
+        _scaffoldMessengerKey.currentState?.showSnackBar(
+          SnackBar(
+            content: Text('Loaded annotations from ${File(annotationPath).path}'),
+            backgroundColor: _activePalette.success,
+          ),
+        );
+      }
+
+      _focusNode.requestFocus();
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Error opening annotation file: $e');
+      }
+    }
+  }
+
+  Future<void> _loadSourceForAnnotationData(AnnotationData data) async {
+    final playerNotifier = ref.read(playerProvider.notifier);
+    final annotationNotifier = ref.read(annotationProvider.notifier);
+
+    if (data.youtubeUrl != null && data.youtubeUrl!.trim().isNotEmpty) {
+      final youtubeService = YouTubeVideoSourceService();
+      final storageService = AnnotationStorageService();
+      final resolved = await youtubeService.resolve(data.youtubeUrl!);
+      await playerNotifier.loadNetworkVideo(
+        mediaUrl: resolved.streamUri.toString(),
+        sourceLabel: resolved.canonicalUrl,
+      );
+      if (ref.read(playerProvider).metadata == null) {
+        throw StateError('Failed to load YouTube source from annotation JSON');
+      }
+      annotationNotifier.initializeFromAnnotationData(
+        data.copyWith(
+          videoPath: storageService.buildYouTubeAnnotationKey(resolved.videoId),
+          youtubeUrl: resolved.canonicalUrl,
+        ),
+      );
+      return;
+    }
+
+    final localPath = data.videoPath;
+    if (localPath.isEmpty || !await File(localPath).exists()) {
+      throw StateError(
+        'Annotation JSON references a local video that was not found:\n$localPath',
+      );
+    }
+
+    await playerNotifier.loadVideo(localPath);
+    if (ref.read(playerProvider).metadata == null) {
+      throw StateError('Failed to load local video from annotation JSON');
+    }
+    annotationNotifier.initializeFromAnnotationData(data);
+  }
+
+  bool _looksLikeYouTubeUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null) return false;
+    final host = uri.host.toLowerCase();
+    return host.contains('youtube.com') || host.contains('youtu.be');
+  }
+
+  bool _isAnnotationJsonPath(String value) {
+    final lower = value.toLowerCase();
+    return lower.endsWith('.framesketch') ||
+        lower.endsWith('.annotations.json') ||
+        lower.endsWith('.json');
+  }
+
   Future<void> _saveAnnotations() async {
     try {
       final annotationNotifier = ref.read(annotationProvider.notifier);
@@ -710,6 +945,103 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     }
   }
 
+  Future<void> _saveAnnotationsAs() async {
+    try {
+      final annotationState = ref.read(annotationProvider);
+      final annotationData = annotationState.annotationData;
+      if (annotationData == null) {
+        _showErrorDialog('No annotations to save');
+        return;
+      }
+
+      final playerState = ref.read(playerProvider);
+      final suggestedBaseName = _buildSuggestedAnnotationFileBaseName(
+        annotationData: annotationData,
+        playerSourceLabel: playerState.currentSourceLabel,
+      );
+
+      final selectedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save Annotation File As',
+        fileName: '$suggestedBaseName.framesketch',
+        type: FileType.custom,
+        allowedExtensions: ['framesketch', 'json'],
+      );
+
+      if (selectedPath == null) {
+        _focusNode.requestFocus();
+        return;
+      }
+
+      final outputPath = _normalizeAnnotationJsonOutputPath(selectedPath);
+      final success = await ref
+          .read(annotationProvider.notifier)
+          .saveAnnotationsToFile(outputPath);
+
+      if (!mounted) return;
+
+      if (success) {
+        _scaffoldMessengerKey.currentState?.showSnackBar(
+          SnackBar(
+            content: Text('Annotation file saved: $outputPath'),
+            backgroundColor: _activePalette.success,
+          ),
+        );
+      } else {
+        _showErrorDialog('Failed to save annotation file');
+      }
+
+      _focusNode.requestFocus();
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Error saving annotation file: $e');
+      }
+    }
+  }
+
+  String _normalizeAnnotationJsonOutputPath(String rawPath) {
+    final lower = rawPath.toLowerCase();
+    if (lower.endsWith('.framesketch') ||
+        lower.endsWith('.annotations.json') ||
+        lower.endsWith('.json')) {
+      return rawPath;
+    }
+    return '$rawPath.framesketch';
+  }
+
+  String _buildSuggestedAnnotationFileBaseName({
+    required AnnotationData annotationData,
+    required String? playerSourceLabel,
+  }) {
+    final youtubeUrl = annotationData.youtubeUrl;
+    if (youtubeUrl != null && youtubeUrl.trim().isNotEmpty) {
+      final uri = Uri.tryParse(youtubeUrl);
+      final shortSegments = uri?.pathSegments.where((s) => s.isNotEmpty).toList();
+      final videoId =
+          uri?.queryParameters['v'] ??
+          (uri?.host.toLowerCase().contains('youtu.be') == true
+              ? ((shortSegments != null && shortSegments.isNotEmpty)
+                    ? shortSegments.last
+                    : null)
+              : null);
+      final label = videoId == null || videoId.isEmpty
+          ? (playerSourceLabel ?? 'youtube_video')
+          : 'youtube_$videoId';
+      return _buildSafeOutputBaseName(label);
+    }
+
+    final videoPath = annotationData.videoPath;
+    if (videoPath.isNotEmpty) {
+      final fileName = File(videoPath).uri.pathSegments.isNotEmpty
+          ? File(videoPath).uri.pathSegments.last
+          : videoPath;
+      final dot = fileName.lastIndexOf('.');
+      final base = dot > 0 ? fileName.substring(0, dot) : fileName;
+      return _buildSafeOutputBaseName(base);
+    }
+
+    return 'annotations';
+  }
+
   Future<void> _exportVideoFromTopBar() async {
     try {
       final playerState = ref.read(playerProvider);
@@ -718,6 +1050,12 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
       if (playerState.currentVideoPath == null) {
         _showErrorDialog('No video loaded');
+        return;
+      }
+      if (!playerState.isLocalFileSource) {
+        _showErrorDialog(
+          'Export is only available for local video files. YouTube sources are playback/annotation only.',
+        );
         return;
       }
 
@@ -851,12 +1189,13 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
             if (success) {
               _showInfoDialog(
                 'File Associations Registered',
-                'FrameSketch Player has been registered as a video player.\n\n'
-                    'To set it as default:\n'
+                'FrameSketch Player has been registered for video files and .framesketch files.\n\n'
+                    'To set it as default for video files:\n'
                     '1. Right-click any video file\n'
                     '2. Select "Open with" → "Choose another app"\n'
                     '3. Select "FrameSketch Player"\n'
-                    '4. Check "Always use this app"',
+                    '4. Check "Always use this app"\n\n'
+                    '.framesketch files should now open directly with FrameSketch Player.',
               );
             } else {
               _showErrorDialog(
@@ -878,7 +1217,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
             if (success) {
               _scaffoldMessengerKey.currentState?.showSnackBar(
                 SnackBar(
-                  content: Text('File associations removed successfully'),
+                  content: Text(
+                    'Video and annotation file associations removed successfully',
+                  ),
                   backgroundColor: _activePalette.success,
                 ),
               );
@@ -900,8 +1241,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
             _showInfoDialog(
               'Registration Status',
               isRegistered
-                  ? 'FrameSketch Player is currently registered as a video player.'
-                  : 'FrameSketch Player is not registered.\n\nUse "Set as Default Video Player" to register it.',
+                  ? 'FrameSketch Player is currently registered for video files and .framesketch files.'
+                  : 'FrameSketch Player is not registered.\n\nUse "Register Video + Annotation Files" to register it.',
             );
           }
         } catch (e) {

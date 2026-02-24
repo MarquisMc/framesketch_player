@@ -25,7 +25,7 @@ class CropControlsPanel extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final hasVideo = playerState.currentVideoPath != null;
+    final hasVideo = playerState.isLocalFileSource;
     final maxPanelHeight = MediaQuery.sizeOf(context).height * 0.38;
 
     return Container(
@@ -199,7 +199,9 @@ class CropControlsPanel extends ConsumerWidget {
     final playerState = ref.read(playerProvider);
     final cropNotifier = ref.read(cropProvider.notifier);
 
-    if (playerState.currentVideoPath == null) return;
+    if (playerState.currentVideoPath == null || !playerState.isLocalFileSource) {
+      return;
+    }
 
     // Suggest output filename
     final inputFile = File(playerState.currentVideoPath!);

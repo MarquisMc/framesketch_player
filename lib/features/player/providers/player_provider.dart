@@ -6,6 +6,8 @@ import '../../../core/models/video_metadata.dart';
 import '../../loop/providers/loop_provider.dart';
 import '../../crop/providers/crop_provider.dart';
 
+enum PlayerSourceType { localFile, network }
+
 /// Player state
 class PlayerState {
   final Player? player;
@@ -19,6 +21,8 @@ class PlayerState {
   final bool isMuted;
   final String? error;
   final String? currentVideoPath;
+  final String? currentSourceLabel;
+  final PlayerSourceType? sourceType;
   final double? sourceFps;
 
   const PlayerState({
@@ -33,6 +37,8 @@ class PlayerState {
     this.isMuted = false,
     this.error,
     this.currentVideoPath,
+    this.currentSourceLabel,
+    this.sourceType,
     this.sourceFps,
   });
 
@@ -48,6 +54,8 @@ class PlayerState {
     bool? isMuted,
     String? error,
     String? currentVideoPath,
+    String? currentSourceLabel,
+    PlayerSourceType? sourceType,
     double? sourceFps,
   }) {
     return PlayerState(
@@ -62,9 +70,14 @@ class PlayerState {
       isMuted: isMuted ?? this.isMuted,
       error: error,
       currentVideoPath: currentVideoPath ?? this.currentVideoPath,
+      currentSourceLabel: currentSourceLabel ?? this.currentSourceLabel,
+      sourceType: sourceType ?? this.sourceType,
       sourceFps: sourceFps ?? this.sourceFps,
     );
   }
+
+  bool get hasLoadedSource => currentVideoPath != null;
+  bool get isLocalFileSource => sourceType == PlayerSourceType.localFile;
 }
 
 /// Player provider with media_kit integration
@@ -218,8 +231,32 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     MediaKit.ensureInitialized();
   }
 
-  /// Load video file
+  /// Load local video file
   Future<void> loadVideo(String filePath) async {
+    await _loadVideoSource(
+      mediaPath: filePath,
+      sourceLabel: filePath,
+      sourceType: PlayerSourceType.localFile,
+    );
+  }
+
+  /// Load network video source (e.g. resolved YouTube stream URL).
+  Future<void> loadNetworkVideo({
+    required String mediaUrl,
+    required String sourceLabel,
+  }) async {
+    await _loadVideoSource(
+      mediaPath: mediaUrl,
+      sourceLabel: sourceLabel,
+      sourceType: PlayerSourceType.network,
+    );
+  }
+
+  Future<void> _loadVideoSource({
+    required String mediaPath,
+    required String sourceLabel,
+    required PlayerSourceType sourceType,
+  }) async {
     try {
       state = state.copyWith(isLoading: true, error: null);
 
@@ -304,7 +341,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       });
 
       // Open paused so loading a new video does not auto-play.
-      await player.open(Media(filePath), play: false);
+      await player.open(Media(mediaPath), play: false);
 
       // Wait for first frame when possible so width/height streams settle.
       try {
@@ -346,7 +383,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
       // Create metadata from FFprobe/player data
       final metadata = VideoMetadata(
-        filePath: filePath,
+        filePath: sourceLabel,
         duration: videoDuration,
         fps: fps,
         width: resolvedWidth,
@@ -362,7 +399,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         videoController: videoController,
         metadata: metadata,
         isLoading: false,
-        currentVideoPath: filePath,
+        currentVideoPath: mediaPath,
+        currentSourceLabel: sourceLabel,
+        sourceType: sourceType,
         sourceFps: fps,
       );
 
@@ -607,6 +646,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await widthSubscription?.cancel();
     await heightSubscription?.cancel();
     await player?.dispose();
+    state = state.copyWith(
+      player: null,
+      videoController: null,
+      metadata: null,
+      position: Duration.zero,
+      duration: Duration.zero,
+      isPlaying: false,
+      isLoading: false,
+      error: null,
+      currentVideoPath: state.currentVideoPath,
+    );
   }
 
   @override

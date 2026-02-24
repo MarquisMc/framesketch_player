@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/annotation_data.dart';
 
@@ -9,9 +10,33 @@ import '../models/annotation_data.dart';
 class AnnotationStorageService {
   static const String _recentFilesKey = 'recent_video_files';
   static const int _maxRecentFiles = 10;
+  static const String _youtubeKeyPrefix = 'yt:';
+
+  bool isYouTubeAnnotationKey(String sourceKey) {
+    return sourceKey.startsWith(_youtubeKeyPrefix);
+  }
+
+  String buildYouTubeAnnotationKey(String videoId) {
+    return '$_youtubeKeyPrefix$videoId';
+  }
+
+  Future<Directory> _youtubeAnnotationDirectory() async {
+    final appSupportDir = await getApplicationSupportDirectory();
+    final dir = Directory(path.join(appSupportDir.path, 'youtube_annotations'));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
 
   /// Get annotation file path for a video
-  String getAnnotationPath(String videoPath) {
+  Future<String> getAnnotationPath(String videoPath) async {
+    if (isYouTubeAnnotationKey(videoPath)) {
+      final dir = await _youtubeAnnotationDirectory();
+      final safeKey = videoPath.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      return path.join(dir.path, '$safeKey.annotations.json');
+    }
+
     final videoDir = path.dirname(videoPath);
     final videoName = path.basenameWithoutExtension(videoPath);
     return path.join(videoDir, '$videoName.annotations.json');
@@ -27,22 +52,33 @@ class AnnotationStorageService {
   /// Save annotation data to file
   Future<bool> saveAnnotations(AnnotationData data) async {
     try {
-      final annotationPath = getAnnotationPath(data.videoPath);
-      final file = File(annotationPath);
-
-      // Update timestamp
-      final updatedData = data.copyWith(updatedAt: DateTime.now());
-
-      // Convert to JSON
-      final jsonString = const JsonEncoder.withIndent('  ')
-          .convert(updatedData.toJson());
-
-      // Write to file
-      await file.writeAsString(jsonString);
-
-      return true;
+      final annotationPath = await getAnnotationPath(data.videoPath);
+      return saveAnnotationsToFile(data, annotationPath);
     } catch (e) {
       stderr.writeln('Error saving annotations: $e');
+      return false;
+    }
+  }
+
+  /// Save annotation data to an explicit file path (share/export flow).
+  Future<bool> saveAnnotationsToFile(
+    AnnotationData data,
+    String outputPath,
+  ) async {
+    try {
+      final file = File(outputPath);
+      final parent = file.parent;
+      if (!await parent.exists()) {
+        await parent.create(recursive: true);
+      }
+
+      final updatedData = data.copyWith(updatedAt: DateTime.now());
+      final jsonString =
+          const JsonEncoder.withIndent('  ').convert(updatedData.toJson());
+      await file.writeAsString(jsonString);
+      return true;
+    } catch (e) {
+      stderr.writeln('Error saving annotations to file: $e');
       return false;
     }
   }
@@ -50,7 +86,7 @@ class AnnotationStorageService {
   /// Load annotation data from file
   Future<AnnotationData?> loadAnnotations(String videoPath) async {
     try {
-      final annotationPath = getAnnotationPath(videoPath);
+      final annotationPath = await getAnnotationPath(videoPath);
       final file = File(annotationPath);
 
       if (!await file.exists()) {
@@ -69,14 +105,14 @@ class AnnotationStorageService {
 
   /// Check if annotations exist for video
   Future<bool> hasAnnotations(String videoPath) async {
-    final annotationPath = getAnnotationPath(videoPath);
+    final annotationPath = await getAnnotationPath(videoPath);
     return await File(annotationPath).exists();
   }
 
   /// Delete annotations for video
   Future<bool> deleteAnnotations(String videoPath) async {
     try {
-      final annotationPath = getAnnotationPath(videoPath);
+      final annotationPath = await getAnnotationPath(videoPath);
       final file = File(annotationPath);
 
       if (await file.exists()) {
@@ -87,6 +123,23 @@ class AnnotationStorageService {
     } catch (e) {
       stderr.writeln('Error deleting annotations: $e');
       return false;
+    }
+  }
+
+  /// Load annotations directly from a chosen JSON file.
+  Future<AnnotationData?> loadAnnotationsFromFile(String annotationFilePath) async {
+    try {
+      final file = File(annotationFilePath);
+      if (!await file.exists()) {
+        return null;
+      }
+
+      final jsonString = await file.readAsString();
+      final jsonData = json.decode(jsonString) as Map<String, dynamic>;
+      return AnnotationData.fromJson(jsonData);
+    } catch (e) {
+      stderr.writeln('Error loading annotation file: $e');
+      return null;
     }
   }
 

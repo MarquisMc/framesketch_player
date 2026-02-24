@@ -22,6 +22,11 @@ class VideoViewport extends ConsumerWidget {
     final videoController = ref.watch(
       playerProvider.select((state) => state.videoController),
     );
+    final sourceIdentity = ref.watch(
+      playerProvider.select(
+        (state) => state.currentSourceLabel ?? state.currentVideoPath,
+      ),
+    );
 
     if (error != null) {
       return _buildError(error, palette);
@@ -35,12 +40,17 @@ class VideoViewport extends ConsumerWidget {
       return _buildEmpty(palette);
     }
 
-    return _buildPlayer(videoController, showOverlays: showOverlays);
+    return _buildPlayer(
+      videoController,
+      showOverlays: showOverlays,
+      sourceIdentity: sourceIdentity,
+    );
   }
 
   Widget _buildPlayer(
     VideoController controller, {
     required bool showOverlays,
+    required String? sourceIdentity,
   }) {
     return Container(
       color: Colors.black,
@@ -52,6 +62,7 @@ class VideoViewport extends ConsumerWidget {
               // Video player layer
               RepaintBoundary(
                 child: Video(
+                  key: ValueKey(sourceIdentity ?? controller.hashCode),
                   controller: controller,
                   controls: null, // No built-in controls
                 ),

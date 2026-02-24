@@ -10,6 +10,7 @@ class AnnotationData with _$AnnotationData {
   const factory AnnotationData({
     required String videoId,
     required String videoPath,
+    String? youtubeUrl,
     required double fps,
     required DateTime createdAt,
     required DateTime updatedAt,

@@ -37,6 +37,8 @@ dependencies:
   equatable: ^2.0.7
   win32: ^5.5.0  # Windows API for file associations and system integration
   ffi: ^2.1.0    # Foreign Function Interface for Windows API calls
+  youtube_explode_dart: ^3.0.5
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:

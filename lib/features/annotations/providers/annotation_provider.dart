@@ -319,6 +319,55 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     }
   }
 
+  /// Initialize annotations for a YouTube video using a stable synthetic key.
+  Future<void> initializeForYouTubeVideo({
+    required String youtubeVideoId,
+    required String youtubeUrl,
+    required double fps,
+  }) async {
+    final sourceKey = _storageService.buildYouTubeAnnotationKey(youtubeVideoId);
+    final existingData = await _storageService.loadAnnotations(sourceKey);
+
+    if (existingData != null) {
+      final normalizedData = existingData.youtubeUrl == youtubeUrl
+          ? existingData
+          : existingData.copyWith(youtubeUrl: youtubeUrl);
+      state = state.copyWith(
+        annotationData: normalizedData,
+        hasUnsavedChanges: normalizedData != existingData,
+      );
+      return;
+    }
+
+    final videoId = _storageService.generateVideoId(sourceKey);
+    final newData = AnnotationData(
+      videoId: videoId,
+      videoPath: sourceKey,
+      youtubeUrl: youtubeUrl,
+      fps: fps,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      viewportWidth: 0,
+      viewportHeight: 0,
+    );
+
+    state = state.copyWith(annotationData: newData, hasUnsavedChanges: false);
+  }
+
+  /// Initialize annotation state from an imported/shared annotation JSON.
+  void initializeFromAnnotationData(AnnotationData data) {
+    state = state.copyWith(
+      annotationData: data,
+      undoStack: const [],
+      redoStack: const [],
+      clearSelectedStroke: true,
+      clearSelectionBox: true,
+      clearDragStartPoint: true,
+      clearPendingTextStrokeId: true,
+      hasUnsavedChanges: false,
+    );
+  }
+
   AnnotationData _migrateLegacyCoordinatesIfNeeded(AnnotationData data) {
     if (data.viewportWidth <= 0 || data.viewportHeight <= 0) {
       return data;
@@ -738,6 +787,22 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     final success = await _storageService.saveAnnotations(
       state.annotationData!,
+    );
+
+    if (success) {
+      state = state.copyWith(hasUnsavedChanges: false);
+    }
+
+    return success;
+  }
+
+  /// Save annotations to a user-selected JSON path.
+  Future<bool> saveAnnotationsToFile(String outputPath) async {
+    if (state.annotationData == null) return false;
+
+    final success = await _storageService.saveAnnotationsToFile(
+      state.annotationData!,
+      outputPath,
     );
 
     if (success) {

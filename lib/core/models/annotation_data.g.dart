@@ -10,6 +10,7 @@ _$AnnotationDataImpl _$$AnnotationDataImplFromJson(Map<String, dynamic> json) =>
     _$AnnotationDataImpl(
       videoId: json['videoId'] as String,
       videoPath: json['videoPath'] as String,
+      youtubeUrl: json['youtubeUrl'] as String?,
       fps: (json['fps'] as num).toDouble(),
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
@@ -27,6 +28,7 @@ Map<String, dynamic> _$$AnnotationDataImplToJson(
 ) => <String, dynamic>{
   'videoId': instance.videoId,
   'videoPath': instance.videoPath,
+  'youtubeUrl': instance.youtubeUrl,
   'fps': instance.fps,
   'createdAt': instance.createdAt.toIso8601String(),
   'updatedAt': instance.updatedAt.toIso8601String(),
