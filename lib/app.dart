@@ -774,6 +774,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       await playerNotifier.loadNetworkVideo(
         mediaUrl: resolved.streamUri.toString(),
         sourceLabel: resolved.canonicalUrl,
+        externalAudioUrl: resolved.externalAudioUri?.toString(),
       );
 
       final playerState = ref.read(playerProvider);
@@ -792,9 +793,40 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       );
 
       if (mounted) {
+        final qualityParts = <String>[];
+        final selectedLabel = resolved.selectedQualityLabel?.trim();
+        final selectedWidth = resolved.selectedWidth;
+        final selectedHeight = resolved.selectedHeight;
+
+        if (selectedLabel != null && selectedLabel.isNotEmpty) {
+          qualityParts.add(selectedLabel);
+        }
+
+        if (selectedWidth != null &&
+            selectedWidth > 0 &&
+            selectedHeight != null &&
+            selectedHeight > 0) {
+          qualityParts.add('${selectedWidth}x$selectedHeight');
+        }
+
+        if (resolved.usesHls) {
+          qualityParts.add('HLS');
+        }
+        if (resolved.externalAudioUri != null) {
+          qualityParts.add('split A/V');
+        }
+
+        if (qualityParts.isEmpty) {
+          qualityParts.add(
+            '${playerState.metadata!.width}x${playerState.metadata!.height}',
+          );
+        }
+
         _scaffoldMessengerKey.currentState?.showSnackBar(
           SnackBar(
-            content: Text('Loaded YouTube video: ${resolved.title}'),
+            content: Text(
+              'Loaded YouTube video: ${resolved.title} (${qualityParts.join(' | ')})',
+            ),
             backgroundColor: _activePalette.success,
           ),
         );
@@ -877,6 +909,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       await playerNotifier.loadNetworkVideo(
         mediaUrl: resolved.streamUri.toString(),
         sourceLabel: resolved.canonicalUrl,
+        externalAudioUrl: resolved.externalAudioUri?.toString(),
       );
       if (ref.read(playerProvider).metadata == null) {
         throw StateError('Failed to load YouTube source from annotation JSON');

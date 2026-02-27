@@ -244,11 +244,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> loadNetworkVideo({
     required String mediaUrl,
     required String sourceLabel,
+    String? externalAudioUrl,
   }) async {
     await _loadVideoSource(
       mediaPath: mediaUrl,
       sourceLabel: sourceLabel,
       sourceType: PlayerSourceType.network,
+      externalAudioUrl: externalAudioUrl,
     );
   }
 
@@ -256,6 +258,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     required String mediaPath,
     required String sourceLabel,
     required PlayerSourceType sourceType,
+    String? externalAudioUrl,
   }) async {
     try {
       state = state.copyWith(isLoading: true, error: null);
@@ -342,6 +345,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
       // Open paused so loading a new video does not auto-play.
       await player.open(Media(mediaPath), play: false);
+      if (externalAudioUrl != null && externalAudioUrl.trim().isNotEmpty) {
+        await _attachExternalAudio(
+          player: player,
+          audioUrl: externalAudioUrl.trim(),
+        );
+      }
 
       // Wait for first frame when possible so width/height streams settle.
       try {
@@ -413,6 +422,25 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         error: 'Error loading video: $e',
       );
     }
+  }
+
+  Future<void> _attachExternalAudio({
+    required Player player,
+    required String audioUrl,
+  }) async {
+    final dynamic platform = player.platform;
+    if (platform == null) {
+      throw StateError('Player platform is not ready for external audio.');
+    }
+
+    final runtimeName = platform.runtimeType.toString().toLowerCase();
+    if (!runtimeName.contains('nativeplayer')) {
+      throw StateError(
+        'External audio streams are only supported on the native player backend.',
+      );
+    }
+
+    await platform.command(<String>['audio-add', audioUrl, 'select']);
   }
 
   /// Play video
