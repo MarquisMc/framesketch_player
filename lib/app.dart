@@ -51,6 +51,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   int _keyRepeatGeneration = 0;
   bool _isFullscreen = false;
   bool _showExportHourglassBottom = false;
+  int _loadingOverlayDepth = 0;
+  String _loadingOverlayMessage = 'Loading...';
   AppPalette get _activePalette =>
       ref.read(themeControllerProvider).activePalette;
 
@@ -165,7 +167,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                               : Icons.file_download,
                         ),
                         onPressed: hasVideoLoaded && !isExporting
-                            ? (hasLocalVideoLoaded ? _exportVideoFromTopBar : null)
+                            ? (hasLocalVideoLoaded
+                                  ? _exportVideoFromTopBar
+                                  : null)
                             : null,
                         tooltip: isExporting ? 'Exporting...' : 'Export Video',
                       ),
@@ -264,39 +268,47 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                       const SizedBox(width: 8),
                     ],
                   ),
-            body: Column(
+            body: Stack(
               children: [
-                // Main content area
-                Expanded(
-                  child: Row(
-                    children: [
-                      // Video and annotation area
-                      Expanded(
-                        child: VideoViewport(showOverlays: !_isFullscreen),
+                Column(
+                  children: [
+                    // Main content area
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // Video and annotation area
+                          Expanded(
+                            child: VideoViewport(showOverlays: !_isFullscreen),
+                          ),
+
+                          // Drawing tools panel
+                          if (!_isFullscreen && !isCropModeActive)
+                            const DrawingToolsPanel(),
+                        ],
                       ),
+                    ),
 
-                      // Drawing tools panel
-                      if (!_isFullscreen && !isCropModeActive)
-                        const DrawingToolsPanel(),
-                    ],
-                  ),
+                    // Crop controls panel (shows when crop mode is active)
+                    if (!_isFullscreen) const CropControlsPanel(),
+
+                    // Timeline scrubber
+                    TimelineScrubber(
+                      showAnnotationTimelineToggle: !_isFullscreen,
+                    ),
+
+                    // Annotation keyframe timeline (separate from playback timeline)
+                    if (!_isFullscreen && showAnnotationTimeline)
+                      const AnnotationKeyframeTimeline(),
+
+                    // Playback controls
+                    PlaybackControls(
+                      isFullscreen: _isFullscreen,
+                      onToggleFullscreen: _toggleFullscreenMode,
+                    ),
+                  ],
                 ),
-
-                // Crop controls panel (shows when crop mode is active)
-                if (!_isFullscreen) const CropControlsPanel(),
-
-                // Timeline scrubber
-                TimelineScrubber(showAnnotationTimelineToggle: !_isFullscreen),
-
-                // Annotation keyframe timeline (separate from playback timeline)
-                if (!_isFullscreen && showAnnotationTimeline)
-                  const AnnotationKeyframeTimeline(),
-
-                // Playback controls
-                PlaybackControls(
-                  isFullscreen: _isFullscreen,
-                  onToggleFullscreen: _toggleFullscreenMode,
-                ),
+                if (_loadingOverlayDepth > 0)
+                  _buildGlobalLoadingOverlay(context),
               ],
             ),
           ),
@@ -321,6 +333,81 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     _exportIconTimer?.cancel();
     _exportIconTimer = null;
     _showExportHourglassBottom = false;
+  }
+
+  Future<T> _runWithLoadingOverlay<T>({
+    required String message,
+    required Future<T> Function() action,
+  }) async {
+    if (mounted) {
+      setState(() {
+        _loadingOverlayDepth += 1;
+        _loadingOverlayMessage = message;
+      });
+    }
+
+    try {
+      return await action();
+    } finally {
+      if (mounted) {
+        setState(() {
+          if (_loadingOverlayDepth > 0) {
+            _loadingOverlayDepth -= 1;
+          }
+          if (_loadingOverlayDepth == 0) {
+            _loadingOverlayMessage = 'Loading...';
+          }
+        });
+      }
+    }
+  }
+
+  Widget _buildGlobalLoadingOverlay(BuildContext context) {
+    final palette = AppPalette.of(context);
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: false,
+        child: Container(
+          color: palette.panelOverlay,
+          alignment: Alignment.center,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+            decoration: BoxDecoration(
+              color: palette.panelElevated,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: palette.border),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 34,
+                  height: 34,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    color: palette.accentBright,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _loadingOverlayMessage,
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Please wait...',
+                  style: TextStyle(color: palette.textSecondary, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   KeyEventResult _handleKeyEvent(KeyEvent event) {
@@ -619,48 +706,53 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   }
 
   Future<void> _loadInitialVideo(String filePath) async {
+    if (_isAnnotationJsonPath(filePath)) {
+      await _openAnnotationJsonPath(filePath);
+      return;
+    }
+
+    final uri = Uri.tryParse(filePath);
+    if (uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        _looksLikeYouTubeUrl(filePath)) {
+      await _loadYouTubeUrl(filePath);
+      return;
+    }
+
     try {
-      if (_isAnnotationJsonPath(filePath)) {
-        await _openAnnotationJsonPath(filePath);
-        return;
-      }
+      await _runWithLoadingOverlay(
+        message: 'Loading video...',
+        action: () async {
+          // Load video
+          final playerNotifier = ref.read(playerProvider.notifier);
+          await playerNotifier.loadVideo(filePath);
 
-      final uri = Uri.tryParse(filePath);
-      if (uri != null &&
-          (uri.scheme == 'http' || uri.scheme == 'https') &&
-          _looksLikeYouTubeUrl(filePath)) {
-        await _loadYouTubeUrl(filePath);
-        return;
-      }
+          // Check if video loaded successfully
+          final playerState = ref.read(playerProvider);
+          if (playerState.metadata == null) {
+            if (mounted) {
+              _showErrorDialog(
+                'Failed to load video. The video file may be corrupted or in an unsupported format.',
+              );
+            }
+            return;
+          }
 
-      // Load video
-      final playerNotifier = ref.read(playerProvider.notifier);
-      await playerNotifier.loadVideo(filePath);
-
-      // Check if video loaded successfully
-      final playerState = ref.read(playerProvider);
-      if (playerState.metadata == null) {
-        if (mounted) {
-          _showErrorDialog(
-            'Failed to load video. The video file may be corrupted or in an unsupported format.',
+          // Initialize annotations
+          final annotationNotifier = ref.read(annotationProvider.notifier);
+          await annotationNotifier.initializeForVideo(
+            filePath,
+            playerState.metadata!.fps,
           );
-        }
-        return;
-      }
 
-      // Initialize annotations
-      final annotationNotifier = ref.read(annotationProvider.notifier);
-      await annotationNotifier.initializeForVideo(
-        filePath,
-        playerState.metadata!.fps,
+          // Add to recent files
+          final storageService = AnnotationStorageService();
+          await storageService.addToRecentFiles(filePath);
+
+          // Refocus
+          _focusNode.requestFocus();
+        },
       );
-
-      // Add to recent files
-      final storageService = AnnotationStorageService();
-      await storageService.addToRecentFiles(filePath);
-
-      // Refocus
-      _focusNode.requestFocus();
     } catch (e) {
       if (mounted) {
         _showErrorDialog('Error opening file: $e');
@@ -681,34 +773,39 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       final filePath = result.files.first.path;
       if (filePath == null) return;
 
-      // Load video
-      final playerNotifier = ref.read(playerProvider.notifier);
-      await playerNotifier.loadVideo(filePath);
+      await _runWithLoadingOverlay(
+        message: 'Loading video...',
+        action: () async {
+          // Load video
+          final playerNotifier = ref.read(playerProvider.notifier);
+          await playerNotifier.loadVideo(filePath);
 
-      // Check if video loaded successfully
-      final playerState = ref.read(playerProvider);
-      if (playerState.metadata == null) {
-        if (mounted) {
-          _showErrorDialog(
-            'Failed to load video. The video file may be corrupted or in an unsupported format.',
+          // Check if video loaded successfully
+          final playerState = ref.read(playerProvider);
+          if (playerState.metadata == null) {
+            if (mounted) {
+              _showErrorDialog(
+                'Failed to load video. The video file may be corrupted or in an unsupported format.',
+              );
+            }
+            return;
+          }
+
+          // Initialize annotations
+          final annotationNotifier = ref.read(annotationProvider.notifier);
+          await annotationNotifier.initializeForVideo(
+            filePath,
+            playerState.metadata!.fps,
           );
-        }
-        return;
-      }
 
-      // Initialize annotations
-      final annotationNotifier = ref.read(annotationProvider.notifier);
-      await annotationNotifier.initializeForVideo(
-        filePath,
-        playerState.metadata!.fps,
+          // Add to recent files
+          final storageService = AnnotationStorageService();
+          await storageService.addToRecentFiles(filePath);
+
+          // Refocus
+          _focusNode.requestFocus();
+        },
       );
-
-      // Add to recent files
-      final storageService = AnnotationStorageService();
-      await storageService.addToRecentFiles(filePath);
-
-      // Refocus
-      _focusNode.requestFocus();
     } catch (e) {
       if (mounted) {
         _showErrorDialog('Error opening file: $e');
@@ -722,18 +819,18 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       return;
     }
 
-    final controller = TextEditingController();
+    String enteredUrl = '';
     final url = await showDialog<String>(
       context: dialogHostContext,
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Open YouTube URL'),
           content: TextField(
-            controller: controller,
             autofocus: true,
             decoration: const InputDecoration(
               hintText: 'https://www.youtube.com/watch?v=...',
             ),
+            onChanged: (value) => enteredUrl = value,
             onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
           ),
           actions: [
@@ -742,15 +839,13 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+              onPressed: () => Navigator.of(dialogContext).pop(enteredUrl),
               child: const Text('Open'),
             ),
           ],
         );
       },
     );
-
-    controller.dispose();
 
     if (url == null || url.trim().isEmpty) {
       _focusNode.requestFocus();
@@ -767,72 +862,77 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         return;
       }
 
-      final youtubeService = YouTubeVideoSourceService();
-      final resolved = await youtubeService.resolve(url);
+      await _runWithLoadingOverlay(
+        message: 'Loading YouTube video...',
+        action: () async {
+          final youtubeService = YouTubeVideoSourceService();
+          final resolved = await youtubeService.resolve(url);
 
-      final playerNotifier = ref.read(playerProvider.notifier);
-      await playerNotifier.loadNetworkVideo(
-        mediaUrl: resolved.streamUri.toString(),
-        sourceLabel: resolved.canonicalUrl,
-        externalAudioUrl: resolved.externalAudioUri?.toString(),
-      );
-
-      final playerState = ref.read(playerProvider);
-      if (playerState.metadata == null) {
-        if (mounted) {
-          _showErrorDialog('Failed to load YouTube video stream.');
-        }
-        return;
-      }
-
-      final annotationNotifier = ref.read(annotationProvider.notifier);
-      await annotationNotifier.initializeForYouTubeVideo(
-        youtubeVideoId: resolved.videoId,
-        youtubeUrl: resolved.canonicalUrl,
-        fps: playerState.metadata!.fps,
-      );
-
-      if (mounted) {
-        final qualityParts = <String>[];
-        final selectedLabel = resolved.selectedQualityLabel?.trim();
-        final selectedWidth = resolved.selectedWidth;
-        final selectedHeight = resolved.selectedHeight;
-
-        if (selectedLabel != null && selectedLabel.isNotEmpty) {
-          qualityParts.add(selectedLabel);
-        }
-
-        if (selectedWidth != null &&
-            selectedWidth > 0 &&
-            selectedHeight != null &&
-            selectedHeight > 0) {
-          qualityParts.add('${selectedWidth}x$selectedHeight');
-        }
-
-        if (resolved.usesHls) {
-          qualityParts.add('HLS');
-        }
-        if (resolved.externalAudioUri != null) {
-          qualityParts.add('split A/V');
-        }
-
-        if (qualityParts.isEmpty) {
-          qualityParts.add(
-            '${playerState.metadata!.width}x${playerState.metadata!.height}',
+          final playerNotifier = ref.read(playerProvider.notifier);
+          await playerNotifier.loadNetworkVideo(
+            mediaUrl: resolved.streamUri.toString(),
+            sourceLabel: resolved.canonicalUrl,
+            externalAudioUrl: resolved.externalAudioUri?.toString(),
           );
-        }
 
-        _scaffoldMessengerKey.currentState?.showSnackBar(
-          SnackBar(
-            content: Text(
-              'Loaded YouTube video: ${resolved.title} (${qualityParts.join(' | ')})',
-            ),
-            backgroundColor: _activePalette.success,
-          ),
-        );
-      }
+          final playerState = ref.read(playerProvider);
+          if (playerState.metadata == null) {
+            if (mounted) {
+              _showErrorDialog('Failed to load YouTube video stream.');
+            }
+            return;
+          }
 
-      _focusNode.requestFocus();
+          final annotationNotifier = ref.read(annotationProvider.notifier);
+          await annotationNotifier.initializeForYouTubeVideo(
+            youtubeVideoId: resolved.videoId,
+            youtubeUrl: resolved.canonicalUrl,
+            fps: playerState.metadata!.fps,
+          );
+
+          if (mounted) {
+            final qualityParts = <String>[];
+            final selectedLabel = resolved.selectedQualityLabel?.trim();
+            final selectedWidth = resolved.selectedWidth;
+            final selectedHeight = resolved.selectedHeight;
+
+            if (selectedLabel != null && selectedLabel.isNotEmpty) {
+              qualityParts.add(selectedLabel);
+            }
+
+            if (selectedWidth != null &&
+                selectedWidth > 0 &&
+                selectedHeight != null &&
+                selectedHeight > 0) {
+              qualityParts.add('${selectedWidth}x$selectedHeight');
+            }
+
+            if (resolved.usesHls) {
+              qualityParts.add('HLS');
+            }
+            if (resolved.externalAudioUri != null) {
+              qualityParts.add('split A/V');
+            }
+
+            if (qualityParts.isEmpty) {
+              qualityParts.add(
+                '${playerState.metadata!.width}x${playerState.metadata!.height}',
+              );
+            }
+
+            _scaffoldMessengerKey.currentState?.showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Loaded YouTube video: ${resolved.title} (${qualityParts.join(' | ')})',
+                ),
+                backgroundColor: _activePalette.success,
+              ),
+            );
+          }
+
+          _focusNode.requestFocus();
+        },
+      );
     } catch (e) {
       if (mounted) {
         if (e is YouTubeSourceLoadException) {
@@ -872,25 +972,34 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
   Future<void> _openAnnotationJsonPath(String annotationPath) async {
     try {
-      final storageService = AnnotationStorageService();
-      final data = await storageService.loadAnnotationsFromFile(annotationPath);
-      if (data == null) {
-        _showErrorDialog('Unable to read annotation file.');
-        return;
-      }
+      await _runWithLoadingOverlay(
+        message: 'Loading annotations...',
+        action: () async {
+          final storageService = AnnotationStorageService();
+          final data = await storageService.loadAnnotationsFromFile(
+            annotationPath,
+          );
+          if (data == null) {
+            _showErrorDialog('Unable to read annotation file.');
+            return;
+          }
 
-      await _loadSourceForAnnotationData(data);
+          await _loadSourceForAnnotationData(data);
 
-      if (mounted) {
-        _scaffoldMessengerKey.currentState?.showSnackBar(
-          SnackBar(
-            content: Text('Loaded annotations from ${File(annotationPath).path}'),
-            backgroundColor: _activePalette.success,
-          ),
-        );
-      }
+          if (mounted) {
+            _scaffoldMessengerKey.currentState?.showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Loaded annotations from ${File(annotationPath).path}',
+                ),
+                backgroundColor: _activePalette.success,
+              ),
+            );
+          }
 
-      _focusNode.requestFocus();
+          _focusNode.requestFocus();
+        },
+      );
     } catch (e) {
       if (mounted) {
         _showErrorDialog('Error opening annotation file: $e');
@@ -1048,7 +1157,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     final youtubeUrl = annotationData.youtubeUrl;
     if (youtubeUrl != null && youtubeUrl.trim().isNotEmpty) {
       final uri = Uri.tryParse(youtubeUrl);
-      final shortSegments = uri?.pathSegments.where((s) => s.isNotEmpty).toList();
+      final shortSegments = uri?.pathSegments
+          .where((s) => s.isNotEmpty)
+          .toList();
       final videoId =
           uri?.queryParameters['v'] ??
           (uri?.host.toLowerCase().contains('youtu.be') == true
