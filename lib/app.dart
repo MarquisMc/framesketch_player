@@ -1,18 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show File;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'features/player/providers/player_provider.dart';
-import 'features/player/widgets/video_viewport.dart';
-import 'features/player/widgets/playback_controls.dart';
-import 'features/timeline/widgets/timeline_scrubber.dart';
-import 'features/annotations/widgets/drawing_tools_panel.dart';
-import 'features/annotations/widgets/annotation_keyframe_timeline.dart';
 import 'features/annotations/providers/annotation_provider.dart';
-import 'features/annotations/providers/annotation_keyframe_timeline_provider.dart';
 import 'features/annotations/models/stroke.dart';
 import 'core/services/annotation_storage_service.dart';
 import 'core/services/youtube_video_source_service.dart';
@@ -22,11 +17,10 @@ import 'features/settings/widgets/settings_dialog.dart';
 import 'features/settings/widgets/theme_dialog.dart';
 import 'features/loop/providers/loop_provider.dart';
 import 'features/crop/providers/crop_provider.dart';
-import 'features/crop/widgets/crop_controls.dart';
 import 'core/services/file_association_service.dart';
 import 'core/theme/app_palette.dart';
 import 'core/theme/theme_provider.dart';
-import 'dart:io' show File, Platform;
+import 'ui/editor_scaffold.dart';
 
 /// Main application widget
 class FrameSketchPlayerApp extends ConsumerStatefulWidget {
@@ -50,6 +44,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   LogicalKeyboardKey? _lastPressedKey;
   int _keyRepeatGeneration = 0;
   bool _isFullscreen = false;
+  bool _showInspector = true;
   bool _showExportHourglassBottom = false;
   int _loadingOverlayDepth = 0;
   String _loadingOverlayMessage = 'Loading...';
@@ -113,19 +108,6 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   Widget build(BuildContext context) {
     final themeState = ref.watch(themeControllerProvider);
     final selectedTheme = themeState.selectedTheme;
-    final themeController = ref.read(themeControllerProvider.notifier);
-    final showAnnotationTimeline = ref.watch(
-      annotationKeyframeTimelineVisibleProvider,
-    );
-    final hasVideoLoaded = ref.watch(
-      playerProvider.select((state) => state.hasLoadedSource),
-    );
-    final hasLocalVideoLoaded = ref.watch(
-      playerProvider.select((state) => state.isLocalFileSource),
-    );
-    final isCropModeActive = ref.watch(
-      cropProvider.select((state) => state.isCropModeActive),
-    );
     final isExporting = ref.watch(
       cropProvider.select(
         (state) => state.exportStatus == ExportStatus.exporting,
@@ -153,159 +135,24 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         onKeyEvent: (node, event) => _handleKeyEvent(event),
         child: Builder(
           builder: (context) => Scaffold(
-            appBar: _isFullscreen
-                ? null
-                : AppBar(
-                    title: const Text('FrameSketch Player'),
-                    actions: [
-                      IconButton(
-                        icon: Icon(
-                          isExporting
-                              ? (_showExportHourglassBottom
-                                    ? Icons.hourglass_bottom
-                                    : Icons.hourglass_top)
-                              : Icons.file_download,
-                        ),
-                        onPressed: hasVideoLoaded && !isExporting
-                            ? (hasLocalVideoLoaded
-                                  ? _exportVideoFromTopBar
-                                  : null)
-                            : null,
-                        tooltip: isExporting ? 'Exporting...' : 'Export Video',
-                      ),
-                      const SizedBox(width: 4),
-                      IconButton(
-                        icon: const Icon(Icons.folder_open),
-                        onPressed: _openFile,
-                        tooltip: 'Open Video (Ctrl+O)',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.link),
-                        onPressed: _openYouTubeUrl,
-                        tooltip: 'Open YouTube URL',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.data_object),
-                        onPressed: _openAnnotationJson,
-                        tooltip: 'Open Annotation File',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.save),
-                        onPressed: _saveAnnotations,
-                        tooltip: 'Save Annotations (Ctrl+S)',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.save_as),
-                        onPressed: _saveAnnotationsAs,
-                        tooltip: 'Save Annotation As...',
-                      ),
-                      const SizedBox(width: 8),
-                      // Crop mode toggle button
-                      const CropModeToggleButton(),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: Icon(
-                          themeState.mode == ThemeMode.dark
-                              ? Icons.light_mode
-                              : Icons.dark_mode,
-                        ),
-                        onPressed: themeController.toggleThemeMode,
-                        tooltip: themeState.mode == ThemeMode.dark
-                            ? 'Switch to Light Mode'
-                            : 'Switch to Dark Mode',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.palette_outlined),
-                        onPressed: () => _openThemeManager(context),
-                        tooltip: 'Theme Manager',
-                      ),
-                      const SizedBox(width: 4),
-                      IconButton(
-                        icon: const Icon(Icons.settings),
-                        onPressed: () => _openSettings(context),
-                        tooltip: 'Keyboard Shortcuts',
-                      ),
-                      // File associations menu (Windows only)
-                      if (Platform.isWindows)
-                        PopupMenuButton<String>(
-                          icon: const Icon(Icons.more_vert),
-                          tooltip: 'More Options',
-                          onSelected: (value) =>
-                              _handleMenuAction(value, context),
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'register',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.check_circle_outline),
-                                  SizedBox(width: 8),
-                                  Text('Register Video + Annotation Files'),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem(
-                              value: 'unregister',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.cancel_outlined),
-                                  SizedBox(width: 8),
-                                  Text('Remove File Associations'),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem(
-                              value: 'check',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.info_outline),
-                                  SizedBox(width: 8),
-                                  Text('Check Registration Status'),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      const SizedBox(width: 8),
-                    ],
-                  ),
             body: Stack(
               children: [
-                Column(
-                  children: [
-                    // Main content area
-                    Expanded(
-                      child: Row(
-                        children: [
-                          // Video and annotation area
-                          Expanded(
-                            child: VideoViewport(showOverlays: !_isFullscreen),
-                          ),
-
-                          // Drawing tools panel
-                          if (!_isFullscreen && !isCropModeActive)
-                            const DrawingToolsPanel(),
-                        ],
-                      ),
-                    ),
-
-                    // Crop controls panel (shows when crop mode is active)
-                    if (!_isFullscreen) const CropControlsPanel(),
-
-                    // Timeline scrubber
-                    TimelineScrubber(
-                      showAnnotationTimelineToggle: !_isFullscreen,
-                    ),
-
-                    // Annotation keyframe timeline (separate from playback timeline)
-                    if (!_isFullscreen && showAnnotationTimeline)
-                      const AnnotationKeyframeTimeline(),
-
-                    // Playback controls
-                    PlaybackControls(
-                      isFullscreen: _isFullscreen,
-                      onToggleFullscreen: _toggleFullscreenMode,
-                    ),
-                  ],
+                EditorScaffold(
+                  isFullscreen: _isFullscreen,
+                  showInspector: _showInspector,
+                  onToggleFullscreen: _toggleFullscreenMode,
+                  onToggleInspector: _toggleInspectorVisibility,
+                  onOpenFile: _openFile,
+                  onOpenYouTube: _openYouTubeUrl,
+                  onOpenAnnotation: _openAnnotationJson,
+                  onSaveAnnotations: _saveAnnotations,
+                  onSaveAnnotationsAs: _saveAnnotationsAs,
+                  onExportVideo: _exportVideoFromTopBar,
+                  onOpenSettings: () => _openSettings(context),
+                  onOpenThemeManager: () => _openThemeManager(context),
+                  isExporting: isExporting,
+                  showExportHourglassBottom: _showExportHourglassBottom,
+                  onMenuAction: _handleMenuAction,
                 ),
                 if (_loadingOverlayDepth > 0)
                   _buildGlobalLoadingOverlay(context),
@@ -693,6 +540,13 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
   void _toggleFullscreenMode() {
     _setFullscreenMode(!_isFullscreen);
+  }
+
+  void _toggleInspectorVisibility() {
+    setState(() {
+      _showInspector = !_showInspector;
+    });
+    _focusNode.requestFocus();
   }
 
   void _setFullscreenMode(bool enabled) {
