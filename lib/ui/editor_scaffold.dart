@@ -140,7 +140,7 @@ class EditorScaffold extends ConsumerWidget {
               // Center: canvas
               const Expanded(child: VideoViewport(showOverlays: true)),
 
-              if (showInspector) ...[
+              if (showInspector && !isCropModeActive) ...[
                 VerticalDivider(width: 1, thickness: 1, color: palette.border),
 
                 // Right: inspector panel

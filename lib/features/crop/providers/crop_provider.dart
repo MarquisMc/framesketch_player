@@ -14,6 +14,9 @@ enum CropAspectRatio {
   /// Free-form cropping (no constraint)
   free,
 
+  /// Original source video ratio
+  original,
+
   /// 16:9 widescreen (landscape)
   ratio16x9,
 
@@ -35,6 +38,8 @@ extension CropAspectRatioExtension on CropAspectRatio {
     switch (this) {
       case CropAspectRatio.free:
         return 'Free';
+      case CropAspectRatio.original:
+        return 'Original';
       case CropAspectRatio.ratio16x9:
         return '16:9';
       case CropAspectRatio.ratio1x1:
@@ -53,6 +58,7 @@ extension CropAspectRatioExtension on CropAspectRatio {
   double? get ratio {
     switch (this) {
       case CropAspectRatio.free:
+      case CropAspectRatio.original:
         return null;
       case CropAspectRatio.ratio16x9:
         return 16 / 9;
@@ -304,6 +310,9 @@ class CropNotifier extends StateNotifier<CropState> {
     } else {
       // Entering crop mode
       state = state.copyWith(isCropModeActive: true);
+      if (state.aspectRatio != CropAspectRatio.free) {
+        setAspectRatio(state.aspectRatio);
+      }
     }
   }
 
@@ -311,6 +320,9 @@ class CropNotifier extends StateNotifier<CropState> {
   void enterCropMode() {
     if (!state.isCropModeActive) {
       state = state.copyWith(isCropModeActive: true);
+      if (state.aspectRatio != CropAspectRatio.free) {
+        setAspectRatio(state.aspectRatio);
+      }
     }
   }
 
@@ -327,67 +339,65 @@ class CropNotifier extends StateNotifier<CropState> {
   void setAspectRatio(CropAspectRatio ratio) {
     state = state.copyWith(aspectRatio: ratio);
 
-    // If we have a current crop rect, adjust it to match the new ratio
-    if (ratio != CropAspectRatio.free) {
-      _adjustCropRectToAspectRatio(ratio.ratio!);
+    if (ratio == CropAspectRatio.free) {
+      return;
     }
+
+    final metadata = _ref.read(playerProvider).metadata;
+    if (metadata == null || metadata.width <= 0 || metadata.height <= 0) {
+      return;
+    }
+
+    final videoRatio = metadata.width / metadata.height;
+    final targetRatio = ratio == CropAspectRatio.original
+        ? videoRatio
+        : ratio.ratio;
+    if (targetRatio == null || targetRatio <= 0) {
+      return;
+    }
+
+    // Always derive new preset crops from original video dimensions.
+    // This avoids chaining from a previously cropped ratio.
+    _applyAspectRatioFromVideoBounds(
+      targetRatio: targetRatio,
+      videoRatio: videoRatio,
+    );
   }
 
-  /// Adjust the current crop rect to match a specific aspect ratio
-  void _adjustCropRectToAspectRatio(double targetRatio) {
-    final currentRect = state.cropRect;
-    final currentRatio = currentRect.aspectRatio;
-
-    if ((currentRatio - targetRatio).abs() < 0.01) {
-      return; // Already matches
+  /// Build a centered crop rect for [targetRatio], fitted inside full video.
+  void _applyAspectRatioFromVideoBounds({
+    required double targetRatio,
+    required double videoRatio,
+  }) {
+    if ((targetRatio - videoRatio).abs() < 0.0001) {
+      state = state.copyWith(cropRect: const CropRect.full());
+      return;
     }
 
-    // Keep center, adjust dimensions
-    final centerX = currentRect.centerX;
-    final centerY = currentRect.centerY;
-
-    double newWidth, newHeight;
-
-    if (currentRatio > targetRatio) {
-      // Current is wider - reduce width
-      newHeight = currentRect.height;
-      newWidth = newHeight * targetRatio;
-    } else {
-      // Current is taller - reduce height
-      newWidth = currentRect.width;
-      newHeight = newWidth / targetRatio;
+    if (targetRatio > videoRatio) {
+      // Target is wider than video: use full width, reduce height.
+      final normalizedHeight = videoRatio / targetRatio;
+      final top = (1.0 - normalizedHeight) / 2.0;
+      state = state.copyWith(
+        cropRect: CropRect(
+          left: 0.0,
+          top: top.clamp(0.0, 1.0),
+          right: 1.0,
+          bottom: (top + normalizedHeight).clamp(0.0, 1.0),
+        ),
+      );
+      return;
     }
 
-    // Calculate new bounds
-    var newLeft = centerX - newWidth / 2;
-    var newTop = centerY - newHeight / 2;
-    var newRight = centerX + newWidth / 2;
-    var newBottom = centerY + newHeight / 2;
-
-    // Clamp to valid range and shift if needed
-    if (newLeft < 0) {
-      newRight -= newLeft;
-      newLeft = 0;
-    }
-    if (newTop < 0) {
-      newBottom -= newTop;
-      newTop = 0;
-    }
-    if (newRight > 1) {
-      newLeft -= (newRight - 1);
-      newRight = 1;
-    }
-    if (newBottom > 1) {
-      newTop -= (newBottom - 1);
-      newBottom = 1;
-    }
-
+    // Target is taller than video: use full height, reduce width.
+    final normalizedWidth = targetRatio / videoRatio;
+    final left = (1.0 - normalizedWidth) / 2.0;
     state = state.copyWith(
       cropRect: CropRect(
-        left: newLeft.clamp(0.0, 1.0),
-        top: newTop.clamp(0.0, 1.0),
-        right: newRight.clamp(0.0, 1.0),
-        bottom: newBottom.clamp(0.0, 1.0),
+        left: left.clamp(0.0, 1.0),
+        top: 0.0,
+        right: (left + normalizedWidth).clamp(0.0, 1.0),
+        bottom: 1.0,
       ),
     );
   }
