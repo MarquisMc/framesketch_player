@@ -26,6 +26,51 @@ class _AnnotationKeyframeTimelineState
     return ((milliseconds / 1000.0) * fps).round();
   }
 
+  _VisibleWindow _visibleWindow({
+    required Duration duration,
+    required Duration playhead,
+    required double zoomFactor,
+    Duration? preferredCenter,
+  }) {
+    final totalMs = duration.inMilliseconds;
+    if (totalMs <= 0 || zoomFactor <= 1.0) {
+      return _VisibleWindow(startMs: 0, endMs: totalMs);
+    }
+
+    final spanMs = (totalMs / zoomFactor).round().clamp(1, totalMs);
+    final halfSpan = spanMs / 2.0;
+    final centerMs = (preferredCenter ?? playhead).inMilliseconds
+        .clamp(0, totalMs)
+        .toDouble();
+
+    var startMs = (centerMs - halfSpan).round();
+    var endMs = startMs + spanMs;
+
+    if (startMs < 0) {
+      startMs = 0;
+      endMs = spanMs;
+    }
+
+    if (endMs > totalMs) {
+      endMs = totalMs;
+      startMs = (endMs - spanMs).clamp(0, totalMs);
+    }
+
+    return _VisibleWindow(startMs: startMs, endMs: endMs);
+  }
+
+  double _normalizedFromTimeMs(int timeMs, _VisibleWindow window) {
+    final span = window.spanMs;
+    if (span <= 0) return 0.0;
+    return ((timeMs - window.startMs) / span).clamp(0.0, 1.0);
+  }
+
+  int _timeMsFromNormalized(double normalized, _VisibleWindow window) {
+    final span = window.spanMs;
+    final clamped = normalized.clamp(0.0, 1.0);
+    return (window.startMs + (clamped * span)).round();
+  }
+
   void _startKeyframeDrag(int keyframeMs, double normalizedPosition) {
     setState(() {
       _draggingKeyframeMs = keyframeMs;
@@ -52,24 +97,22 @@ class _AnnotationKeyframeTimelineState
     });
   }
 
-  void _endKeyframeDrag(Duration duration) {
+  void _endKeyframeDrag(_VisibleWindow window) {
     final fromKeyframeMs = _draggingKeyframeMs;
     final normalizedPosition = _draggingNormalizedPosition;
     if (fromKeyframeMs == null || normalizedPosition == null) {
       return _clearKeyframeDragState();
     }
 
-    if (duration.inMilliseconds <= 0) {
+    if (window.spanMs <= 0) {
       return _clearKeyframeDragState();
     }
 
-    final toKeyframeMs = (normalizedPosition * duration.inMilliseconds).round();
-    ref
-        .read(annotationProvider.notifier)
-        .moveKeyframe(
-          fromKeyframeMs: fromKeyframeMs,
-          toKeyframeMs: toKeyframeMs,
-        );
+    final toKeyframeMs = _timeMsFromNormalized(normalizedPosition, window);
+    ref.read(annotationProvider.notifier).moveKeyframe(
+      fromKeyframeMs: fromKeyframeMs,
+      toKeyframeMs: toKeyframeMs,
+    );
 
     _clearKeyframeDragState();
   }
@@ -87,6 +130,7 @@ class _AnnotationKeyframeTimelineState
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
     final playerState = ref.watch(playerProvider);
+    final timelineState = ref.watch(annotationKeyframeTimelineProvider);
     final timelineNotifier = ref.read(
       annotationKeyframeTimelineProvider.notifier,
     );
@@ -100,11 +144,16 @@ class _AnnotationKeyframeTimelineState
     final duration = playerState.duration;
     final displayPosition = playerState.position;
 
-    double sliderValue = 0.0;
-    if (hasVideo && duration.inMicroseconds > 0) {
-      sliderValue = (displayPosition.inMicroseconds / duration.inMicroseconds)
-          .clamp(0.0, 1.0);
-    }
+    final visibleWindow = _visibleWindow(
+      duration: duration,
+      playhead: displayPosition,
+      zoomFactor: timelineState.zoomFactor,
+      preferredCenter: timelineState.windowCenter,
+    );
+
+    final sliderValue = hasVideo && duration.inMilliseconds > 0
+        ? _normalizedFromTimeMs(displayPosition.inMilliseconds, visibleWindow)
+        : 0.0;
 
     final fps = playerState.metadata?.fps ?? 30.0;
     final activeFrame = activeKeyframeMs != null
@@ -180,8 +229,8 @@ class _AnnotationKeyframeTimelineState
                       ? () => annotationNotifier
                             .createManualKeyframeAtCurrentFrame()
                       : null,
-                  icon: Icon(Icons.add_circle_outline, size: 16),
-                  label: Text('New Frame'),
+                  icon: const Icon(Icons.add_circle_outline, size: 16),
+                  label: const Text('New Frame'),
                   style: TextButton.styleFrom(
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -193,6 +242,58 @@ class _AnnotationKeyframeTimelineState
                   ),
                 ),
               ],
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Zoom out',
+                visualDensity: VisualDensity.compact,
+                onPressed: timelineState.zoomLevelIndex > 0
+                    ? timelineNotifier.zoomOut
+                    : null,
+                icon: const Icon(Icons.zoom_out, size: 18),
+              ),
+              Text(
+                timelineState.zoomFactor == 1.0
+                    ? 'Full'
+                    : '${timelineState.zoomFactor.toInt()}x',
+                style: TextStyle(color: palette.textSecondary, fontSize: 12),
+              ),
+              IconButton(
+                tooltip: 'Zoom in',
+                visualDensity: VisualDensity.compact,
+                onPressed: timelineState.zoomLevelIndex <
+                        AnnotationKeyframeTimelineState.zoomLevels.length - 1
+                    ? timelineNotifier.zoomIn
+                    : null,
+                icon: const Icon(Icons.zoom_in, size: 18),
+              ),
+              IconButton(
+                tooltip: 'Recenter zoom window',
+                visualDensity: VisualDensity.compact,
+                onPressed: hasVideo
+                    ? () {
+                        final centerMs =
+                            activeKeyframeMs ?? displayPosition.inMilliseconds;
+                        timelineNotifier.setWindowCenter(
+                          Duration(milliseconds: centerMs),
+                        );
+                      }
+                    : null,
+                icon: const Icon(Icons.my_location, size: 16),
+              ),
+              if (timelineState.zoomFactor > 1.0)
+                TextButton(
+                  onPressed: timelineNotifier.resetZoom,
+                  style: TextButton.styleFrom(
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                  ),
+                  child: const Text('Full Range'),
+                ),
               const Spacer(),
               if (activeKeyframeMs != null)
                 Text(
@@ -258,13 +359,13 @@ class _AnnotationKeyframeTimelineState
                         ),
                       ),
                     ),
-                    ...keyframeTimesMs.map((keyframeMs) {
-                      final computedNormalized = duration.inMilliseconds > 0
-                          ? (keyframeMs / duration.inMilliseconds).clamp(
-                              0.0,
-                              1.0,
-                            )
-                          : 0.0;
+                    ...keyframeTimesMs
+                        .where(visibleWindow.contains)
+                        .map((keyframeMs) {
+                      final computedNormalized = _normalizedFromTimeMs(
+                        keyframeMs,
+                        visibleWindow,
+                      );
                       final isBeingDragged = keyframeMs == _draggingKeyframeMs;
                       final normalized =
                           isBeingDragged && _draggingNormalizedPosition != null
@@ -287,11 +388,10 @@ class _AnnotationKeyframeTimelineState
                                   _updateKeyframeDrag(deltaDx, trackWidth)
                             : null,
                         onDragEnd: hasVideo
-                            ? () => _endKeyframeDrag(duration)
+                            ? () => _endKeyframeDrag(visibleWindow)
                             : null,
                         onTap: hasVideo
                             ? () {
-                                // Ignore tap if this interaction was a drag.
                                 if (_dragMoved) {
                                   _dragMoved = false;
                                   return;
@@ -299,6 +399,9 @@ class _AnnotationKeyframeTimelineState
                                 timelineNotifier.seekToKeyframeMs(
                                   keyframeMs,
                                   fps,
+                                );
+                                timelineNotifier.setWindowCenter(
+                                  Duration(milliseconds: keyframeMs),
                                 );
                               }
                             : null,
@@ -313,6 +416,17 @@ class _AnnotationKeyframeTimelineState
       ),
     );
   }
+}
+
+class _VisibleWindow {
+  final int startMs;
+  final int endMs;
+
+  const _VisibleWindow({required this.startMs, required this.endMs});
+
+  int get spanMs => (endMs - startMs).clamp(0, 1 << 30);
+
+  bool contains(int positionMs) => positionMs >= startMs && positionMs <= endMs;
 }
 
 class _KeyframeMarker extends StatelessWidget {
