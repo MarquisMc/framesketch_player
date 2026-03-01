@@ -4,25 +4,40 @@ import '../../player/providers/player_provider.dart';
 
 /// State for the annotation keyframe timeline scrubber.
 class AnnotationKeyframeTimelineState {
+  static const List<double> zoomLevels = [1.0, 2.0, 4.0, 8.0];
+
   final bool isScrubbing;
   final Duration? scrubbingPosition;
   final Duration? pendingSeekPosition;
+  final int zoomLevelIndex;
+  final Duration? windowCenter;
 
   const AnnotationKeyframeTimelineState({
     this.isScrubbing = false,
     this.scrubbingPosition,
     this.pendingSeekPosition,
+    this.zoomLevelIndex = 0,
+    this.windowCenter,
   });
+
+  double get zoomFactor => zoomLevels[zoomLevelIndex];
 
   AnnotationKeyframeTimelineState copyWith({
     bool? isScrubbing,
     Duration? scrubbingPosition,
     Duration? pendingSeekPosition,
+    int? zoomLevelIndex,
+    Duration? windowCenter,
+    bool clearWindowCenter = false,
   }) {
     return AnnotationKeyframeTimelineState(
       isScrubbing: isScrubbing ?? this.isScrubbing,
       scrubbingPosition: scrubbingPosition,
       pendingSeekPosition: pendingSeekPosition,
+      zoomLevelIndex: zoomLevelIndex ?? this.zoomLevelIndex,
+      windowCenter: clearWindowCenter
+          ? null
+          : (windowCenter ?? this.windowCenter),
     );
   }
 }
@@ -103,6 +118,27 @@ class AnnotationKeyframeTimelineNotifier
       pendingSeekPosition: targetPosition,
     );
     _performSeek(targetPosition);
+  }
+
+  void zoomIn() {
+    if (state.zoomLevelIndex >=
+        AnnotationKeyframeTimelineState.zoomLevels.length - 1) {
+      return;
+    }
+    state = state.copyWith(zoomLevelIndex: state.zoomLevelIndex + 1);
+  }
+
+  void zoomOut() {
+    if (state.zoomLevelIndex <= 0) return;
+    state = state.copyWith(zoomLevelIndex: state.zoomLevelIndex - 1);
+  }
+
+  void resetZoom() {
+    state = state.copyWith(zoomLevelIndex: 0, clearWindowCenter: true);
+  }
+
+  void setWindowCenter(Duration center) {
+    state = state.copyWith(windowCenter: center);
   }
 
   Duration _toExactFramePosition(int positionMs, double fps) {
