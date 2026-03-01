@@ -109,10 +109,12 @@ class _AnnotationKeyframeTimelineState
     }
 
     final toKeyframeMs = _timeMsFromNormalized(normalizedPosition, window);
-    ref.read(annotationProvider.notifier).moveKeyframe(
-      fromKeyframeMs: fromKeyframeMs,
-      toKeyframeMs: toKeyframeMs,
-    );
+    ref
+        .read(annotationProvider.notifier)
+        .moveKeyframe(
+          fromKeyframeMs: fromKeyframeMs,
+          toKeyframeMs: toKeyframeMs,
+        );
 
     _clearKeyframeDragState();
   }
@@ -159,6 +161,14 @@ class _AnnotationKeyframeTimelineState
     final activeFrame = activeKeyframeMs != null
         ? _frameFromMs(activeKeyframeMs, fps)
         : null;
+
+    void onMinimapSeek(double normalized) {
+      final targetMs = (normalized * duration.inMilliseconds).round().clamp(
+        0,
+        duration.inMilliseconds,
+      );
+      timelineNotifier.setWindowCenter(Duration(milliseconds: targetMs));
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -260,7 +270,8 @@ class _AnnotationKeyframeTimelineState
               IconButton(
                 tooltip: 'Zoom in',
                 visualDensity: VisualDensity.compact,
-                onPressed: timelineState.zoomLevelIndex <
+                onPressed:
+                    timelineState.zoomLevelIndex <
                         AnnotationKeyframeTimelineState.zoomLevels.length - 1
                     ? timelineNotifier.zoomIn
                     : null,
@@ -307,6 +318,37 @@ class _AnnotationKeyframeTimelineState
             ],
           ),
           const SizedBox(height: 4),
+          if (timelineState.zoomFactor > 1.0 &&
+              hasVideo &&
+              duration.inMilliseconds > 0)
+            Container(
+              height: 18,
+              margin: const EdgeInsets.only(bottom: 4),
+              decoration: BoxDecoration(
+                color: palette.panelElevated,
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: _MinimapStrip(
+                  painter: _MinimapPainter(
+                    keyframeTimesMs: keyframeTimesMs,
+                    activeKeyframeMs: activeKeyframeMs,
+                    totalMs: duration.inMilliseconds,
+                    windowStartMs: visibleWindow.startMs,
+                    windowEndMs: visibleWindow.endMs,
+                    playheadMs: displayPosition.inMilliseconds,
+                    trackColor: palette.border,
+                    viewportFillColor: palette.accentSoft,
+                    viewportBorderColor: palette.accent,
+                    activeKeyframeColor: palette.loopB,
+                    inactiveKeyframeColor: palette.accent,
+                    playheadColor: palette.accentBright,
+                  ),
+                  onSeek: onMinimapSeek,
+                ),
+              ),
+            ),
           LayoutBuilder(
             builder: (context, constraints) {
               final trackWidth = constraints.maxWidth;
@@ -338,30 +380,13 @@ class _AnnotationKeyframeTimelineState
                           value: sliderValue,
                           min: 0.0,
                           max: 1.0,
-                          onChangeStart: hasVideo
-                              ? (_) => timelineNotifier.startScrubbing()
-                              : null,
-                          onChanged: hasVideo
-                              ? (value) {
-                                  final position = Duration(
-                                    microseconds:
-                                        (value * duration.inMicroseconds)
-                                            .round(),
-                                  );
-                                  timelineNotifier.updateScrubbingPosition(
-                                    position,
-                                  );
-                                }
-                              : null,
-                          onChangeEnd: hasVideo
-                              ? (_) => timelineNotifier.endScrubbing()
-                              : null,
+                          onChanged: null,
                         ),
                       ),
                     ),
-                    ...keyframeTimesMs
-                        .where(visibleWindow.contains)
-                        .map((keyframeMs) {
+                    ...keyframeTimesMs.where(visibleWindow.contains).map((
+                      keyframeMs,
+                    ) {
                       final computedNormalized = _normalizedFromTimeMs(
                         keyframeMs,
                         visibleWindow,
@@ -427,6 +452,139 @@ class _VisibleWindow {
   int get spanMs => (endMs - startMs).clamp(0, 1 << 30);
 
   bool contains(int positionMs) => positionMs >= startMs && positionMs <= endMs;
+}
+
+class _MinimapPainter extends CustomPainter {
+  final List<int> keyframeTimesMs;
+  final int? activeKeyframeMs;
+  final int totalMs;
+  final int windowStartMs;
+  final int windowEndMs;
+  final int playheadMs;
+  final Color trackColor;
+  final Color viewportFillColor;
+  final Color viewportBorderColor;
+  final Color activeKeyframeColor;
+  final Color inactiveKeyframeColor;
+  final Color playheadColor;
+
+  const _MinimapPainter({
+    required this.keyframeTimesMs,
+    required this.activeKeyframeMs,
+    required this.totalMs,
+    required this.windowStartMs,
+    required this.windowEndMs,
+    required this.playheadMs,
+    required this.trackColor,
+    required this.viewportFillColor,
+    required this.viewportBorderColor,
+    required this.activeKeyframeColor,
+    required this.inactiveKeyframeColor,
+    required this.playheadColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (totalMs <= 0) return;
+
+    final double w = size.width;
+    final double h = size.height;
+    final double cy = h / 2;
+
+    // 1. Rail
+    canvas.drawRect(
+      Rect.fromLTWH(0, cy - 1, w, 2),
+      Paint()..color = trackColor,
+    );
+
+    // 2. Viewport rect
+    final double vpLeft = (windowStartMs / totalMs).clamp(0.0, 1.0) * w;
+    final double vpRight = (windowEndMs / totalMs).clamp(0.0, 1.0) * w;
+    final vpRect = RRect.fromLTRBR(
+      vpLeft,
+      0,
+      vpRight,
+      h,
+      const Radius.circular(2),
+    );
+    canvas.drawRRect(vpRect, Paint()..color = viewportFillColor);
+    canvas.drawRRect(
+      vpRect,
+      Paint()
+        ..color = viewportBorderColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
+
+    // 3. Keyframe dots
+    for (final ms in keyframeTimesMs) {
+      final x = (ms / totalMs).clamp(0.0, 1.0) * w;
+      final color = ms == activeKeyframeMs
+          ? activeKeyframeColor
+          : inactiveKeyframeColor;
+      canvas.drawCircle(Offset(x, cy), 3.5, Paint()..color = color);
+    }
+
+    // 4. Playhead line
+    final double px = (playheadMs / totalMs).clamp(0.0, 1.0) * w;
+    canvas.drawLine(
+      Offset(px, 0),
+      Offset(px, h),
+      Paint()
+        ..color = playheadColor
+        ..strokeWidth = 1.0,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_MinimapPainter old) {
+    return old.totalMs != totalMs ||
+        old.windowStartMs != windowStartMs ||
+        old.windowEndMs != windowEndMs ||
+        old.playheadMs != playheadMs ||
+        old.activeKeyframeMs != activeKeyframeMs ||
+        old.keyframeTimesMs != keyframeTimesMs ||
+        old.trackColor != trackColor ||
+        old.activeKeyframeColor != activeKeyframeColor ||
+        old.inactiveKeyframeColor != inactiveKeyframeColor ||
+        old.viewportFillColor != viewportFillColor ||
+        old.viewportBorderColor != viewportBorderColor ||
+        old.playheadColor != playheadColor;
+  }
+}
+
+class _MinimapStrip extends StatelessWidget {
+  final _MinimapPainter painter;
+  final ValueChanged<double>? onSeek;
+
+  const _MinimapStrip({required this.painter, this.onSeek});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        return MouseRegion(
+          cursor: onSeek != null
+              ? SystemMouseCursors.click
+              : SystemMouseCursors.basic,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: onSeek != null
+                ? (d) => onSeek!((d.localPosition.dx / width).clamp(0.0, 1.0))
+                : null,
+            onHorizontalDragUpdate: onSeek != null
+                ? (d) => onSeek!((d.localPosition.dx / width).clamp(0.0, 1.0))
+                : null,
+            child: CustomPaint(
+              painter: painter,
+              size: Size(width, double.infinity),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _KeyframeMarker extends StatelessWidget {

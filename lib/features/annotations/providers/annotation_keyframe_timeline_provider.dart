@@ -20,7 +20,14 @@ class AnnotationKeyframeTimelineState {
     this.windowCenter,
   });
 
-  double get zoomFactor => zoomLevels[zoomLevelIndex];
+  double get zoomFactor {
+    assert(
+      zoomLevelIndex >= 0 && zoomLevelIndex < zoomLevels.length,
+      'Invalid zoomLevelIndex ($zoomLevelIndex) for zoomLevels length '
+      '${zoomLevels.length}.',
+    );
+    return zoomLevels[zoomLevelIndex];
+  }
 
   AnnotationKeyframeTimelineState copyWith({
     bool? isScrubbing,
@@ -53,7 +60,7 @@ class AnnotationKeyframeTimelineNotifier
   static const _throttleInterval = Duration(milliseconds: 80);
 
   AnnotationKeyframeTimelineNotifier(this.ref)
-      : super(const AnnotationKeyframeTimelineState());
+    : super(const AnnotationKeyframeTimelineState());
 
   void startScrubbing() {
     state = state.copyWith(isScrubbing: true);
@@ -162,10 +169,13 @@ class AnnotationKeyframeTimelineNotifier
   }
 }
 
-final annotationKeyframeTimelineProvider = StateNotifierProvider<
-    AnnotationKeyframeTimelineNotifier, AnnotationKeyframeTimelineState>((ref) {
-  return AnnotationKeyframeTimelineNotifier(ref);
-});
+final annotationKeyframeTimelineProvider =
+    StateNotifierProvider<
+      AnnotationKeyframeTimelineNotifier,
+      AnnotationKeyframeTimelineState
+    >((ref) {
+      return AnnotationKeyframeTimelineNotifier(ref);
+    });
 
 /// Controls visibility of the annotation keyframe timeline UI.
 /// Defaults to hidden until explicitly toggled by the user.
