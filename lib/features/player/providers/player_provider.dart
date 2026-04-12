@@ -78,7 +78,7 @@ class PlayerState {
       isLoading: isLoading ?? this.isLoading,
       volume: volume ?? this.volume,
       isMuted: isMuted ?? this.isMuted,
-        error: clearError ? null : (error ?? this.error),
+      error: clearError ? null : (error ?? this.error),
       currentVideoPath: clearCurrentVideoPath
           ? null
           : (currentVideoPath ?? this.currentVideoPath),

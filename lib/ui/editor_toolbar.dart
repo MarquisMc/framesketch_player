@@ -274,11 +274,18 @@ class _FileMenuButtonState extends State<_FileMenuButton> {
     setState(() => _isOpen = true);
 
     final canExport =
-        widget.hasVideoLoaded && !widget.isExporting && widget.hasLocalVideoLoaded;
+        widget.hasVideoLoaded &&
+        !widget.isExporting &&
+        widget.hasLocalVideoLoaded;
 
     await showMenu<_FileAction>(
       context: context,
-      position: RelativeRect.fromLTRB(menuLeft, menuTop, menuLeft + 200, menuTop),
+      position: RelativeRect.fromLTRB(
+        menuLeft,
+        menuTop,
+        menuLeft + 200,
+        menuTop,
+      ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       elevation: 8,
       items: [
@@ -399,7 +406,9 @@ class _FileMenuButtonState extends State<_FileMenuButton> {
               Text(
                 'File',
                 style: TextStyle(
-                  color: isActive ? palette.accentBright : palette.textSecondary,
+                  color: isActive
+                      ? palette.accentBright
+                      : palette.textSecondary,
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -476,10 +485,7 @@ PopupMenuEntry<_FileAction> _menuItem({
         Icon(icon, size: 16, color: iconColor),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 13, color: labelColor),
-          ),
+          child: Text(label, style: TextStyle(fontSize: 13, color: labelColor)),
         ),
         if (shortcut != null)
           Text(
@@ -517,17 +523,14 @@ class _Btn extends StatelessWidget {
   final String tooltip;
   final VoidCallback? onPressed;
 
-  const _Btn({
-    required this.icon,
-    required this.tooltip,
-    this.onPressed,
-  });
+  const _Btn({required this.icon, required this.tooltip, this.onPressed});
 
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
-    final color =
-        onPressed != null ? palette.textSecondary : palette.textDisabled;
+    final color = onPressed != null
+        ? palette.textSecondary
+        : palette.textDisabled;
 
     return Tooltip(
       message: tooltip,

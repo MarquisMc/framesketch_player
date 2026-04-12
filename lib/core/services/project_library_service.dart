@@ -442,7 +442,7 @@ class ProjectLibraryService {
     }
 
     final targetMs = (duration.inMilliseconds * 0.15).round();
-    final int clampedMs = targetMs.clamp(300, 3000) as int;
+    final int clampedMs = targetMs.clamp(300, 3000);
     return Duration(milliseconds: clampedMs);
   }
 
@@ -465,9 +465,12 @@ class ProjectLibraryService {
           return queryId;
         }
 
-        final segments = uri.pathSegments.where((segment) => segment.isNotEmpty);
+        final segments = uri.pathSegments.where(
+          (segment) => segment.isNotEmpty,
+        );
         final normalizedPath = uri.path.toLowerCase();
-        if ((normalizedPath.startsWith('/embed') || normalizedPath.contains('embed')) &&
+        if ((normalizedPath.startsWith('/embed') ||
+                normalizedPath.contains('embed')) &&
             segments.isNotEmpty) {
           return segments.last;
         }
