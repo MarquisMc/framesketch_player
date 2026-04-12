@@ -53,6 +53,12 @@ _$KeyboardShortcutsImpl _$$KeyboardShortcutsImplFromJson(
   ),
   undo: KeyboardShortcut.fromJson(json['undo'] as Map<String, dynamic>),
   redo: KeyboardShortcut.fromJson(json['redo'] as Map<String, dynamic>),
+  nextMarker: KeyboardShortcut.fromJson(
+    json['nextMarker'] as Map<String, dynamic>,
+  ),
+  previousMarker: KeyboardShortcut.fromJson(
+    json['previousMarker'] as Map<String, dynamic>,
+  ),
   selectSelectionTool: KeyboardShortcut.fromJson(
     json['selectSelectionTool'] as Map<String, dynamic>,
   ),
@@ -120,6 +126,8 @@ Map<String, dynamic> _$$KeyboardShortcutsImplToJson(
   'saveAnnotations': instance.saveAnnotations,
   'undo': instance.undo,
   'redo': instance.redo,
+  'nextMarker': instance.nextMarker,
+  'previousMarker': instance.previousMarker,
   'selectSelectionTool': instance.selectSelectionTool,
   'selectPenTool': instance.selectPenTool,
   'selectEraserTool': instance.selectEraserTool,

@@ -50,6 +50,8 @@ class KeyboardShortcuts with _$KeyboardShortcuts {
     required KeyboardShortcut saveAnnotations,
     required KeyboardShortcut undo,
     required KeyboardShortcut redo,
+    required KeyboardShortcut nextMarker,
+    required KeyboardShortcut previousMarker,
     // Annotation tools
     required KeyboardShortcut selectSelectionTool,
     required KeyboardShortcut selectPenTool,
@@ -103,6 +105,8 @@ final defaultKeyboardShortcuts = KeyboardShortcuts(
   ),
   undo: const KeyboardShortcut(key: LogicalKeyboardKey.keyZ, ctrlPressed: true),
   redo: const KeyboardShortcut(key: LogicalKeyboardKey.keyY, ctrlPressed: true),
+  nextMarker: const KeyboardShortcut(key: LogicalKeyboardKey.pageDown),
+  previousMarker: const KeyboardShortcut(key: LogicalKeyboardKey.pageUp),
   // Annotation tools
   selectSelectionTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyV),
   selectPenTool: const KeyboardShortcut(key: LogicalKeyboardKey.keyP),

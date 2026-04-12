@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_palette.dart';
+import '../../../core/utils/timecode_formatter.dart';
+import '../../annotations/providers/annotation_provider.dart';
 import '../providers/timeline_provider.dart';
 import '../../player/providers/player_provider.dart';
 import '../../loop/providers/loop_provider.dart';
@@ -25,9 +27,12 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
     final loopState = ref.watch(loopProvider);
     final timelineNotifier = ref.read(timelineProvider.notifier);
     final loopNotifier = ref.read(loopProvider.notifier);
+    final annotationNotifier = ref.read(annotationProvider.notifier);
+    final markers = ref.watch(annotationMarkersProvider);
     final showAnnotationTimeline = ref.watch(
       annotationKeyframeTimelineVisibleProvider,
     );
+    final fps = playerState.metadata?.fps ?? 30.0;
 
     final hasVideo = playerState.player != null;
     final duration = playerState.duration;
@@ -180,6 +185,32 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
                                         }
                                       : null,
                                 ),
+
+                              ...markers.map((marker) {
+                                final normalizedPosition =
+                                    duration.inMilliseconds <= 0
+                                    ? 0.0
+                                    : (marker.timeMs / duration.inMilliseconds)
+                                          .clamp(0.0, 1.0);
+                                final frameNumber =
+                                    ((marker.timeMs / 1000.0) * fps).round();
+                                final note = marker.note.trim();
+                                final tooltip = note.isEmpty
+                                    ? '${marker.label}\nFrame $frameNumber • ${TimecodeFormatter.format(Duration(milliseconds: marker.timeMs))}'
+                                    : '${marker.label}\nFrame $frameNumber • ${TimecodeFormatter.format(Duration(milliseconds: marker.timeMs))}\n$note';
+
+                                return _TimelineFrameMarker(
+                                  normalizedPosition: normalizedPosition,
+                                  trackWidth: trackWidth,
+                                  color: marker.color,
+                                  tooltip: tooltip,
+                                  onTap: hasVideo
+                                      ? () => annotationNotifier.seekToMarker(
+                                            marker,
+                                          )
+                                      : null,
+                                );
+                              }),
                             ],
                           ),
                         );
@@ -218,6 +249,68 @@ class _TimelineScrubberState extends ConsumerState<TimelineScrubber> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _TimelineFrameMarker extends StatelessWidget {
+  final double normalizedPosition;
+  final double trackWidth;
+  final Color color;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  const _TimelineFrameMarker({
+    required this.normalizedPosition,
+    required this.trackWidth,
+    required this.color,
+    required this.tooltip,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const horizontalPadding = 12.0;
+    final effectiveWidth = trackWidth - (horizontalPadding * 2);
+    final xPosition = horizontalPadding + (normalizedPosition * effectiveWidth);
+
+    return Positioned(
+      left: xPosition - 6,
+      top: 2,
+      child: Tooltip(
+        message: tooltip,
+        waitDuration: const Duration(milliseconds: 300),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: MouseRegion(
+            cursor: onTap != null
+                ? SystemMouseCursors.click
+                : SystemMouseCursors.basic,
+            child: SizedBox(
+              width: 12,
+              height: 18,
+              child: Column(
+                children: [
+                  Transform.rotate(
+                    angle: 0.7853981634,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Container(width: 2, height: 7, color: color),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

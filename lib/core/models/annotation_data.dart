@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import '../../features/annotations/models/frame_marker.dart';
 import '../../features/annotations/models/stroke.dart';
 
 part 'annotation_data.freezed.dart';
@@ -15,6 +16,7 @@ class AnnotationData with _$AnnotationData {
     required DateTime createdAt,
     required DateTime updatedAt,
     @Default([]) List<Stroke> strokes,
+    @Default([]) List<FrameMarker> markers,
     @Default(1920) int viewportWidth,
     @Default(1080) int viewportHeight,
   }) = _AnnotationData;

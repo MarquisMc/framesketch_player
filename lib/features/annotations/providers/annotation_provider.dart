@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import '../models/frame_marker.dart';
 import '../models/stroke.dart';
 import '../../../core/models/annotation_data.dart';
 import '../../../core/services/annotation_storage_service.dart';
@@ -122,6 +123,10 @@ class AnnotationState {
 
   List<Stroke> get allStrokes {
     return annotationData?.strokes ?? [];
+  }
+
+  List<FrameMarker> get allMarkers {
+    return annotationData?.markers ?? [];
   }
 }
 
@@ -279,6 +284,122 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
           (stroke) => _snapToFrameTimeMs(stroke.startTimeMs, fps) == keyframeMs,
         )
         .toList();
+  }
+
+  int _compareMarkers(FrameMarker a, FrameMarker b) {
+    final byTime = a.timeMs.compareTo(b.timeMs);
+    if (byTime != 0) return byTime;
+
+    final byLabel = a.label.toLowerCase().compareTo(b.label.toLowerCase());
+    if (byLabel != 0) return byLabel;
+
+    return a.id.compareTo(b.id);
+  }
+
+  List<FrameMarker> _sortedMarkers([List<FrameMarker>? markers]) {
+    final sorted = [...(markers ?? state.allMarkers)];
+    sorted.sort(_compareMarkers);
+    return sorted;
+  }
+
+  FrameMarker? _markerAtFrame(int positionMs) {
+    final snappedPositionMs = _snapToFrameTimeMs(positionMs, _effectiveFps);
+
+    for (final marker in _sortedMarkers()) {
+      final markerFrameMs = _snapToFrameTimeMs(marker.timeMs, _effectiveFps);
+      if (markerFrameMs == snappedPositionMs) {
+        return marker;
+      }
+    }
+
+    return null;
+  }
+
+  Duration _toExactFramePosition(int positionMs) {
+    final fps = _effectiveFps;
+    if (fps <= 0) {
+      return Duration(milliseconds: positionMs);
+    }
+
+    final frameIndex = ((positionMs / 1000.0) * fps).round();
+    final targetMicros = ((frameIndex * 1000000.0) / fps).round();
+    return Duration(microseconds: targetMicros);
+  }
+
+  void _updateMarkers(List<FrameMarker> markers) {
+    final annotationData = state.annotationData;
+    if (annotationData == null) return;
+
+    state = state.copyWith(
+      annotationData: annotationData.copyWith(
+        markers: _sortedMarkers(markers),
+        updatedAt: DateTime.now(),
+      ),
+      hasUnsavedChanges: true,
+    );
+  }
+
+  List<FrameMarker> _normalizeImportedMarkers(
+    List<FrameMarker> markers, {
+    Set<String>? reservedIds,
+  }) {
+    final usedIds = <String>{...?reservedIds};
+    final normalized = <FrameMarker>[];
+
+    for (final marker in markers) {
+      final trimmedLabel = marker.label.trim();
+      if (trimmedLabel.isEmpty) {
+        continue;
+      }
+
+      var nextId = marker.id.trim().isEmpty ? _uuid.v4() : marker.id.trim();
+      while (usedIds.contains(nextId)) {
+        nextId = _uuid.v4();
+      }
+      usedIds.add(nextId);
+
+      normalized.add(
+        marker.copyWith(
+          id: nextId,
+          label: trimmedLabel,
+          note: marker.note.trim(),
+          timeMs: _snapToFrameTimeMs(marker.timeMs, _effectiveFps)
+              .clamp(0, 1 << 30)
+              .toInt(),
+        ),
+      );
+    }
+
+    return normalized;
+  }
+
+  FrameMarker? _adjacentMarker({required bool forward, Duration? position}) {
+    final markers = _sortedMarkers();
+    if (markers.isEmpty) return null;
+
+    final targetPosition = position ?? ref.read(playerProvider).position;
+    final currentFrameMs = _snapToFrameTimeMs(
+      targetPosition.inMilliseconds,
+      _effectiveFps,
+    );
+
+    if (forward) {
+      for (final marker in markers) {
+        final markerFrameMs = _snapToFrameTimeMs(marker.timeMs, _effectiveFps);
+        if (markerFrameMs > currentFrameMs) {
+          return marker;
+        }
+      }
+      return markers.first;
+    }
+
+    for (final marker in markers.reversed) {
+      final markerFrameMs = _snapToFrameTimeMs(marker.timeMs, _effectiveFps);
+      if (markerFrameMs < currentFrameMs) {
+        return marker;
+      }
+    }
+    return markers.last;
   }
 
   /// Initialize annotations for a video
@@ -511,6 +632,96 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     }
 
     return true;
+  }
+
+  void upsertMarker({
+    String? markerId,
+    required String label,
+    required Color color,
+    String note = '',
+    int? timeMs,
+  }) {
+    if (state.annotationData == null) return;
+
+    final trimmedLabel = label.trim();
+    if (trimmedLabel.isEmpty) return;
+
+    final markerTimeMs = _snapToFrameTimeMs(
+      timeMs ?? ref.read(playerProvider).position.inMilliseconds,
+      _effectiveFps,
+    ).clamp(0, 1 << 30).toInt();
+
+    final existingIndex = markerId == null
+        ? -1
+        : state.allMarkers.indexWhere((marker) => marker.id == markerId);
+
+    final marker = FrameMarker(
+      id: existingIndex >= 0 ? state.allMarkers[existingIndex].id : _uuid.v4(),
+      timeMs: markerTimeMs,
+      label: trimmedLabel,
+      note: note.trim(),
+      color: color,
+    );
+
+    final updatedMarkers = [...state.allMarkers];
+    if (existingIndex >= 0) {
+      updatedMarkers[existingIndex] = marker;
+    } else {
+      updatedMarkers.add(marker);
+    }
+
+    _updateMarkers(updatedMarkers);
+  }
+
+  void deleteMarker(String markerId) {
+    if (state.annotationData == null) return;
+
+    final updatedMarkers = state.allMarkers
+        .where((marker) => marker.id != markerId)
+        .toList();
+
+    if (updatedMarkers.length == state.allMarkers.length) {
+      return;
+    }
+
+    _updateMarkers(updatedMarkers);
+  }
+
+  void replaceMarkers(List<FrameMarker> importedMarkers) {
+    if (state.annotationData == null) return;
+    _updateMarkers(_normalizeImportedMarkers(importedMarkers));
+  }
+
+  void mergeMarkers(List<FrameMarker> importedMarkers) {
+    if (state.annotationData == null) return;
+
+    final normalized = _normalizeImportedMarkers(
+      importedMarkers,
+      reservedIds: state.allMarkers.map((marker) => marker.id).toSet(),
+    );
+    _updateMarkers([...state.allMarkers, ...normalized]);
+  }
+
+  Future<FrameMarker?> seekToNextMarker() async {
+    final marker = _adjacentMarker(forward: true);
+    if (marker == null) return null;
+
+    await seekToMarker(marker);
+    return marker;
+  }
+
+  Future<FrameMarker?> seekToPreviousMarker() async {
+    final marker = _adjacentMarker(forward: false);
+    if (marker == null) return null;
+
+    await seekToMarker(marker);
+    return marker;
+  }
+
+  Future<void> seekToMarker(FrameMarker marker) async {
+    await ref.read(playerProvider.notifier).seek(
+      _toExactFramePosition(marker.timeMs),
+    );
   }
 
   /// Set current color
@@ -1596,6 +1807,17 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     return _activeKeyframeTimeMsAt(targetPosition.inMilliseconds);
   }
 
+  /// Sorted frame markers for the current source.
+  List<FrameMarker> getSortedMarkers() {
+    return _sortedMarkers();
+  }
+
+  /// Marker that lands exactly on the current frame, if any.
+  FrameMarker? getCurrentFrameMarker([Duration? position]) {
+    final targetPosition = position ?? ref.read(playerProvider).position;
+    return _markerAtFrame(targetPosition.inMilliseconds);
+  }
+
   /// Visible annotation strokes for the active keyframe at a playback position.
   List<Stroke> getVisibleStrokes([Duration? position]) {
     final keyframeMs = getActiveKeyframeTimeMs(position);
@@ -1622,6 +1844,12 @@ final annotationKeyframeTimesProvider = Provider<List<int>>((ref) {
   return ref.read(annotationProvider.notifier).getSortedKeyframeTimesMs();
 });
 
+/// Sorted frame markers for the current source.
+final annotationMarkersProvider = Provider<List<FrameMarker>>((ref) {
+  ref.watch(annotationProvider);
+  return ref.read(annotationProvider.notifier).getSortedMarkers();
+});
+
 /// The active keyframe (latest keyframe at or before playback position).
 final activeAnnotationKeyframeProvider = Provider<int?>((ref) {
   ref.watch(annotationProvider);
@@ -1629,6 +1857,13 @@ final activeAnnotationKeyframeProvider = Provider<int?>((ref) {
   return ref
       .read(annotationProvider.notifier)
       .getActiveKeyframeTimeMs(position);
+});
+
+/// The marker that matches the current frame, if any.
+final currentAnnotationMarkerProvider = Provider<FrameMarker?>((ref) {
+  ref.watch(annotationProvider);
+  final position = ref.watch(playerProvider.select((state) => state.position));
+  return ref.read(annotationProvider.notifier).getCurrentFrameMarker(position);
 });
 
 /// The strokes visible for the current active annotation keyframe.

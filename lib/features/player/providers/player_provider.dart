@@ -645,6 +645,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// Dispose player
   Future<void> _disposePlayer() async {
+    final currentVideoPath = state.currentVideoPath;
+    final currentSourceLabel = state.currentSourceLabel;
+    final sourceType = state.sourceType;
+    final sourceFps = state.sourceFps;
     final positionSubscription = _positionSubscription;
     final durationSubscription = _durationSubscription;
     final playingSubscription = _playingSubscription;
@@ -674,6 +678,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await widthSubscription?.cancel();
     await heightSubscription?.cancel();
     await player?.dispose();
+    if (!mounted) return;
     state = state.copyWith(
       player: null,
       videoController: null,
@@ -683,7 +688,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       isPlaying: false,
       isLoading: false,
       error: null,
-      currentVideoPath: state.currentVideoPath,
+      currentVideoPath: currentVideoPath,
+      currentSourceLabel: currentSourceLabel,
+      sourceType: sourceType,
+      sourceFps: sourceFps,
     );
   }
 

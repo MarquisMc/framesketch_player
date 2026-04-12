@@ -28,6 +28,7 @@ mixin _$AnnotationData {
   DateTime get createdAt => throw _privateConstructorUsedError;
   DateTime get updatedAt => throw _privateConstructorUsedError;
   List<Stroke> get strokes => throw _privateConstructorUsedError;
+  List<FrameMarker> get markers => throw _privateConstructorUsedError;
   int get viewportWidth => throw _privateConstructorUsedError;
   int get viewportHeight => throw _privateConstructorUsedError;
 
@@ -56,6 +57,7 @@ abstract class $AnnotationDataCopyWith<$Res> {
     DateTime createdAt,
     DateTime updatedAt,
     List<Stroke> strokes,
+    List<FrameMarker> markers,
     int viewportWidth,
     int viewportHeight,
   });
@@ -83,6 +85,7 @@ class _$AnnotationDataCopyWithImpl<$Res, $Val extends AnnotationData>
     Object? createdAt = null,
     Object? updatedAt = null,
     Object? strokes = null,
+    Object? markers = null,
     Object? viewportWidth = null,
     Object? viewportHeight = null,
   }) {
@@ -116,6 +119,10 @@ class _$AnnotationDataCopyWithImpl<$Res, $Val extends AnnotationData>
                 ? _value.strokes
                 : strokes // ignore: cast_nullable_to_non_nullable
                       as List<Stroke>,
+            markers: null == markers
+                ? _value.markers
+                : markers // ignore: cast_nullable_to_non_nullable
+                      as List<FrameMarker>,
             viewportWidth: null == viewportWidth
                 ? _value.viewportWidth
                 : viewportWidth // ignore: cast_nullable_to_non_nullable
@@ -147,6 +154,7 @@ abstract class _$$AnnotationDataImplCopyWith<$Res>
     DateTime createdAt,
     DateTime updatedAt,
     List<Stroke> strokes,
+    List<FrameMarker> markers,
     int viewportWidth,
     int viewportHeight,
   });
@@ -173,6 +181,7 @@ class __$$AnnotationDataImplCopyWithImpl<$Res>
     Object? createdAt = null,
     Object? updatedAt = null,
     Object? strokes = null,
+    Object? markers = null,
     Object? viewportWidth = null,
     Object? viewportHeight = null,
   }) {
@@ -206,6 +215,10 @@ class __$$AnnotationDataImplCopyWithImpl<$Res>
             ? _value._strokes
             : strokes // ignore: cast_nullable_to_non_nullable
                   as List<Stroke>,
+        markers: null == markers
+            ? _value._markers
+            : markers // ignore: cast_nullable_to_non_nullable
+                  as List<FrameMarker>,
         viewportWidth: null == viewportWidth
             ? _value.viewportWidth
             : viewportWidth // ignore: cast_nullable_to_non_nullable
@@ -230,9 +243,11 @@ class _$AnnotationDataImpl implements _AnnotationData {
     required this.createdAt,
     required this.updatedAt,
     final List<Stroke> strokes = const [],
+    final List<FrameMarker> markers = const [],
     this.viewportWidth = 1920,
     this.viewportHeight = 1080,
-  }) : _strokes = strokes;
+  }) : _strokes = strokes,
+       _markers = markers;
 
   factory _$AnnotationDataImpl.fromJson(Map<String, dynamic> json) =>
       _$$AnnotationDataImplFromJson(json);
@@ -258,6 +273,15 @@ class _$AnnotationDataImpl implements _AnnotationData {
     return EqualUnmodifiableListView(_strokes);
   }
 
+  final List<FrameMarker> _markers;
+  @override
+  @JsonKey()
+  List<FrameMarker> get markers {
+    if (_markers is EqualUnmodifiableListView) return _markers;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_markers);
+  }
+
   @override
   @JsonKey()
   final int viewportWidth;
@@ -267,7 +291,7 @@ class _$AnnotationDataImpl implements _AnnotationData {
 
   @override
   String toString() {
-    return 'AnnotationData(videoId: $videoId, videoPath: $videoPath, youtubeUrl: $youtubeUrl, fps: $fps, createdAt: $createdAt, updatedAt: $updatedAt, strokes: $strokes, viewportWidth: $viewportWidth, viewportHeight: $viewportHeight)';
+    return 'AnnotationData(videoId: $videoId, videoPath: $videoPath, youtubeUrl: $youtubeUrl, fps: $fps, createdAt: $createdAt, updatedAt: $updatedAt, strokes: $strokes, markers: $markers, viewportWidth: $viewportWidth, viewportHeight: $viewportHeight)';
   }
 
   @override
@@ -286,6 +310,7 @@ class _$AnnotationDataImpl implements _AnnotationData {
             (identical(other.updatedAt, updatedAt) ||
                 other.updatedAt == updatedAt) &&
             const DeepCollectionEquality().equals(other._strokes, _strokes) &&
+            const DeepCollectionEquality().equals(other._markers, _markers) &&
             (identical(other.viewportWidth, viewportWidth) ||
                 other.viewportWidth == viewportWidth) &&
             (identical(other.viewportHeight, viewportHeight) ||
@@ -303,6 +328,7 @@ class _$AnnotationDataImpl implements _AnnotationData {
     createdAt,
     updatedAt,
     const DeepCollectionEquality().hash(_strokes),
+    const DeepCollectionEquality().hash(_markers),
     viewportWidth,
     viewportHeight,
   );
@@ -333,6 +359,7 @@ abstract class _AnnotationData implements AnnotationData {
     required final DateTime createdAt,
     required final DateTime updatedAt,
     final List<Stroke> strokes,
+    final List<FrameMarker> markers,
     final int viewportWidth,
     final int viewportHeight,
   }) = _$AnnotationDataImpl;
@@ -354,6 +381,8 @@ abstract class _AnnotationData implements AnnotationData {
   DateTime get updatedAt;
   @override
   List<Stroke> get strokes;
+  @override
+  List<FrameMarker> get markers;
   @override
   int get viewportWidth;
   @override

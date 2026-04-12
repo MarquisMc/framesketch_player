@@ -5,6 +5,7 @@ import '../../../core/utils/timecode_formatter.dart';
 import '../../player/providers/player_provider.dart';
 import '../providers/annotation_keyframe_timeline_provider.dart';
 import '../providers/annotation_provider.dart';
+import 'frame_marker_panel.dart';
 
 /// Separate timeline for annotation keyframes.
 class AnnotationKeyframeTimeline extends ConsumerStatefulWidget {
@@ -437,6 +438,8 @@ class _AnnotationKeyframeTimelineState
               );
             },
           ),
+          const SizedBox(height: 10),
+          const FrameMarkerPanel(),
         ],
       ),
     );

@@ -19,6 +19,11 @@ _$AnnotationDataImpl _$$AnnotationDataImplFromJson(Map<String, dynamic> json) =>
               ?.map((e) => Stroke.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
+      markers:
+          (json['markers'] as List<dynamic>?)
+              ?.map((e) => FrameMarker.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
       viewportWidth: (json['viewportWidth'] as num?)?.toInt() ?? 1920,
       viewportHeight: (json['viewportHeight'] as num?)?.toInt() ?? 1080,
     );
@@ -33,6 +38,7 @@ Map<String, dynamic> _$$AnnotationDataImplToJson(
   'createdAt': instance.createdAt.toIso8601String(),
   'updatedAt': instance.updatedAt.toIso8601String(),
   'strokes': instance.strokes,
+  'markers': instance.markers,
   'viewportWidth': instance.viewportWidth,
   'viewportHeight': instance.viewportHeight,
 };

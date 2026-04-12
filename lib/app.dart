@@ -400,6 +400,16 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         }
       }
 
+      if (matchesShortcut(_shortcuts.nextMarker)) {
+        unawaited(annotationNotifier.seekToNextMarker());
+        return KeyEventResult.handled;
+      }
+
+      if (matchesShortcut(_shortcuts.previousMarker)) {
+        unawaited(annotationNotifier.seekToPreviousMarker());
+        return KeyEventResult.handled;
+      }
+
       // Delete selected annotation (no repeat)
       if (event.logicalKey == LogicalKeyboardKey.delete) {
         if (annotationState.selectedStrokeId != null ||

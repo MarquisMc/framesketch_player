@@ -155,6 +155,26 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
                   });
                 },
               ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Next Marker',
+                shortcut: _shortcuts.nextMarker,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(nextMarker: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
+                label: 'Previous Marker',
+                shortcut: _shortcuts.previousMarker,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(previousMarker: shortcut);
+                  });
+                },
+              ),
               const SizedBox(height: 24),
               const Divider(),
               const SizedBox(height: 8),
@@ -539,6 +559,8 @@ class _ShortcutRowState extends State<_ShortcutRow> {
     if (key == LogicalKeyboardKey.arrowDown) return 'Down Arrow';
     if (key == LogicalKeyboardKey.f11) return 'F11';
     if (key == LogicalKeyboardKey.enter) return 'Enter';
+    if (key == LogicalKeyboardKey.pageUp) return 'Page Up';
+    if (key == LogicalKeyboardKey.pageDown) return 'Page Down';
     if (key == LogicalKeyboardKey.period) return '.';
     if (key == LogicalKeyboardKey.comma) return ',';
     if (key == LogicalKeyboardKey.keyZ) return 'Z';
