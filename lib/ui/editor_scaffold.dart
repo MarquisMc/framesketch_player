@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_palette.dart';
+import '../features/player/providers/player_provider.dart';
 import '../features/player/widgets/video_viewport.dart';
 import '../features/player/widgets/playback_controls.dart';
 import '../features/timeline/widgets/timeline_scrubber.dart';
@@ -20,11 +21,13 @@ const double _kTabletBreakpoint = 1024;
 class EditorScaffold extends ConsumerWidget {
   final bool isFullscreen;
   final bool showInspector;
+  final Widget projectBrowser;
   final VoidCallback onToggleFullscreen;
   final VoidCallback onToggleInspector;
   final VoidCallback onOpenFile;
   final VoidCallback onOpenYouTube;
   final VoidCallback onOpenAnnotation;
+  final VoidCallback onOpenProjects;
   final VoidCallback onSaveAnnotations;
   final VoidCallback onSaveAnnotationsAs;
   final VoidCallback onExportVideo;
@@ -38,11 +41,13 @@ class EditorScaffold extends ConsumerWidget {
     super.key,
     required this.isFullscreen,
     required this.showInspector,
+    required this.projectBrowser,
     required this.onToggleFullscreen,
     required this.onToggleInspector,
     required this.onOpenFile,
     required this.onOpenYouTube,
     required this.onOpenAnnotation,
+    required this.onOpenProjects,
     required this.onSaveAnnotations,
     required this.onSaveAnnotationsAs,
     required this.onExportVideo,
@@ -97,6 +102,37 @@ class EditorScaffold extends ConsumerWidget {
     );
   }
 
+  Widget _buildProjectBrowserLayout(
+    BuildContext context, {
+    required bool isDesktop,
+  }) {
+    final palette = AppPalette.of(context);
+
+    return Column(
+      children: [
+        EditorToolbar(
+          isDesktop: isDesktop,
+          isInspectorVisible: showInspector,
+          isExporting: isExporting,
+          showExportHourglassBottom: showExportHourglassBottom,
+          onToggleInspector: onToggleInspector,
+          onOpenFile: onOpenFile,
+          onOpenYouTube: onOpenYouTube,
+          onOpenAnnotation: onOpenAnnotation,
+          onOpenProjects: onOpenProjects,
+          onSaveAnnotations: onSaveAnnotations,
+          onSaveAnnotationsAs: onSaveAnnotationsAs,
+          onExportVideo: onExportVideo,
+          onOpenSettings: onOpenSettings,
+          onOpenThemeManager: onOpenThemeManager,
+          onMenuAction: onMenuAction,
+        ),
+        Divider(height: 1, thickness: 1, color: palette.border),
+        Expanded(child: projectBrowser),
+      ],
+    );
+  }
+
   // ─── Desktop (>1024) ──────────────────────────────────────────────────────
 
   Widget _buildDesktopLayout(BuildContext context, WidgetRef ref) {
@@ -104,6 +140,13 @@ class EditorScaffold extends ConsumerWidget {
     final isCropModeActive = ref.watch(
       cropProvider.select((s) => s.isCropModeActive),
     );
+    final hasLoadedSource = ref.watch(
+      playerProvider.select((state) => state.hasLoadedSource),
+    );
+
+    if (!hasLoadedSource) {
+      return _buildProjectBrowserLayout(context, isDesktop: true);
+    }
 
     return Column(
       children: [
@@ -117,6 +160,7 @@ class EditorScaffold extends ConsumerWidget {
           onOpenFile: onOpenFile,
           onOpenYouTube: onOpenYouTube,
           onOpenAnnotation: onOpenAnnotation,
+          onOpenProjects: onOpenProjects,
           onSaveAnnotations: onSaveAnnotations,
           onSaveAnnotationsAs: onSaveAnnotationsAs,
           onExportVideo: onExportVideo,
@@ -163,6 +207,13 @@ class EditorScaffold extends ConsumerWidget {
     final isCropModeActive = ref.watch(
       cropProvider.select((s) => s.isCropModeActive),
     );
+    final hasLoadedSource = ref.watch(
+      playerProvider.select((state) => state.hasLoadedSource),
+    );
+
+    if (!hasLoadedSource) {
+      return _buildProjectBrowserLayout(context, isDesktop: false);
+    }
 
     return Column(
       children: [
@@ -175,6 +226,7 @@ class EditorScaffold extends ConsumerWidget {
           onOpenFile: onOpenFile,
           onOpenYouTube: onOpenYouTube,
           onOpenAnnotation: onOpenAnnotation,
+          onOpenProjects: onOpenProjects,
           onSaveAnnotations: onSaveAnnotations,
           onSaveAnnotationsAs: onSaveAnnotationsAs,
           onExportVideo: onExportVideo,
@@ -190,7 +242,7 @@ class EditorScaffold extends ConsumerWidget {
             children: [
               // Compact tools column (icon-only, narrower)
               if (!isCropModeActive) ...[
-                _CompactToolsStrip(),
+                const _CompactToolsStrip(),
                 VerticalDivider(width: 1, thickness: 1, color: palette.border),
               ],
 
@@ -210,6 +262,13 @@ class EditorScaffold extends ConsumerWidget {
 
   Widget _buildMobileLayout(BuildContext context, WidgetRef ref) {
     final palette = AppPalette.of(context);
+    final hasLoadedSource = ref.watch(
+      playerProvider.select((state) => state.hasLoadedSource),
+    );
+
+    if (!hasLoadedSource) {
+      return _buildProjectBrowserLayout(context, isDesktop: false);
+    }
 
     return Column(
       children: [
@@ -223,6 +282,7 @@ class EditorScaffold extends ConsumerWidget {
           onOpenFile: onOpenFile,
           onOpenYouTube: onOpenYouTube,
           onOpenAnnotation: onOpenAnnotation,
+          onOpenProjects: onOpenProjects,
           onSaveAnnotations: onSaveAnnotations,
           onSaveAnnotationsAs: onSaveAnnotationsAs,
           onExportVideo: onExportVideo,

@@ -2,41 +2,64 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/models/keyboard_shortcuts.dart';
 
-/// Dialog for editing keyboard shortcuts
-class KeyboardShortcutsDialog extends StatefulWidget {
+/// Dialog for editing application settings (keyboard shortcuts, auto-save, etc.)
+class SettingsDialog extends StatefulWidget {
   final KeyboardShortcuts shortcuts;
-  final Function(KeyboardShortcuts) onSave;
+  final bool autoSaveEnabled;
+  final void Function(KeyboardShortcuts shortcuts, bool autoSaveEnabled) onSave;
 
-  const KeyboardShortcutsDialog({
+  const SettingsDialog({
     super.key,
     required this.shortcuts,
+    required this.autoSaveEnabled,
     required this.onSave,
   });
 
   @override
-  State<KeyboardShortcutsDialog> createState() =>
-      _KeyboardShortcutsDialogState();
+  State<SettingsDialog> createState() => _SettingsDialogState();
 }
 
-class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
+class _SettingsDialogState extends State<SettingsDialog> {
   late KeyboardShortcuts _shortcuts;
+  late bool _autoSaveEnabled;
 
   @override
   void initState() {
     super.initState();
     _shortcuts = widget.shortcuts;
+    _autoSaveEnabled = widget.autoSaveEnabled;
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Keyboard Shortcuts'),
+      title: const Text('Settings'),
       content: SizedBox(
         width: 600,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const Text(
+                'Project Preferences',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                title: const Text('Enable Auto Save'),
+                subtitle: const Text(
+                  'Automatically save project changes after a short idle delay.',
+                ),
+                value: _autoSaveEnabled,
+                onChanged: (value) {
+                  setState(() {
+                    _autoSaveEnabled = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 8),
               const Text(
                 'General Shortcuts',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -415,7 +438,7 @@ class _KeyboardShortcutsDialogState extends State<KeyboardShortcutsDialog> {
         ),
         FilledButton(
           onPressed: () {
-            widget.onSave(_shortcuts);
+            widget.onSave(_shortcuts, _autoSaveEnabled);
             Navigator.pop(context);
           },
           child: const Text('Save'),

@@ -6,7 +6,7 @@ import '../core/theme/theme_provider.dart';
 import '../features/crop/widgets/crop_controls.dart';
 import '../features/player/providers/player_provider.dart';
 
-/// Top editor toolbar — branding, file actions, view toggles.
+/// Top editor toolbar — branding, file menu, view toggles.
 class EditorToolbar extends ConsumerWidget {
   final bool isDesktop;
   final bool isInspectorVisible;
@@ -16,6 +16,7 @@ class EditorToolbar extends ConsumerWidget {
   final VoidCallback onOpenFile;
   final VoidCallback onOpenYouTube;
   final VoidCallback onOpenAnnotation;
+  final VoidCallback onOpenProjects;
   final VoidCallback onSaveAnnotations;
   final VoidCallback onSaveAnnotationsAs;
   final VoidCallback onExportVideo;
@@ -35,6 +36,7 @@ class EditorToolbar extends ConsumerWidget {
     required this.onOpenFile,
     required this.onOpenYouTube,
     required this.onOpenAnnotation,
+    required this.onOpenProjects,
     required this.onSaveAnnotations,
     required this.onSaveAnnotationsAs,
     required this.onExportVideo,
@@ -66,7 +68,7 @@ class EditorToolbar extends ConsumerWidget {
         children: [
           // ── Branding ──────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(right: 6),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -93,48 +95,19 @@ class EditorToolbar extends ConsumerWidget {
 
           _Sep(),
 
-          // ── File group ────────────────────────────────────────────
-          _Btn(
-            icon: Icons.folder_open_outlined,
-            tooltip: 'Open Video (Ctrl+O)',
-            label: isDesktop ? 'Open' : null,
-            onPressed: onOpenFile,
-          ),
-          _Btn(
-            icon: Icons.smart_display_outlined,
-            tooltip: 'Open YouTube URL',
-            label: isDesktop ? 'YouTube' : null,
-            onPressed: onOpenYouTube,
-          ),
-          _Btn(
-            icon: Icons.data_object_outlined,
-            tooltip: 'Open Annotation File',
-            onPressed: onOpenAnnotation,
-          ),
-
-          _Sep(),
-
-          // ── Save / Export ─────────────────────────────────────────
-          _Btn(
-            icon: Icons.save_outlined,
-            tooltip: 'Save Annotations (Ctrl+S)',
-            onPressed: onSaveAnnotations,
-          ),
-          _Btn(
-            icon: Icons.save_as_outlined,
-            tooltip: 'Save Annotations As…',
-            onPressed: onSaveAnnotationsAs,
-          ),
-          _Btn(
-            icon: isExporting
-                ? (showExportHourglassBottom
-                      ? Icons.hourglass_bottom
-                      : Icons.hourglass_top)
-                : Icons.file_download_outlined,
-            tooltip: isExporting ? 'Exporting…' : 'Export Video',
-            onPressed: hasVideoLoaded && !isExporting && hasLocalVideoLoaded
-                ? onExportVideo
-                : null,
+          // ── File dropdown menu ─────────────────────────────────────
+          _FileMenuButton(
+            isExporting: isExporting,
+            showExportHourglassBottom: showExportHourglassBottom,
+            hasVideoLoaded: hasVideoLoaded,
+            hasLocalVideoLoaded: hasLocalVideoLoaded,
+            onOpenFile: onOpenFile,
+            onOpenYouTube: onOpenYouTube,
+            onOpenAnnotation: onOpenAnnotation,
+            onOpenProjects: onOpenProjects,
+            onSaveAnnotations: onSaveAnnotations,
+            onSaveAnnotationsAs: onSaveAnnotationsAs,
+            onExportVideo: onExportVideo,
           ),
 
           _Sep(),
@@ -253,7 +226,276 @@ class EditorToolbar extends ConsumerWidget {
   }
 }
 
-// ─── Private helpers ──────────────────────────────────────────────────────────
+// ─── File dropdown button ─────────────────────────────────────────────────────
+
+class _FileMenuButton extends StatefulWidget {
+  final bool isExporting;
+  final bool showExportHourglassBottom;
+  final bool hasVideoLoaded;
+  final bool hasLocalVideoLoaded;
+  final VoidCallback onOpenFile;
+  final VoidCallback onOpenYouTube;
+  final VoidCallback onOpenAnnotation;
+  final VoidCallback onOpenProjects;
+  final VoidCallback onSaveAnnotations;
+  final VoidCallback onSaveAnnotationsAs;
+  final VoidCallback onExportVideo;
+
+  const _FileMenuButton({
+    required this.isExporting,
+    required this.showExportHourglassBottom,
+    required this.hasVideoLoaded,
+    required this.hasLocalVideoLoaded,
+    required this.onOpenFile,
+    required this.onOpenYouTube,
+    required this.onOpenAnnotation,
+    required this.onOpenProjects,
+    required this.onSaveAnnotations,
+    required this.onSaveAnnotationsAs,
+    required this.onExportVideo,
+  });
+
+  @override
+  State<_FileMenuButton> createState() => _FileMenuButtonState();
+}
+
+class _FileMenuButtonState extends State<_FileMenuButton> {
+  bool _isOpen = false;
+
+  void _openMenu(BuildContext context) async {
+    final palette = AppPalette.of(context);
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+
+    final offset = box.localToGlobal(Offset.zero);
+    final menuTop = offset.dy + box.size.height + 2;
+    final menuLeft = offset.dx;
+
+    setState(() => _isOpen = true);
+
+    final canExport =
+        widget.hasVideoLoaded && !widget.isExporting && widget.hasLocalVideoLoaded;
+
+    await showMenu<_FileAction>(
+      context: context,
+      position: RelativeRect.fromLTRB(menuLeft, menuTop, menuLeft + 200, menuTop),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      elevation: 8,
+      items: [
+        // ── Open section ──────────────────────────────
+        _menuHeader('Open', palette),
+        _menuItem(
+          action: _FileAction.openVideo,
+          icon: Icons.folder_open_outlined,
+          label: 'Open Video',
+          shortcut: 'Ctrl+O',
+          palette: palette,
+        ),
+        _menuItem(
+          action: _FileAction.openYouTube,
+          icon: Icons.smart_display_outlined,
+          label: 'Open YouTube URL',
+          palette: palette,
+        ),
+        _menuItem(
+          action: _FileAction.openAnnotation,
+          icon: Icons.data_object_outlined,
+          label: 'Open Annotation File',
+          palette: palette,
+        ),
+        // ── Projects section ──────────────────────────
+        _menuDivider(),
+        _menuHeader('Projects', palette),
+        _menuItem(
+          action: _FileAction.browseProjects,
+          icon: Icons.grid_view_outlined,
+          label: 'Browse Projects',
+          palette: palette,
+        ),
+        // ── Save section ──────────────────────────────
+        _menuDivider(),
+        _menuHeader('Save', palette),
+        _menuItem(
+          action: _FileAction.saveAnnotations,
+          icon: Icons.save_outlined,
+          label: 'Save',
+          shortcut: 'Ctrl+S',
+          enabled: widget.hasVideoLoaded,
+          palette: palette,
+        ),
+        _menuItem(
+          action: _FileAction.saveAnnotationsAs,
+          icon: Icons.save_as_outlined,
+          label: 'Save As\u2026',
+          enabled: widget.hasVideoLoaded,
+          palette: palette,
+        ),
+        // ── Export section ────────────────────────────
+        _menuDivider(),
+        _menuHeader('Export', palette),
+        _menuItem(
+          action: _FileAction.exportVideo,
+          icon: widget.isExporting
+              ? (widget.showExportHourglassBottom
+                    ? Icons.hourglass_bottom
+                    : Icons.hourglass_top)
+              : Icons.movie_creation_outlined,
+          label: widget.isExporting ? 'Exporting\u2026' : 'Export Video',
+          enabled: canExport,
+          palette: palette,
+        ),
+      ],
+    ).then((action) {
+      if (!mounted) return;
+      setState(() => _isOpen = false);
+      if (action == null) return;
+      switch (action) {
+        case _FileAction.openVideo:
+          widget.onOpenFile();
+        case _FileAction.openYouTube:
+          widget.onOpenYouTube();
+        case _FileAction.openAnnotation:
+          widget.onOpenAnnotation();
+        case _FileAction.browseProjects:
+          widget.onOpenProjects();
+        case _FileAction.saveAnnotations:
+          widget.onSaveAnnotations();
+        case _FileAction.saveAnnotationsAs:
+          widget.onSaveAnnotationsAs();
+        case _FileAction.exportVideo:
+          widget.onExportVideo();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
+    final isActive = _isOpen;
+
+    return Tooltip(
+      message: 'File',
+      waitDuration: const Duration(milliseconds: 600),
+      child: InkWell(
+        onTap: () => _openMenu(context),
+        borderRadius: BorderRadius.circular(6),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          constraints: const BoxConstraints(minHeight: 32),
+          decoration: BoxDecoration(
+            color: isActive ? palette.accentSoft : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.folder_outlined,
+                size: 15,
+                color: isActive ? palette.accentBright : palette.textSecondary,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                'File',
+                style: TextStyle(
+                  color: isActive ? palette.accentBright : palette.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 3),
+              AnimatedRotation(
+                turns: isActive ? 0.5 : 0.0,
+                duration: const Duration(milliseconds: 150),
+                child: Icon(
+                  Icons.expand_more,
+                  size: 14,
+                  color: isActive ? palette.accentBright : palette.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Menu item helpers ────────────────────────────────────────────────────────
+
+enum _FileAction {
+  openVideo,
+  openYouTube,
+  openAnnotation,
+  browseProjects,
+  saveAnnotations,
+  saveAnnotationsAs,
+  exportVideo,
+}
+
+PopupMenuEntry<_FileAction> _menuHeader(String title, AppPalette palette) {
+  return PopupMenuItem<_FileAction>(
+    enabled: false,
+    height: 28,
+    padding: const EdgeInsets.fromLTRB(14, 6, 14, 2),
+    child: Text(
+      title.toUpperCase(),
+      style: TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
+        color: palette.textMuted,
+      ),
+    ),
+  );
+}
+
+PopupMenuEntry<_FileAction> _menuDivider() {
+  return const PopupMenuDivider(height: 1);
+}
+
+PopupMenuEntry<_FileAction> _menuItem({
+  required _FileAction action,
+  required IconData icon,
+  required String label,
+  required AppPalette palette,
+  String? shortcut,
+  bool enabled = true,
+}) {
+  final labelColor = enabled ? palette.textPrimary : palette.textDisabled;
+  final iconColor = enabled ? palette.textSecondary : palette.textDisabled;
+
+  return PopupMenuItem<_FileAction>(
+    value: action,
+    enabled: enabled,
+    height: 36,
+    padding: const EdgeInsets.symmetric(horizontal: 14),
+    child: Row(
+      children: [
+        Icon(icon, size: 16, color: iconColor),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 13, color: labelColor),
+          ),
+        ),
+        if (shortcut != null)
+          Text(
+            shortcut,
+            style: TextStyle(
+              fontSize: 11,
+              color: palette.textMuted,
+              fontFamily: 'monospace',
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+// ─── Shared toolbar helpers ───────────────────────────────────────────────────
 
 class _Sep extends StatelessWidget {
   const _Sep();
@@ -273,47 +515,31 @@ class _Sep extends StatelessWidget {
 class _Btn extends StatelessWidget {
   final IconData icon;
   final String tooltip;
-  final String? label;
   final VoidCallback? onPressed;
 
   const _Btn({
     required this.icon,
     required this.tooltip,
-    this.label,
     this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
-    final color = onPressed != null
-        ? palette.textSecondary
-        : palette.textDisabled;
-
-    final Widget inner = label != null
-        ? TextButton.icon(
-            onPressed: onPressed,
-            icon: Icon(icon, size: 16, color: color),
-            label: Text(label!, style: TextStyle(color: color, fontSize: 12)),
-            style: TextButton.styleFrom(
-              minimumSize: const Size(0, 36),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-          )
-        : IconButton(
-            icon: Icon(icon, size: 18, color: color),
-            onPressed: onPressed,
-            iconSize: 18,
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
-          );
+    final color =
+        onPressed != null ? palette.textSecondary : palette.textDisabled;
 
     return Tooltip(
       message: tooltip,
       waitDuration: const Duration(milliseconds: 500),
-      child: inner,
+      child: IconButton(
+        icon: Icon(icon, size: 18, color: color),
+        onPressed: onPressed,
+        iconSize: 18,
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+      ),
     );
   }
 }

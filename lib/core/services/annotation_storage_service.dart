@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -73,8 +74,9 @@ class AnnotationStorageService {
       }
 
       final updatedData = data.copyWith(updatedAt: DateTime.now());
-      final jsonString =
-          const JsonEncoder.withIndent('  ').convert(updatedData.toJson());
+      final jsonString = const JsonEncoder.withIndent(
+        '  ',
+      ).convert(updatedData.toJson());
       await file.writeAsString(jsonString);
       return true;
     } catch (e) {
@@ -127,7 +129,9 @@ class AnnotationStorageService {
   }
 
   /// Load annotations directly from a chosen JSON file.
-  Future<AnnotationData?> loadAnnotationsFromFile(String annotationFilePath) async {
+  Future<AnnotationData?> loadAnnotationsFromFile(
+    String annotationFilePath,
+  ) async {
     try {
       final file = File(annotationFilePath);
       if (!await file.exists()) {
@@ -163,6 +167,47 @@ class AnnotationStorageService {
       await prefs.setStringList(_recentFilesKey, recentFiles);
     } catch (e) {
       stderr.writeln('Error adding to recent files: $e');
+    }
+  }
+
+  Future<void> renameRecentFile(String oldPath, String newPath) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final recentFiles = prefs.getStringList(_recentFilesKey) ?? [];
+      var didChange = false;
+
+      for (var i = 0; i < recentFiles.length; i++) {
+        if (recentFiles[i] == oldPath) {
+          recentFiles[i] = newPath;
+          didChange = true;
+        }
+      }
+
+      if (!didChange) {
+        return;
+      }
+
+      final deduped = LinkedHashSet<String>.from(recentFiles).toList();
+
+      await prefs.setStringList(_recentFilesKey, deduped);
+    } catch (e) {
+      stderr.writeln('Error renaming recent file entry: $e');
+    }
+  }
+
+  Future<void> removeRecentFile(String videoPath) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final recentFiles = prefs.getStringList(_recentFilesKey) ?? [];
+      final updatedFiles = recentFiles
+          .where((path) => path != videoPath)
+          .toList();
+      if (updatedFiles.length == recentFiles.length) {
+        return;
+      }
+      await prefs.setStringList(_recentFilesKey, updatedFiles);
+    } catch (e) {
+      stderr.writeln('Error removing recent file entry: $e');
     }
   }
 

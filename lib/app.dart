@@ -6,13 +6,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/models/project_library_entry.dart';
 import 'features/player/providers/player_provider.dart';
 import 'features/annotations/providers/annotation_provider.dart';
 import 'features/annotations/models/stroke.dart';
 import 'core/services/annotation_storage_service.dart';
+import 'core/services/project_library_service.dart';
 import 'core/services/youtube_video_source_service.dart';
 import 'core/models/annotation_data.dart';
 import 'core/models/keyboard_shortcuts.dart';
+import 'features/projects/widgets/project_browser.dart';
 import 'features/settings/widgets/settings_dialog.dart';
 import 'features/settings/widgets/theme_dialog.dart';
 import 'features/loop/providers/loop_provider.dart';
@@ -34,13 +37,17 @@ class FrameSketchPlayerApp extends ConsumerStatefulWidget {
 }
 
 class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
+  static const String _autoSaveEnabledKey = 'auto_save_enabled';
   final FocusNode _focusNode = FocusNode();
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
+  final ProjectLibraryService _projectLibraryService = ProjectLibraryService();
   late KeyboardShortcuts _shortcuts;
+  late final ProviderSubscription<(bool, DateTime?)> _autoSaveSubscription;
   Timer? _keyRepeatTimer;
   Timer? _exportIconTimer;
+  Timer? _autoSaveTimer;
   LogicalKeyboardKey? _lastPressedKey;
   int _keyRepeatGeneration = 0;
   bool _isFullscreen = false;
@@ -48,6 +55,10 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   bool _showExportHourglassBottom = false;
   int _loadingOverlayDepth = 0;
   String _loadingOverlayMessage = 'Loading...';
+  bool _autoSaveEnabled = true;
+  bool _isAutoSaving = false;
+  bool _projectsLoading = false;
+  List<ProjectLibraryEntry> _projects = const [];
   AppPalette get _activePalette =>
       ref.read(themeControllerProvider).activePalette;
 
@@ -56,6 +67,16 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     super.initState();
     _shortcuts = defaultKeyboardShortcuts;
     _loadShortcuts();
+    _loadAutoSavePreference();
+    _loadProjects();
+    _autoSaveSubscription = ref.listenManual<(bool, DateTime?)>(
+      annotationProvider.select(
+        (state) => (state.hasUnsavedChanges, state.annotationData?.updatedAt),
+      ),
+      (previous, next) {
+        _handleAutoSaveStateChanged(hasUnsavedChanges: next.$1);
+      },
+    );
     // Request focus on startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
@@ -96,10 +117,390 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     }
   }
 
+  Future<void> _loadAutoSavePreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final storedValue = prefs.getBool(_autoSaveEnabledKey);
+      if (storedValue == null || !mounted) {
+        return;
+      }
+
+      setState(() {
+        _autoSaveEnabled = storedValue;
+      });
+    } catch (e) {
+      debugPrint('Error loading auto save preference: $e');
+    }
+  }
+
+  Future<void> _setAutoSaveEnabled(bool enabled) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_autoSaveEnabledKey, enabled);
+      if (!mounted) return;
+
+      setState(() {
+        _autoSaveEnabled = enabled;
+      });
+
+      if (enabled) {
+        _handleAutoSaveStateChanged(
+          hasUnsavedChanges: ref.read(annotationProvider).hasUnsavedChanges,
+        );
+      } else {
+        _autoSaveTimer?.cancel();
+      }
+    } catch (e) {
+      debugPrint('Error saving auto save preference: $e');
+    }
+  }
+
+  Future<void> _loadProjects() async {
+    if (mounted) {
+      setState(() {
+        _projectsLoading = true;
+      });
+    }
+
+    try {
+      final projects = await _projectLibraryService.getProjects();
+      if (!mounted) return;
+
+      setState(() {
+        _projects = projects;
+        _projectsLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading projects: $e');
+      if (!mounted) return;
+
+      setState(() {
+        _projectsLoading = false;
+      });
+    }
+  }
+
+  void _handleAutoSaveStateChanged({required bool hasUnsavedChanges}) {
+    _autoSaveTimer?.cancel();
+
+    if (!_autoSaveEnabled || !hasUnsavedChanges) {
+      return;
+    }
+
+    _autoSaveTimer = Timer(
+      const Duration(seconds: 2),
+      () => unawaited(_performAutoSave()),
+    );
+  }
+
+  Future<void> _performAutoSave() async {
+    if (_isAutoSaving || !_autoSaveEnabled) {
+      return;
+    }
+
+    final annotationState = ref.read(annotationProvider);
+    if (!annotationState.hasUnsavedChanges ||
+        annotationState.annotationData == null) {
+      return;
+    }
+
+    _isAutoSaving = true;
+    try {
+      final success = await ref
+          .read(annotationProvider.notifier)
+          .saveAnnotations();
+      if (!success && mounted) {
+        _showErrorDialog('Auto-save failed');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Auto-save error: $e');
+      debugPrint('$stackTrace');
+      if (mounted) {
+        _showErrorDialog('Auto-save failed. Please try again.');
+      }
+    } finally {
+      _isAutoSaving = false;
+      final latestState = ref.read(annotationProvider);
+      if (_autoSaveEnabled && latestState.hasUnsavedChanges) {
+        _handleAutoSaveStateChanged(hasUnsavedChanges: true);
+      }
+    }
+  }
+
+  Future<void> _registerCurrentProject({String? projectTitle}) async {
+    final annotationData = ref.read(annotationProvider).annotationData;
+    final playerState = ref.read(playerProvider);
+    if (annotationData == null || playerState.currentSourceLabel == null) {
+      return;
+    }
+
+    await _projectLibraryService.upsertProject(
+      annotationData: annotationData,
+      sourceLabel: playerState.currentSourceLabel!,
+      projectTitle: projectTitle,
+      duration: playerState.duration,
+    );
+    await _loadProjects();
+  }
+
+  Future<void> _openProject(ProjectLibraryEntry project) async {
+    if (project.isYouTubeProject) {
+      final youtubeUrl = project.youtubeUrl;
+      if (youtubeUrl == null || youtubeUrl.trim().isEmpty) {
+        _showErrorDialog('This YouTube project is missing its source URL.');
+        return;
+      }
+      await _loadYouTubeUrl(youtubeUrl);
+      return;
+    }
+
+    final sourcePath = project.sourcePath;
+    if (sourcePath.trim().isEmpty || !await File(sourcePath).exists()) {
+      _showErrorDialog(
+        'The video file for this project could not be found:\n$sourcePath',
+      );
+      return;
+    }
+
+    await _loadInitialVideo(sourcePath);
+  }
+
+  Future<void> _openProjectsDialog() async {
+    final dialogHostContext = _navigatorKey.currentContext;
+    if (dialogHostContext == null || !mounted) {
+      return;
+    }
+
+    final selectedProject = await showDialog<ProjectLibraryEntry>(
+      context: dialogHostContext,
+      builder: (dialogContext) {
+        return Dialog(
+          insetPadding: const EdgeInsets.all(24),
+          child: SizedBox(
+            width: 1040,
+            height: 720,
+            child: ProjectBrowser(
+              projects: _projects,
+              isLoading: _projectsLoading,
+              onOpenProject: (project) {
+                Navigator.of(dialogContext).pop(project);
+              },
+              onRenameProject: _renameProjectFromBrowser,
+              onRevertProjectName: _revertProjectNameFromBrowser,
+              onDeleteProject: _deleteProjectFromBrowser,
+              onRefresh: _loadProjects,
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selectedProject != null) {
+      await _openProject(selectedProject);
+    }
+
+    _focusNode.requestFocus();
+  }
+
+  Future<void> _renameProjectFromBrowser(ProjectLibraryEntry project) async {
+    final dialogHostContext = _navigatorKey.currentContext;
+    if (dialogHostContext == null || !mounted) {
+      return;
+    }
+
+    var pendingTitle = project.title;
+    final renamedTitle = await showDialog<String>(
+      context: dialogHostContext,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Rename Project'),
+          content: TextFormField(
+            initialValue: project.title,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Project name'),
+            onChanged: (value) => pendingTitle = value,
+            onFieldSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(pendingTitle),
+              child: const Text('Rename'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (renamedTitle == null) {
+      return;
+    }
+
+    final trimmedTitle = renamedTitle.trim();
+    if (trimmedTitle.isEmpty || trimmedTitle == project.title) {
+      return;
+    }
+
+    try {
+      await _runWithLoadingOverlay(
+        message: 'Renaming project...',
+        action: () async {
+          await _projectLibraryService.renameProject(
+            project: project,
+            newTitle: trimmedTitle,
+          );
+          await _loadProjects();
+        },
+      );
+
+      if (!mounted) return;
+      _scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('Renamed project to $trimmedTitle'),
+          backgroundColor: _activePalette.success,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Error renaming project: $e');
+      }
+    } finally {
+      _focusNode.requestFocus();
+    }
+  }
+
+  Future<void> _deleteProjectFromBrowser(ProjectLibraryEntry project) async {
+    final dialogHostContext = _navigatorKey.currentContext;
+    if (dialogHostContext == null || !mounted) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: dialogHostContext,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Project'),
+          content: Text(
+            project.isYouTubeProject
+                ? 'Delete "${project.title}" from the library and remove its saved annotation data?'
+                : 'Delete "${project.title}" from the library and permanently remove its video file and annotation file from this machine?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      await _runWithLoadingOverlay(
+        message: 'Deleting project...',
+        action: () async {
+          await _projectLibraryService.deleteProject(project);
+          await _loadProjects();
+        },
+      );
+
+      if (!mounted) return;
+      _scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('Deleted project ${project.title}'),
+          backgroundColor: _activePalette.success,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Error deleting project: $e');
+      }
+    } finally {
+      _focusNode.requestFocus();
+    }
+  }
+
+  Future<void> _revertProjectNameFromBrowser(
+    ProjectLibraryEntry project,
+  ) async {
+    if (!project.canRevertToOriginalName) {
+      return;
+    }
+
+    final dialogHostContext = _navigatorKey.currentContext;
+    if (dialogHostContext == null || !mounted) {
+      return;
+    }
+
+    final originalTitle = project.originalTitle ?? project.title;
+    final confirmed = await showDialog<bool>(
+      context: dialogHostContext,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Revert Project Name'),
+          content: Text(
+            'Rename "${project.title}" back to "$originalTitle" and restore the original filename on disk?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Revert'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      await _runWithLoadingOverlay(
+        message: 'Reverting project name...',
+        action: () async {
+          await _projectLibraryService.revertProjectToOriginalName(project);
+          await _loadProjects();
+        },
+      );
+
+      if (!mounted) return;
+      _scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('Reverted project name to $originalTitle'),
+          backgroundColor: _activePalette.success,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Error reverting project name: $e');
+      }
+    } finally {
+      _focusNode.requestFocus();
+    }
+  }
+
   @override
   void dispose() {
+    _autoSaveSubscription.close();
     _keyRepeatTimer?.cancel();
     _exportIconTimer?.cancel();
+    _autoSaveTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -140,11 +541,25 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                 EditorScaffold(
                   isFullscreen: _isFullscreen,
                   showInspector: _showInspector,
+                  projectBrowser: ProjectBrowser(
+                    projects: _projects,
+                    isLoading: _projectsLoading,
+                    onOpenProject: (project) {
+                      unawaited(_openProject(project));
+                    },
+                    onRenameProject: _renameProjectFromBrowser,
+                    onRevertProjectName: _revertProjectNameFromBrowser,
+                    onDeleteProject: _deleteProjectFromBrowser,
+                    onOpenFile: _openFile,
+                    onOpenYouTube: _openYouTubeUrl,
+                    onRefresh: _loadProjects,
+                  ),
                   onToggleFullscreen: _toggleFullscreenMode,
                   onToggleInspector: _toggleInspectorVisibility,
                   onOpenFile: _openFile,
                   onOpenYouTube: _openYouTubeUrl,
                   onOpenAnnotation: _openAnnotationJson,
+                  onOpenProjects: _openProjectsDialog,
                   onSaveAnnotations: _saveAnnotations,
                   onSaveAnnotationsAs: _saveAnnotationsAs,
                   onExportVideo: _exportVideoFromTopBar,
@@ -612,6 +1027,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
           // Add to recent files
           final storageService = AnnotationStorageService();
           await storageService.addToRecentFiles(filePath);
+          await _registerCurrentProject();
 
           // Refocus
           _focusNode.requestFocus();
@@ -665,6 +1081,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
           // Add to recent files
           final storageService = AnnotationStorageService();
           await storageService.addToRecentFiles(filePath);
+          await _registerCurrentProject();
 
           // Refocus
           _focusNode.requestFocus();
@@ -753,6 +1170,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
             youtubeUrl: resolved.canonicalUrl,
             fps: playerState.metadata!.fps,
           );
+          await _registerCurrentProject(projectTitle: resolved.title);
 
           if (mounted) {
             final qualityParts = <String>[];
@@ -849,6 +1267,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
           }
 
           await _loadSourceForAnnotationData(data);
+          await _registerCurrentProject();
 
           if (mounted) {
             _scaffoldMessengerKey.currentState?.showSnackBar(
@@ -1163,10 +1582,12 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         context: context,
         builder: (dialogContext) {
           debugPrint('Building dialog...');
-          return KeyboardShortcutsDialog(
+          return SettingsDialog(
             shortcuts: _shortcuts,
-            onSave: (shortcuts) {
+            autoSaveEnabled: _autoSaveEnabled,
+            onSave: (shortcuts, autoSaveEnabled) {
               _saveShortcuts(shortcuts);
+              _setAutoSaveEnabled(autoSaveEnabled);
               _focusNode.requestFocus();
             },
           );

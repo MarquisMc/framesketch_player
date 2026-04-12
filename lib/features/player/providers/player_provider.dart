@@ -57,22 +57,36 @@ class PlayerState {
     String? currentSourceLabel,
     PlayerSourceType? sourceType,
     double? sourceFps,
+    bool clearPlayer = false,
+    bool clearVideoController = false,
+    bool clearMetadata = false,
+    bool clearCurrentVideoPath = false,
+    bool clearCurrentSourceLabel = false,
+    bool clearSourceType = false,
+    bool clearSourceFps = false,
+    bool clearError = false,
   }) {
     return PlayerState(
-      player: player ?? this.player,
-      videoController: videoController ?? this.videoController,
-      metadata: metadata ?? this.metadata,
+      player: clearPlayer ? null : (player ?? this.player),
+      videoController: clearVideoController
+          ? null
+          : (videoController ?? this.videoController),
+      metadata: clearMetadata ? null : (metadata ?? this.metadata),
       position: position ?? this.position,
       duration: duration ?? this.duration,
       isPlaying: isPlaying ?? this.isPlaying,
       isLoading: isLoading ?? this.isLoading,
       volume: volume ?? this.volume,
       isMuted: isMuted ?? this.isMuted,
-      error: error,
-      currentVideoPath: currentVideoPath ?? this.currentVideoPath,
-      currentSourceLabel: currentSourceLabel ?? this.currentSourceLabel,
-      sourceType: sourceType ?? this.sourceType,
-      sourceFps: sourceFps ?? this.sourceFps,
+        error: clearError ? null : (error ?? this.error),
+      currentVideoPath: clearCurrentVideoPath
+          ? null
+          : (currentVideoPath ?? this.currentVideoPath),
+      currentSourceLabel: clearCurrentSourceLabel
+          ? null
+          : (currentSourceLabel ?? this.currentSourceLabel),
+      sourceType: clearSourceType ? null : (sourceType ?? this.sourceType),
+      sourceFps: clearSourceFps ? null : (sourceFps ?? this.sourceFps),
     );
   }
 
@@ -261,7 +275,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     String? externalAudioUrl,
   }) async {
     try {
-      state = state.copyWith(isLoading: true, error: null);
+      state = state.copyWith(isLoading: true, clearError: true);
 
       // Reset loop state for new video
       _ref.read(loopProvider.notifier).onVideoChanged();
@@ -671,6 +685,24 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _stillFrameAudioMuted = false;
     _frameStepQueue = Future<void>.value();
 
+    if (mounted) {
+      // Detach the disposed controller from the widget tree before tearing
+      // down the underlying player internals used by media_kit_video.
+      state = state.copyWith(
+        clearPlayer: true,
+        clearVideoController: true,
+        clearMetadata: true,
+        position: Duration.zero,
+        duration: Duration.zero,
+        isPlaying: false,
+        clearError: true,
+        currentVideoPath: currentVideoPath,
+        currentSourceLabel: currentSourceLabel,
+        sourceType: sourceType,
+        sourceFps: sourceFps,
+      );
+    }
+
     await positionSubscription?.cancel();
     await durationSubscription?.cancel();
     await playingSubscription?.cancel();
@@ -680,14 +712,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await player?.dispose();
     if (!mounted) return;
     state = state.copyWith(
-      player: null,
-      videoController: null,
-      metadata: null,
-      position: Duration.zero,
-      duration: Duration.zero,
-      isPlaying: false,
       isLoading: false,
-      error: null,
+      clearError: true,
       currentVideoPath: currentVideoPath,
       currentSourceLabel: currentSourceLabel,
       sourceType: sourceType,

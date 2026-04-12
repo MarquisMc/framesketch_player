@@ -11,8 +11,11 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(const ProviderScope(child: FrameSketchPlayerApp()));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    // Allow the initial splash/startup animation to settle before assertions.
+    await tester.pump(const Duration(milliseconds: 250));
 
     expect(find.text('FrameSketch'), findsOneWidget);
+    expect(find.text('Projects'), findsWidgets);
   });
 }
