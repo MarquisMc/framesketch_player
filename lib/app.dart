@@ -288,6 +288,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
               onRenameProject: _renameProjectFromBrowser,
               onRevertProjectName: _revertProjectNameFromBrowser,
               onDeleteProject: _deleteProjectFromBrowser,
+              onPinProject: _pinProjectFromBrowser,
+              onDuplicateProject: _duplicateProjectFromBrowser,
               onRefresh: _loadProjects,
             ),
           ),
@@ -495,6 +497,52 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     }
   }
 
+  Future<void> _pinProjectFromBrowser(ProjectLibraryEntry project) async {
+    try {
+      await _runWithLoadingOverlay(
+        message: 'Updating pin...',
+        action: () async {
+          await _projectLibraryService.togglePin(project);
+          await _loadProjects();
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Error updating pin: $e');
+      }
+    } finally {
+      _focusNode.requestFocus();
+    }
+  }
+
+  Future<void> _duplicateProjectFromBrowser(ProjectLibraryEntry project) async {
+    try {
+      await _runWithLoadingOverlay(
+        message: 'Duplicating project...',
+        action: () async {
+          await _projectLibraryService.duplicateProject(project);
+          await _loadProjects();
+        },
+      );
+
+      if (!mounted) return;
+      _scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Duplicated \u201c${project.title}\u201d as a new revision',
+          ),
+          backgroundColor: _activePalette.success,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Error duplicating project: $e');
+      }
+    } finally {
+      _focusNode.requestFocus();
+    }
+  }
+
   @override
   void dispose() {
     _autoSaveSubscription.close();
@@ -550,6 +598,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                     onRenameProject: _renameProjectFromBrowser,
                     onRevertProjectName: _revertProjectNameFromBrowser,
                     onDeleteProject: _deleteProjectFromBrowser,
+                    onPinProject: _pinProjectFromBrowser,
+                    onDuplicateProject: _duplicateProjectFromBrowser,
                     onOpenFile: _openFile,
                     onOpenYouTube: _openYouTubeUrl,
                     onRefresh: _loadProjects,
@@ -679,8 +729,19 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     final cropNotifier = ref.read(cropProvider.notifier);
     final annotationState = ref.read(annotationProvider);
 
-    // While editing a text annotation, disable all global shortcuts so
-    // the text field can consume normal character input.
+    // Only process app-wide shortcuts when the shell focus node itself owns
+    // primary focus. If a child control is focused, let that control handle
+    // the key event without global shortcut interference.
+    if (!_focusNode.hasPrimaryFocus) {
+      _keyRepeatGeneration++;
+      _keyRepeatTimer?.cancel();
+      _keyRepeatTimer = null;
+      _lastPressedKey = null;
+      return KeyEventResult.ignored;
+    }
+
+    // When focus is inside editable text, let the field consume normal
+    // character input instead of routing those keys through global shortcuts.
     if (annotationState.pendingTextStrokeId != null) {
       _keyRepeatGeneration++;
       _keyRepeatTimer?.cancel();
@@ -963,6 +1024,15 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     return KeyEventResult.ignored;
   }
 
+  bool _isEditingText() {
+    final focusedContext = FocusManager.instance.primaryFocus?.context;
+    if (focusedContext == null) {
+      return false;
+    }
+
+    return focusedContext.widget is EditableText;
+  }
+
   void _toggleFullscreenMode() {
     _setFullscreenMode(!_isFullscreen);
   }
@@ -1153,6 +1223,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
           await playerNotifier.loadNetworkVideo(
             mediaUrl: resolved.streamUri.toString(),
             sourceLabel: resolved.canonicalUrl,
+            displayLabel: resolved.title,
             externalAudioUrl: resolved.externalAudioUri?.toString(),
           );
 
@@ -1301,6 +1372,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       await playerNotifier.loadNetworkVideo(
         mediaUrl: resolved.streamUri.toString(),
         sourceLabel: resolved.canonicalUrl,
+        displayLabel: resolved.title,
         externalAudioUrl: resolved.externalAudioUri?.toString(),
       );
       if (ref.read(playerProvider).metadata == null) {

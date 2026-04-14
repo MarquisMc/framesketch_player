@@ -57,7 +57,11 @@ class EditorToolbar extends ConsumerWidget {
       playerProvider.select((s) => s.isLocalFileSource),
     );
     final sourceLabel = ref.watch(
-      playerProvider.select((s) => s.currentSourceLabel),
+      playerProvider.select(
+        (s) => (s.currentDisplayLabel?.trim().isNotEmpty ?? false)
+            ? s.currentDisplayLabel
+            : s.currentSourceLabel,
+      ),
     );
 
     return Container(

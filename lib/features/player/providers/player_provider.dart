@@ -22,6 +22,7 @@ class PlayerState {
   final String? error;
   final String? currentVideoPath;
   final String? currentSourceLabel;
+  final String? currentDisplayLabel;
   final PlayerSourceType? sourceType;
   final double? sourceFps;
 
@@ -38,6 +39,7 @@ class PlayerState {
     this.error,
     this.currentVideoPath,
     this.currentSourceLabel,
+    this.currentDisplayLabel,
     this.sourceType,
     this.sourceFps,
   });
@@ -55,6 +57,7 @@ class PlayerState {
     String? error,
     String? currentVideoPath,
     String? currentSourceLabel,
+    String? currentDisplayLabel,
     PlayerSourceType? sourceType,
     double? sourceFps,
     bool clearPlayer = false,
@@ -62,6 +65,7 @@ class PlayerState {
     bool clearMetadata = false,
     bool clearCurrentVideoPath = false,
     bool clearCurrentSourceLabel = false,
+    bool clearCurrentDisplayLabel = false,
     bool clearSourceType = false,
     bool clearSourceFps = false,
     bool clearError = false,
@@ -85,6 +89,9 @@ class PlayerState {
       currentSourceLabel: clearCurrentSourceLabel
           ? null
           : (currentSourceLabel ?? this.currentSourceLabel),
+      currentDisplayLabel: clearCurrentDisplayLabel
+          ? null
+          : (currentDisplayLabel ?? this.currentDisplayLabel),
       sourceType: clearSourceType ? null : (sourceType ?? this.sourceType),
       sourceFps: clearSourceFps ? null : (sourceFps ?? this.sourceFps),
     );
@@ -250,6 +257,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await _loadVideoSource(
       mediaPath: filePath,
       sourceLabel: filePath,
+      displayLabel: filePath,
       sourceType: PlayerSourceType.localFile,
     );
   }
@@ -258,11 +266,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> loadNetworkVideo({
     required String mediaUrl,
     required String sourceLabel,
+    String? displayLabel,
     String? externalAudioUrl,
   }) async {
     await _loadVideoSource(
       mediaPath: mediaUrl,
       sourceLabel: sourceLabel,
+      displayLabel: displayLabel,
       sourceType: PlayerSourceType.network,
       externalAudioUrl: externalAudioUrl,
     );
@@ -271,6 +281,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> _loadVideoSource({
     required String mediaPath,
     required String sourceLabel,
+    String? displayLabel,
     required PlayerSourceType sourceType,
     String? externalAudioUrl,
   }) async {
@@ -424,6 +435,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         isLoading: false,
         currentVideoPath: mediaPath,
         currentSourceLabel: sourceLabel,
+        currentDisplayLabel: displayLabel ?? sourceLabel,
         sourceType: sourceType,
         sourceFps: fps,
       );
@@ -661,6 +673,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> _disposePlayer() async {
     final currentVideoPath = state.currentVideoPath;
     final currentSourceLabel = state.currentSourceLabel;
+    final currentDisplayLabel = state.currentDisplayLabel;
     final sourceType = state.sourceType;
     final sourceFps = state.sourceFps;
     final positionSubscription = _positionSubscription;
@@ -698,6 +711,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         clearError: true,
         currentVideoPath: currentVideoPath,
         currentSourceLabel: currentSourceLabel,
+        currentDisplayLabel: currentDisplayLabel,
         sourceType: sourceType,
         sourceFps: sourceFps,
       );
@@ -716,6 +730,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       clearError: true,
       currentVideoPath: currentVideoPath,
       currentSourceLabel: currentSourceLabel,
+      currentDisplayLabel: currentDisplayLabel,
       sourceType: sourceType,
       sourceFps: sourceFps,
     );

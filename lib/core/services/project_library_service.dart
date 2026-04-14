@@ -110,6 +110,73 @@ class ProjectLibraryService {
     );
   }
 
+  Future<ProjectLibraryEntry> togglePin(ProjectLibraryEntry project) async {
+    final now = DateTime.now();
+    final updated = project.copyWith(
+      isPinned: !project.isPinned,
+      pinnedAt: project.isPinned ? null : now,
+      clearPinnedAt: project.isPinned,
+      updatedAt: now,
+    );
+    await _replaceProject(updated);
+    return updated;
+  }
+
+  Future<ProjectLibraryEntry> duplicateProject(
+    ProjectLibraryEntry project,
+  ) async {
+    final now = DateTime.now();
+    final newTitle = '${project.title} (copy)';
+    if (project.isLocalFileProject) {
+      return _duplicateLocalProject(
+        project: project,
+        duplicateTitle: newTitle,
+        now: now,
+      );
+    }
+
+    final newAnnotationKey = 'yt:copy_${now.millisecondsSinceEpoch}';
+    final newId = _annotationStorageService.generateVideoId(newAnnotationKey);
+
+    final existingAnnotationData = await _annotationStorageService
+        .loadAnnotations(project.sourcePath);
+    if (existingAnnotationData != null) {
+      final duplicateAnnotationPath = await _annotationStorageService
+          .getAnnotationPath(newAnnotationKey);
+      final duplicateAnnotationData = existingAnnotationData.copyWith(
+        videoId: newId,
+        videoPath: newAnnotationKey,
+        updatedAt: now,
+      );
+      await _annotationStorageService.saveAnnotationsToFile(
+        duplicateAnnotationData,
+        duplicateAnnotationPath,
+      );
+    }
+
+    final duplicate = ProjectLibraryEntry(
+      id: newId,
+      title: newTitle,
+      sourcePath: newAnnotationKey,
+      sourceLabel: project.sourceLabel,
+      originalTitle: newTitle,
+      originalSourcePath: project.originalSourcePath,
+      originalSourceLabel: project.originalSourceLabel,
+      youtubeUrl: project.youtubeUrl,
+      thumbnailPath: project.thumbnailPath,
+      thumbnailUrl: project.thumbnailUrl,
+      lastOpenedAt: now,
+      updatedAt: now,
+    );
+
+    final prefs = await SharedPreferences.getInstance();
+    final existingProjects = await getProjects();
+    existingProjects.add(duplicate);
+    existingProjects.sort((a, b) => b.lastOpenedAt.compareTo(a.lastOpenedAt));
+    await _saveProjects(prefs, existingProjects);
+    return duplicate;
+  }
+
   Future<void> removeProject(String projectId) async {
     final prefs = await SharedPreferences.getInstance();
     final existingProjects = await getProjects();
@@ -526,5 +593,159 @@ class ProjectLibraryService {
     if (await thumbnailFile.exists()) {
       await thumbnailFile.delete();
     }
+  }
+
+  Future<ProjectLibraryEntry> _duplicateLocalProject({
+    required ProjectLibraryEntry project,
+    required String duplicateTitle,
+    required DateTime now,
+  }) async {
+    final sourceFile = File(project.sourcePath);
+    if (!await sourceFile.exists()) {
+      throw FileSystemException(
+        'The project video file could not be found.',
+        project.sourcePath,
+      );
+    }
+
+    final duplicatePath = await _nextAvailableDuplicateVideoPath(
+      sourcePath: project.sourcePath,
+      desiredTitle: duplicateTitle,
+    );
+    await sourceFile.copy(duplicatePath);
+
+    final duplicateId = _annotationStorageService.generateVideoId(
+      duplicatePath,
+    );
+    final existingAnnotationData = await _annotationStorageService
+        .loadAnnotations(project.sourcePath);
+    if (existingAnnotationData != null) {
+      final duplicateAnnotationPath = await _annotationStorageService
+          .getAnnotationPath(duplicatePath);
+      final duplicateAnnotationData = existingAnnotationData.copyWith(
+        videoId: duplicateId,
+        videoPath: duplicatePath,
+        updatedAt: now,
+      );
+      final saved = await _annotationStorageService.saveAnnotationsToFile(
+        duplicateAnnotationData,
+        duplicateAnnotationPath,
+      );
+      if (!saved) {
+        final copiedFile = File(duplicatePath);
+        if (await copiedFile.exists()) {
+          await copiedFile.delete();
+        }
+        throw FileSystemException(
+          'Failed to duplicate the project annotation file.',
+          duplicateAnnotationPath,
+        );
+      }
+    }
+
+    final duplicateThumbnailPath = await _duplicateThumbnailForProject(
+      projectId: duplicateId,
+      sourceThumbnailPath: project.thumbnailPath,
+    );
+
+    final duplicate = ProjectLibraryEntry(
+      id: duplicateId,
+      title: path.basenameWithoutExtension(duplicatePath),
+      sourcePath: duplicatePath,
+      sourceLabel: duplicatePath,
+      originalTitle: path.basenameWithoutExtension(duplicatePath),
+      originalSourcePath: duplicatePath,
+      originalSourceLabel: duplicatePath,
+      youtubeUrl: project.youtubeUrl,
+      thumbnailPath: duplicateThumbnailPath,
+      thumbnailUrl: project.thumbnailUrl,
+      lastOpenedAt: now,
+      updatedAt: now,
+    );
+
+    final prefs = await SharedPreferences.getInstance();
+    final existingProjects = await getProjects();
+    existingProjects.add(duplicate);
+    existingProjects.sort((a, b) => b.lastOpenedAt.compareTo(a.lastOpenedAt));
+    try {
+      await _saveProjects(prefs, existingProjects);
+    } catch (e) {
+      // Roll back orphaned files if persistence fails.
+      try {
+        final copiedFile = File(duplicatePath);
+        if (await copiedFile.exists()) {
+          await copiedFile.delete();
+        }
+      } catch (cleanupError) {
+        stderr.writeln(
+          'Failed to roll back duplicate video file: $cleanupError',
+        );
+      }
+      try {
+        final duplicateAnnotationPath = await _annotationStorageService
+            .getAnnotationPath(duplicatePath);
+        final annotationFile = File(duplicateAnnotationPath);
+        if (await annotationFile.exists()) {
+          await annotationFile.delete();
+        }
+      } catch (cleanupError) {
+        stderr.writeln(
+          'Failed to roll back duplicate annotation file: $cleanupError',
+        );
+      }
+      try {
+        await _deleteThumbnailIfPresent(duplicateThumbnailPath);
+      } catch (cleanupError) {
+        stderr.writeln(
+          'Failed to roll back duplicate thumbnail: $cleanupError',
+        );
+      }
+      rethrow;
+    }
+    return duplicate;
+  }
+
+  Future<String> _nextAvailableDuplicateVideoPath({
+    required String sourcePath,
+    required String desiredTitle,
+  }) async {
+    final directory = path.dirname(sourcePath);
+    final extension = path.extension(sourcePath);
+    final sanitizedTitle = _validateFileName(desiredTitle.trim());
+    var candidatePath = path.join(directory, '$sanitizedTitle$extension');
+    var duplicateIndex = 2;
+
+    while (await File(candidatePath).exists()) {
+      candidatePath = path.join(
+        directory,
+        '$sanitizedTitle $duplicateIndex$extension',
+      );
+      duplicateIndex += 1;
+    }
+
+    return candidatePath;
+  }
+
+  Future<String?> _duplicateThumbnailForProject({
+    required String projectId,
+    required String? sourceThumbnailPath,
+  }) async {
+    if (sourceThumbnailPath == null || sourceThumbnailPath.isEmpty) {
+      return null;
+    }
+
+    final sourceFile = File(sourceThumbnailPath);
+    if (!await sourceFile.exists()) {
+      return null;
+    }
+
+    final extension = path.extension(sourceThumbnailPath);
+    final thumbnailDir = await _thumbnailDirectory();
+    final destinationPath = path.join(
+      thumbnailDir.path,
+      '$projectId$extension',
+    );
+    await sourceFile.copy(destinationPath);
+    return destinationPath;
   }
 }

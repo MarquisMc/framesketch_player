@@ -1,471 +1,274 @@
 # FrameSketch Player
 
-A professional desktop video playback tool with frame-accurate stepping and non-destructive annotation overlay capabilities.
+FrameSketch Player is a Flutter desktop video review tool for frame-accurate playback, keyed annotations, frame markers, and annotated exports.
 
-## Features
+It is built for review workflows where you need to step through footage precisely, mark issues on specific frames, save the session, and come back later without rebuilding context.
 
-### Video Playback
-- **Multi-format support**: MP4, MOV, MKV, AVI, WebM, FLV, M4V via FFmpeg/libmpv
-- **Smooth scrubbing**: Responsive timeline seeking with debounced updates
-- **Frame-accurate stepping**: Step forward/backward by exactly one frame
-- **Precise timecode display**: HH:MM:SS.mmm format with frame counter
-- **Jump controls**: Skip forward/backward by 1 second intervals
+## Current Status
+
+The app currently supports:
+
+- Local video playback on Windows, macOS, and Linux via `media_kit` / `libmpv`
+- Opening YouTube videos by URL for review and annotation
+- A project library with thumbnails, rename, revert-name, and delete actions
+- Frame-accurate stepping, scrubbing, loop controls, and fullscreen playback
+- Keyframed annotations that appear on specific frames
+- Drawing tools including pen, rectangle, filled square, circle, filled circle, line, arrow, text, eraser, and selection
+- Frame markers with notes plus marker import/export
+- Auto-save, manual save, and `Save As` for portable `.framesketch` files
+- Crop and segment export for local videos
+- Exporting local videos with burned-in annotations
+- Custom keyboard shortcuts
+- Light/dark mode plus custom generated themes
+- Windows file association registration for supported video files and `.framesketch` files
+
+## Feature Overview
+
+### Playback and Navigation
+
+- Frame stepping forward and backward
+- Timeline scrubbing with responsive seek behavior
+- Play/pause, jump controls, and fullscreen mode
+- Full-video loop and A/B loop controls
+- Exact timecode display with frame-aware review workflows
+
+### Sources
+
+#### Local Files
+
+- Open video files directly from disk
+- Re-open work from the project browser
+- Open saved annotation files and restore the linked source automatically
+
+#### YouTube
+
+- Paste a YouTube URL and load it directly in the player
+- Save annotations against a stable YouTube-backed project entry
+- Reopen YouTube review sessions from the project browser
+
+Notes:
+
+- YouTube support is intended for playback and annotation review
+- Export is limited to local video files
+- Some videos may be unavailable due to YouTube restrictions, account requirements, regional limits, or missing playable streams
+
+### Annotation System
+
+Annotations are stored separately from the source media and keyed to frames. The current annotation toolset includes:
+
+- Pen
+- Rectangle
+- Filled square
+- Circle
+- Filled circle
+- Line
+- Arrow
+- Text
+- Eraser
+- Selection and box selection
+
+Annotation workflows currently include:
+
+- Undo and redo
+- Stroke selection, movement, scaling, and deletion
+- Keyframe-based visibility
+- Automatic or manual keyframe creation modes
+- Inline text editing
+- Normalized coordinate storage so overlays scale with the viewport
+- Save/load for both local videos and YouTube review sessions
+
+### Frame Markers
+
+Frame markers are lightweight review notes that sit alongside annotations.
+
+- Add markers at the current frame
+- Give each marker a label, note, and color
+- Jump to previous/next marker
+- Import or export marker lists as JSON
+- Merge imported markers into the current session or replace the existing list
+
+### Project Library
+
+The built-in project browser keeps recent review sessions accessible without going back through the file picker.
+
+- Local projects get generated thumbnails
+- YouTube projects use YouTube thumbnail URLs when available
+- Projects are sorted by last-opened time
+- Local projects can be renamed on disk, including annotation-file updates
+- Renamed local projects can be reverted back to their original name
+- Deleting a local project removes the local video, annotations, and cached thumbnail
+
+### Export
+
+Export is available for local video files.
+
+- Export the full video or a selected time range
+- Crop using a draggable crop rectangle
+- Use aspect presets such as `Original`, `16:9`, `1:1`, `9:16`, `4:3`, and `3:4`
+- Burn visible annotations into the exported video
+- Stream-copy when no crop or overlay work is needed
+- Re-encode to H.264/AAC MP4 when visual processing is required
+- Cancel an export in progress
+
+## Keyboard Shortcuts
+
+Shortcuts are customizable in the Settings dialog. Default bindings include:
+
+### General
+
+- `Space`: Play/pause
+- `,`: Previous frame
+- `.`: Next frame
+- `Shift + Left Arrow`: Jump backward
+- `Shift + Right Arrow`: Jump forward
+- `Ctrl + O`: Open local file
+- `Ctrl + S`: Save annotations
+- `Ctrl + Z`: Undo
+- `Ctrl + Y`: Redo
 
 ### Annotation Tools
-- **Freehand drawing**: Pen tool for marking up video frames
-- **Smart eraser**: Erase specific parts of strokes with stroke splitting
-- **Color selection**: 8 preset colors (red, green, blue, yellow, orange, purple, white, black)
-- **Adjustable stroke width**: 1-10 pixel brush sizes
-- **Undo/Redo**: Full annotation history support
-- **Persistent storage**: Annotations saved as JSON files alongside videos
-- **Normalized coordinates**: Annotations scale with window resizing
-- **Non-destructive**: Original video files remain untouched
 
-### Loop Controls
-- **Full video loop**: Automatically replay video from start when it reaches the end
-- **Section loop (A-B loop)**: Loop between two specific points in the video
-- **Visual timeline markers**: Draggable A and B markers on the timeline
-- **Highlighted loop region**: Visual indication of the active loop section
-- **Seamless playback**: Continuous playback when looping without pause
+- Selection, pen, eraser, rectangle, circle, line, arrow, and text all have configurable shortcuts
+- Keyframe mode toggle is configurable
+- Manual keyframe creation is configurable
 
-### Video Cropping & Export
-- **Interactive crop mode**: Drag and resize crop rectangle on video
-- **Aspect ratio presets**: Free, 16:9, 1:1, 9:16, 4:3, 3:4
-- **Visual crop overlay**: See exactly what will be exported
-- **FFmpeg export**: Export cropped video with progress tracking
-- **Bundled FFmpeg**: No external FFmpeg installation required
-- **Cancellable export**: Stop export at any time
+### Loop and Crop
 
-### Keyboard Shortcuts
+- Full loop, loop start, loop end, and A/B loop are configurable
+- Crop mode toggle is configurable
 
-**Playback Controls:**
-- **Space**: Play/Pause
-- **.** (Period): Next frame
-- **,** (Comma): Previous frame
-- **Shift + Right Arrow**: Jump forward 1 second
-- **Shift + Left Arrow**: Jump back 1 second
-- **Ctrl + O**: Open video file
-- **Ctrl + S**: Save annotations
+### Marker Navigation
 
-**Annotation Tools:**
-- **P**: Select Pen tool
-- **E**: Select Eraser tool
-- **Ctrl + Z**: Undo last stroke
-- **Ctrl + Y**: Redo stroke
+- Previous marker and next marker are configurable
 
-**Loop Controls:**
-- **L**: Toggle full video loop
-- **I**: Set loop start point (A)
-- **O**: Set loop end point (B)
-- **[**: Toggle section loop (A-B)
+## Annotation Files
 
-**Crop Controls:**
-- **C**: Toggle crop mode
-- **Escape**: Exit crop mode
+The app works with portable annotation files using `.framesketch` and JSON-based storage.
 
-*All keyboard shortcuts are customizable via Settings dialog*
+Typical saved data includes:
 
-## Technical Architecture
+- Source identity for a local video or YouTube session
+- FPS metadata
+- Keyframed strokes
+- Frame markers
+- Timestamps and update metadata
 
-### Video Engine
-**Backend**: `media_kit` + `media_kit_video` (libmpv wrapper)
-- Hardware-accelerated rendering via native texture
-- Excellent desktop support (Windows/macOS/Linux)
-- Frame-accurate seeking capabilities
-- Extensive codec support through FFmpeg
+For local videos, annotations can also be saved and reloaded alongside the source workflow.
 
-### Frame Stepping Implementation
-**Hybrid approach**:
-1. Extract FPS from video metadata using FFprobe
-2. Calculate frame duration: `1/fps` seconds
-3. Seek to position ± frame duration
-4. Clamp to video bounds [0, duration]
+## Tech Stack
 
-**Accuracy**: Frame stepping is accurate to the microsecond level. For videos with variable frame rates, the average FPS is used.
+- [Flutter desktop](https://docs.flutter.dev/platform-integration/desktop)
+- [`media_kit`](https://pub.dev/packages/media_kit) and [`media_kit_video`](https://pub.dev/packages/media_kit_video) for playback
+- [Riverpod](https://riverpod.dev) for state management
+- [Freezed](https://pub.dev/packages/freezed) + [JSON serialization](https://pub.dev/packages/freezed#fromjson-tojson) for models
+- [FFmpeg](https://ffmpeg.org) for export and media processing
+- [`youtube_explode_dart`](https://pub.dev/packages/youtube_explode_dart) for YouTube source resolution
+- [`shared_preferences`](https://pub.dev/packages/shared_preferences) for local settings and project library persistence
 
-### Smooth Scrubbing Strategy
-1. **Debounced seeking**: Throttle seek operations to ~60ms intervals during drag
-2. **Final precise seek**: Execute exact seek when user releases slider
-3. **Non-blocking UI**: All operations are async; timeline remains responsive
-4. **Optimistic updates**: UI shows scrubbing position immediately
+## Project Structure
 
-### State Management
-**Riverpod 2.x** providers:
-- `playerProvider`: Video playback state and controls
-- `timelineProvider`: Scrubbing state with debouncing
-- `annotationProvider`: Drawing tools and stroke management
-- `loopProvider`: Loop mode state and A-B point management
-- `cropProvider`: Crop mode state and FFmpeg export handling
-- `keyboardShortcutsProvider`: Customizable keyboard shortcuts
-
-### Data Model
-Annotations are stored as JSON files with `.annotations.json` extension:
-
-```json
-{
-  "videoId": "unique_hash",
-  "videoPath": "/path/to/video.mp4",
-  "fps": 30.0,
-  "createdAt": "2024-01-15T10:30:00.000Z",
-  "updatedAt": "2024-01-15T11:45:00.000Z",
-  "strokes": [
-    {
-      "id": "uuid",
-      "tool": "pen",
-      "color": 4294901760,
-      "strokeWidth": 3.0,
-      "points": [
-        {"x": 0.5, "y": 0.3, "timestampMs": 1500}
-      ],
-      "startTimeMs": 1000,
-      "endTimeMs": 5000
-    }
-  ],
-  "viewportWidth": 1920,
-  "viewportHeight": 1080
-}
+```text
+lib/
+|-- main.dart
+|-- app.dart
+|-- ui/
+|   |-- editor_scaffold.dart
+|   |-- editor_toolbar.dart
+|   `-- inspector_panel.dart
+|-- core/
+|   |-- models/
+|   |-- services/
+|   |-- theme/
+|   `-- utils/
+`-- features/
+    |-- annotations/
+    |-- crop/
+    |-- loop/
+    |-- player/
+    |-- projects/
+    |-- settings/
+    `-- timeline/
 ```
 
-**Coordinate normalization**: All stroke points are stored in normalized coordinates (0.0 to 1.0) to ensure annotations scale correctly across different window sizes.
-
-## Setup Instructions
+## Setup
 
 ### Prerequisites
 
-1. **Flutter SDK**: Version 3.10.7 or higher
-   ```bash
-   flutter --version
-   ```
+1. Install Flutter `3.10.7` or newer.
+2. Enable desktop support for the platforms you want to run.
 
-2. **FFmpeg & FFprobe**:
-   - **IMPORTANT**: FFmpeg is now **bundled with the application** via `media_kit_libs_windows_video`
-   - No external installation required for basic playback
-   - Only needed for advanced FFprobe metadata extraction (optional)
+```bash
+flutter config --enable-windows-desktop
+flutter config --enable-macos-desktop
+flutter config --enable-linux-desktop
+```
 
-   **Optional External Installation** (for metadata):
-   - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html)
-   - **macOS**: `brew install ffmpeg`
-   - **Linux**: `sudo apt-get install ffmpeg` (Debian/Ubuntu)
+### Install Dependencies
 
-3. **Desktop Support Enabled**:
-   ```bash
-   flutter config --enable-windows-desktop
-   flutter config --enable-macos-desktop
-   flutter config --enable-linux-desktop
-   ```
+```bash
+flutter pub get
+flutter pub run build_runner build --delete-conflicting-outputs
+```
 
-### Installation
+### Run
 
-1. **Clone or extract** the project:
-   ```bash
-   cd d:/Projects/framesketch_player
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   flutter pub get
-   ```
-
-3. **Run code generation** (for Freezed models):
-   ```bash
-   flutter pub run build_runner build --delete-conflicting-outputs
-   ```
-
-### Running the Application
-
-#### Windows
 ```bash
 flutter run -d windows
 ```
 
-#### macOS
-```bash
-flutter run -d macos
-```
+Or use `macos` / `linux` as the target device.
 
-#### Linux
-```bash
-flutter run -d linux
-```
+### Build
 
-#### Build Release Version (Windows)
 ```bash
 flutter build windows --release
 ```
-Executable will be in: `build\windows\x64\runner\Release\framesketch_player.exe`
 
-## Usage Guide
+## Basic Usage
 
-### Opening a Video
+### Start a Review Session
 
-**Method 1: Using File Dialog**
-1. Click the folder icon in the toolbar or press `Ctrl+O`
-2. Select a video file (supports mp4, mov, mkv, avi, webm, flv, m4v)
-3. Video will load and metadata will be extracted via FFprobe
+1. Open a local file, YouTube URL, saved annotation file, or project-library entry.
+2. Scrub or step to the frame you want to review.
+3. Add annotations, text, or frame markers.
+4. Save the session or let auto-save keep it up to date.
 
-**Method 2: Command-Line / Default Video Player**
-1. Pass video path as argument: `framesketch_player.exe "path/to/video.mp4"`
-2. Or set as default player (see below) and double-click video files
+### Export a Reviewed Clip
 
-### Setting as Default Video Player
+1. Open a local video.
+2. Set the crop region and export range if needed.
+3. Save annotations.
+4. Export to MP4 with burned-in overlays.
 
-**Windows - Built-in Registration (Recommended):**
-1. Open FrameSketch Player
-2. Click the menu icon (⋮) in the top-right corner
-3. Select "Set as Default Video Player"
-4. Right-click any video file → "Open with" → "FrameSketch Player"
-5. Check "Always use this app" to set as default
+## Platform Notes
 
-**Manual Registration:**
-1. Right-click a video file → "Open with" → "Choose another app"
-2. Click "More apps" → "Look for another app on this PC"
-3. Navigate to `framesketch_player.exe`
-4. Select and check "Always use this app"
+### Windows
 
-**Check Status or Unregister:**
-Click the menu icon (⋮) for options to check registration status or remove file associations.
+- Includes file association registration helpers for supported video files and `.framesketch`
+- Windows release packaging is already present in the repository
 
-### Playback Controls
-- Use the play/pause button or press `Space`
-- Step through frames using arrow keys or the step buttons
-- Scrub by dragging the timeline slider
+### macOS and Linux
 
-### Drawing Annotations
-1. Select the **Pen** tool from the left panel (or press **P**)
-2. Choose a **color** by clicking a color swatch
-3. Adjust **stroke width** using the slider
-4. Click and drag on the video to draw
-5. Switch to **Eraser** tool (or press **E**) to erase parts of strokes
-6. Use **Undo** (Ctrl+Z) to remove strokes
-7. Press **Ctrl+S** to save annotations
+- Playback is supported through the platform-specific `media_kit` desktop libraries
 
-### Using Loop Features
-**Full Video Loop:**
-1. Press **L** or click the loop button to enable full video loop
-2. Video will automatically restart from the beginning when it ends
+## Testing
 
-**Section Loop (A-B Loop):**
-1. Play the video to your desired start point
-2. Press **I** to set the loop start point (A marker)
-3. Continue playing to your desired end point
-4. Press **O** to set the loop end point (B marker)
-5. Press **[** to activate section loop
-6. Video will loop between A and B points
-7. Drag the A and B markers on the timeline to adjust loop points
+Run the test suite with:
 
-### Cropping and Exporting Video
-1. Press **C** or click the crop icon to enter crop mode
-2. Drag the crop rectangle to position it
-3. Resize by dragging corner handles
-4. Select an aspect ratio preset (16:9, 1:1, etc.) if desired
-5. Click **Export Cropped Video** to save
-6. Choose output location and wait for export to complete
-7. Press **Escape** or **C** to exit crop mode
-
-### Saving & Loading Annotations
-- **Auto-load**: Annotations are automatically loaded when opening a video with existing `.annotations.json` file
-- **Manual save**: Press `Ctrl+S` or click the save icon
-- **Storage location**: Annotations are saved in the same directory as the video file
-
-## Project Structure
-
-```
-lib/
-├── main.dart                          # App entry point
-├── app.dart                           # Main app layout with keyboard shortcuts
-├── core/
-│   ├── models/
-│   │   ├── video_metadata.dart        # Video file metadata
-│   │   ├── annotation_data.dart       # Annotation data model
-│   │   └── keyboard_shortcuts.dart    # Keyboard shortcut configuration
-│   ├── services/
-│   │   ├── ffprobe_service.dart       # FFprobe integration
-│   │   ├── ffmpeg_service.dart        # FFmpeg operations
-│   │   ├── annotation_storage_service.dart  # JSON persistence
-│   │   └── keyboard_shortcuts_service.dart  # Shortcut persistence
-│   └── utils/
-│       ├── timecode_formatter.dart    # Time formatting utilities
-│       └── coordinate_transformer.dart # Normalized coordinate handling
-├── features/
-│   ├── player/
-│   │   ├── providers/
-│   │   │   └── player_provider.dart   # Video playback state
-│   │   └── widgets/
-│   │       ├── video_viewport.dart    # Video display + overlay stack
-│   │       └── playback_controls.dart # Play/pause/step buttons
-│   ├── timeline/
-│   │   ├── providers/
-│   │   │   └── timeline_provider.dart # Scrubbing state
-│   │   └── widgets/
-│   │       └── timeline_scrubber.dart # Seek slider with loop markers
-│   ├── annotations/
-│   │   ├── models/
-│   │   │   └── stroke.dart            # Stroke and point data
-│   │   ├── providers/
-│   │   │   └── annotation_provider.dart # Drawing state
-│   │   └── widgets/
-│   │       ├── annotation_overlay.dart # CustomPaint overlay
-│   │       └── drawing_tools_panel.dart # Tool selection UI
-│   ├── loop/
-│   │   ├── providers/
-│   │   │   └── loop_provider.dart     # Loop mode state
-│   │   └── widgets/
-│   │       └── loop_controls.dart     # Loop control buttons
-│   ├── crop/
-│   │   ├── providers/
-│   │   │   └── crop_provider.dart     # Crop state & FFmpeg export
-│   │   └── widgets/
-│   │       ├── crop_overlay.dart      # Interactive crop rectangle
-│   │       └── crop_controls.dart     # Crop panel with export
-│   └── settings/
-│       └── widgets/
-│           └── settings_dialog.dart   # Keyboard shortcuts editor
-```
-
-## Known Limitations & Future Improvements
-
-### Current Limitations
-
-1. **Variable Frame Rate (VFR) videos**: Frame stepping uses average FPS, which may drift slightly in VFR content
-2. **Annotation export**: Burning annotations into video (FFmpeg filter overlay) is not yet implemented
-3. **Timeline thumbnails**: Preview thumbnails on scrubber not implemented
-4. **Multi-stroke selection**: Cannot select/move/delete individual strokes after drawing
-5. **Crop during playback**: Crop mode currently requires pausing the video
-
-### Completed Features
-
-- [x] Full video loop with seamless playback
-- [x] Section loop (A-B loop) with visual timeline markers
-- [x] Video cropping with interactive overlay
-- [x] FFmpeg-based crop export with progress tracking
-- [x] Smart eraser tool with stroke splitting
-- [x] Customizable keyboard shortcuts
-- [x] Bundled FFmpeg (no external installation required)
-
-### Planned Features
-
-- [ ] Export annotated video with burned-in strokes (FFmpeg overlay filter)
-- [ ] Shape tools (rectangle, arrow, circle, line)
-- [ ] Text annotation support
-- [ ] Timeline thumbnail preview on hover
-- [ ] Recent files menu
-- [ ] Playback speed control (0.25x - 2x)
-- [ ] Stroke selection and manipulation (move, resize, delete)
-- [ ] Multi-layer annotation support
-- [ ] Timestamp-based annotation visibility (show/hide strokes by time range)
-- [ ] Export annotations as separate image sequence
-- [ ] Annotation templates/presets
-- [ ] Video rotation and flip
-- [ ] Audio waveform visualization
-
-### Performance Considerations
-
-- **Heavy videos**: 4K+ videos may see slower seeking on older hardware
-- **Many strokes**: 1000+ strokes may impact rendering performance (use Clear All to reset)
-- **FFprobe parsing**: First video load extracts metadata; subsequent loads are faster
-
-## Troubleshooting
-
-### "FFprobe not found" Error
-**Solution**: FFprobe is optional for metadata extraction. The app will work without it using default FPS values.
-
-**For enhanced metadata support**, install FFmpeg externally:
-```bash
-ffprobe -version
-ffmpeg -version
-```
-
-### Crop Export Fails
-**Check**:
-- Ensure video file is not currently playing
-- Sufficient disk space for output file
-- Write permissions in target directory
-- Console for specific FFmpeg error messages
-
-### Video Loads but Shows Black Screen
-**Possible causes**:
-- Unsupported codec (rare with FFmpeg)
-- Hardware acceleration issue
-
-**Solution**: Try a different video format (MP4 H.264 is most compatible)
-
-### Annotations Not Saving
-**Check**:
-- Write permissions in video directory
-- Disk space availability
-- Console for error messages
-
-### Sluggish Scrubbing
-**Solutions**:
-- Close other applications
-- Try lower resolution video
-- Ensure GPU drivers are updated
-
-## Implementation Notes
-
-### Frame Stepping Tradeoffs
-
-**Chosen Approach**: Calculated time-based seeking
-- **Pros**: Works with all video formats; no codec-specific logic required
-- **Cons**: May drift slightly on VFR content; relies on accurate FPS metadata
-
-**Alternative Considered**: True frame-by-frame decode
-- **Pros**: Perfect accuracy
-- **Cons**: Extremely slow; would require background thread processing; memory intensive
-
-**Conclusion**: Time-based seeking provides the best balance of accuracy and performance for a desktop tool.
-
-### Scrubbing Performance
-
-**Debouncing strategy** prevents UI lockup:
-- Slider updates optimistically (immediate visual feedback)
-- Actual seeks throttled to 60ms intervals
-- Final precise seek on mouse release
-
-This approach keeps the UI responsive even during aggressive scrubbing of high-bitrate video.
-
-### Annotation Overlay Architecture
-
-**Stack-based rendering**:
-1. Bottom layer: media_kit Video widget (RepaintBoundary for performance)
-2. Top layer: CustomPaint overlay with GestureDetector
-
-**Benefits**:
-- No video re-encoding required
-- Annotations render at native resolution
-- Easy to edit/delete strokes in real-time
-- Minimal performance overhead
-
-## Development
-
-### Running in Debug Mode
-```bash
-flutter run -d windows --verbose
-```
-
-### Regenerating Freezed Models
-```bash
-flutter pub run build_runner build --delete-conflicting-outputs
-```
-
-### Running Tests
 ```bash
 flutter test
 ```
 
+## Known Limitations
+
+- Export is local-file only; YouTube sources are not exportable
+- YouTube playback depends on stream availability and may fail for restricted or unsupported videos
+- Very large videos or very dense annotation sessions may reduce responsiveness on older hardware
+- Desktop support is the primary target; the app is not documented as a mobile product
+
 ## License
 
-This project is provided as-is for educational and professional use.
+This project is licensed under the Apache License 2.0.
 
-## Credits
-
-Built with:
-- [Flutter](https://flutter.dev/) - UI framework
-- [media_kit](https://pub.dev/packages/media_kit) - Video playback (libmpv wrapper)
-- [Riverpod](https://pub.dev/packages/flutter_riverpod) - State management
-- [Freezed](https://pub.dev/packages/freezed) - Data classes
-- [FFmpeg](https://ffmpeg.org/) - Media processing
-
----
-
-**FrameSketch Player** - Frame-accurate video annotation for professionals.
+See the [LICENSE](LICENSE) file for the full license text.
+See the [NOTICE](NOTICE) file for attribution notices.

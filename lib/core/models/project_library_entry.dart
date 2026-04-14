@@ -13,6 +13,8 @@ class ProjectLibraryEntry extends Equatable {
   final String? thumbnailUrl;
   final DateTime lastOpenedAt;
   final DateTime updatedAt;
+  final bool isPinned;
+  final DateTime? pinnedAt;
 
   const ProjectLibraryEntry({
     required this.id,
@@ -27,6 +29,8 @@ class ProjectLibraryEntry extends Equatable {
     this.youtubeUrl,
     this.thumbnailPath,
     this.thumbnailUrl,
+    this.isPinned = false,
+    this.pinnedAt,
   });
 
   bool get isYouTubeProject =>
@@ -58,6 +62,9 @@ class ProjectLibraryEntry extends Equatable {
     String? thumbnailUrl,
     DateTime? lastOpenedAt,
     DateTime? updatedAt,
+    bool? isPinned,
+    DateTime? pinnedAt,
+    bool clearPinnedAt = false,
   }) {
     return ProjectLibraryEntry(
       id: id ?? this.id,
@@ -72,6 +79,8 @@ class ProjectLibraryEntry extends Equatable {
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       lastOpenedAt: lastOpenedAt ?? this.lastOpenedAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isPinned: isPinned ?? this.isPinned,
+      pinnedAt: clearPinnedAt ? null : (pinnedAt ?? this.pinnedAt),
     );
   }
 
@@ -99,6 +108,8 @@ class ProjectLibraryEntry extends Equatable {
           fallbackDate,
       updatedAt:
           DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? fallbackDate,
+      isPinned: json['isPinned'] as bool? ?? false,
+      pinnedAt: DateTime.tryParse(json['pinnedAt'] as String? ?? ''),
     );
   }
 
@@ -116,6 +127,8 @@ class ProjectLibraryEntry extends Equatable {
       'thumbnailUrl': thumbnailUrl,
       'lastOpenedAt': lastOpenedAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'isPinned': isPinned,
+      'pinnedAt': pinnedAt?.toIso8601String(),
     };
   }
 
@@ -133,6 +146,8 @@ class ProjectLibraryEntry extends Equatable {
     thumbnailUrl,
     lastOpenedAt,
     updatedAt,
+    isPinned,
+    pinnedAt,
   ];
 
   @override
