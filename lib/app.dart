@@ -1024,15 +1024,6 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     return KeyEventResult.ignored;
   }
 
-  bool _isEditingText() {
-    final focusedContext = FocusManager.instance.primaryFocus?.context;
-    if (focusedContext == null) {
-      return false;
-    }
-
-    return focusedContext.widget is EditableText;
-  }
-
   void _toggleFullscreenMode() {
     _setFullscreenMode(!_isFullscreen);
   }
