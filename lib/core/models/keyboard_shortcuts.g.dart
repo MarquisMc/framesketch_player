@@ -47,6 +47,15 @@ _$KeyboardShortcutsImpl _$$KeyboardShortcutsImplFromJson(
       : KeyboardShortcut.fromJson(
           json['toggleFullscreen'] as Map<String, dynamic>,
         ),
+  openCommandPalette: json['openCommandPalette'] == null
+      ? const KeyboardShortcut(
+          key: LogicalKeyboardKey.keyP,
+          ctrlPressed: true,
+          shiftPressed: true,
+        )
+      : KeyboardShortcut.fromJson(
+          json['openCommandPalette'] as Map<String, dynamic>,
+        ),
   openFile: KeyboardShortcut.fromJson(json['openFile'] as Map<String, dynamic>),
   saveAnnotations: KeyboardShortcut.fromJson(
     json['saveAnnotations'] as Map<String, dynamic>,
@@ -122,6 +131,7 @@ Map<String, dynamic> _$$KeyboardShortcutsImplToJson(
   'jumpForward': instance.jumpForward,
   'jumpBackward': instance.jumpBackward,
   'toggleFullscreen': instance.toggleFullscreen,
+  'openCommandPalette': instance.openCommandPalette,
   'openFile': instance.openFile,
   'saveAnnotations': instance.saveAnnotations,
   'undo': instance.undo,

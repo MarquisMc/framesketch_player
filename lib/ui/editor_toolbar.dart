@@ -10,9 +10,13 @@ import '../features/player/providers/player_provider.dart';
 class EditorToolbar extends ConsumerWidget {
   final bool isDesktop;
   final bool isInspectorVisible;
+  final bool isToolsPanelVisible;
+  final bool isToolsStripVisible;
   final bool isExporting;
   final bool showExportHourglassBottom;
   final VoidCallback onToggleInspector;
+  final VoidCallback onToggleToolsPanel;
+  final VoidCallback onToggleToolsStrip;
   final VoidCallback onOpenFile;
   final VoidCallback onOpenYouTube;
   final VoidCallback onOpenAnnotation;
@@ -22,6 +26,8 @@ class EditorToolbar extends ConsumerWidget {
   final VoidCallback onExportVideo;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenThemeManager;
+  final VoidCallback onOpenCommandPalette;
+  final String commandPaletteShortcutLabel;
 
   /// Called with the action string 'register' | 'unregister' | 'check'
   final void Function(String, BuildContext)? onMenuAction;
@@ -30,9 +36,13 @@ class EditorToolbar extends ConsumerWidget {
     super.key,
     required this.isDesktop,
     required this.isInspectorVisible,
+    required this.isToolsPanelVisible,
+    required this.isToolsStripVisible,
     required this.isExporting,
     required this.showExportHourglassBottom,
     required this.onToggleInspector,
+    required this.onToggleToolsPanel,
+    required this.onToggleToolsStrip,
     required this.onOpenFile,
     required this.onOpenYouTube,
     required this.onOpenAnnotation,
@@ -42,6 +52,8 @@ class EditorToolbar extends ConsumerWidget {
     required this.onExportVideo,
     required this.onOpenSettings,
     required this.onOpenThemeManager,
+    required this.onOpenCommandPalette,
+    required this.commandPaletteShortcutLabel,
     this.onMenuAction,
   });
 
@@ -116,11 +128,22 @@ class EditorToolbar extends ConsumerWidget {
 
           _Sep(),
 
-          // ── Crop toggle ───────────────────────────────────────────
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 2),
-            child: CropModeToggleButton(),
+          // ── Tools dropdown-style toggle ────────────────────────────
+          _ToolsStripToggle(
+            isToolsStripVisible: isToolsStripVisible,
+            onToggleToolsStrip: onToggleToolsStrip,
+            palette: palette,
           ),
+          if (isDesktop)
+            _Btn(
+              icon: isToolsPanelVisible
+                  ? Icons.view_sidebar
+                  : Icons.view_sidebar_outlined,
+              tooltip: isToolsPanelVisible
+                  ? 'Hide Tools Panel'
+                  : 'Show Tools Panel',
+              onPressed: onToggleToolsPanel,
+            ),
 
           _Sep(),
 
@@ -139,7 +162,15 @@ class EditorToolbar extends ConsumerWidget {
                 : const SizedBox.shrink(),
           ),
 
-          // ── Right: view toggles ───────────────────────────────────
+          // ── Right: crop, command palette, view toggles ────────────
+          _Sep(),
+
+          // Crop toggle
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 2),
+            child: CropModeToggleButton(),
+          ),
+
           _Sep(),
 
           _Btn(
@@ -155,6 +186,11 @@ class EditorToolbar extends ConsumerWidget {
             icon: Icons.palette_outlined,
             tooltip: 'Theme Manager',
             onPressed: onOpenThemeManager,
+          ),
+          _Btn(
+            icon: Icons.bolt_outlined,
+            tooltip: _commandPaletteTooltip(commandPaletteShortcutLabel),
+            onPressed: onOpenCommandPalette,
           ),
           _Btn(
             icon: Icons.keyboard_outlined,
@@ -228,9 +264,83 @@ class EditorToolbar extends ConsumerWidget {
     if (segments.length > 1) return segments.last;
     return label;
   }
+
+  static String _commandPaletteTooltip(String shortcut) {
+    return 'Command Palette ($shortcut)';
+  }
 }
 
 // ─── File dropdown button ─────────────────────────────────────────────────────
+
+class _ToolsStripToggle extends StatelessWidget {
+  final bool isToolsStripVisible;
+  final VoidCallback onToggleToolsStrip;
+  final AppPalette palette;
+
+  const _ToolsStripToggle({
+    required this.isToolsStripVisible,
+    required this.onToggleToolsStrip,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: isToolsStripVisible ? 'Hide Tools Strip' : 'Show Tools Strip',
+      waitDuration: const Duration(milliseconds: 600),
+      child: InkWell(
+        onTap: onToggleToolsStrip,
+        borderRadius: BorderRadius.circular(6),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          constraints: const BoxConstraints(minHeight: 32),
+          decoration: BoxDecoration(
+            color: isToolsStripVisible
+                ? palette.accentSoft
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.brush_outlined,
+                size: 15,
+                color: isToolsStripVisible
+                    ? palette.accentBright
+                    : palette.textSecondary,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                'Tools',
+                style: TextStyle(
+                  color: isToolsStripVisible
+                      ? palette.accentBright
+                      : palette.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 3),
+              AnimatedRotation(
+                turns: isToolsStripVisible ? 0.5 : 0.0,
+                duration: const Duration(milliseconds: 150),
+                child: Icon(
+                  Icons.expand_more,
+                  size: 14,
+                  color: isToolsStripVisible
+                      ? palette.accentBright
+                      : palette.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _FileMenuButton extends StatefulWidget {
   final bool isExporting;

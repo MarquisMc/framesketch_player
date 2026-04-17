@@ -46,6 +46,14 @@ class KeyboardShortcuts with _$KeyboardShortcuts {
     required KeyboardShortcut jumpBackward,
     @Default(KeyboardShortcut(key: LogicalKeyboardKey.f11))
     KeyboardShortcut toggleFullscreen,
+    @Default(
+      KeyboardShortcut(
+        key: LogicalKeyboardKey.keyP,
+        ctrlPressed: true,
+        shiftPressed: true,
+      ),
+    )
+    KeyboardShortcut openCommandPalette,
     required KeyboardShortcut openFile,
     required KeyboardShortcut saveAnnotations,
     required KeyboardShortcut undo,
@@ -95,6 +103,11 @@ final defaultKeyboardShortcuts = KeyboardShortcuts(
     shiftPressed: true,
   ),
   toggleFullscreen: const KeyboardShortcut(key: LogicalKeyboardKey.f11),
+  openCommandPalette: const KeyboardShortcut(
+    key: LogicalKeyboardKey.keyP,
+    ctrlPressed: true,
+    shiftPressed: true,
+  ),
   openFile: const KeyboardShortcut(
     key: LogicalKeyboardKey.keyO,
     ctrlPressed: true,

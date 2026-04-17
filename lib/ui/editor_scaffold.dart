@@ -11,6 +11,7 @@ import '../features/annotations/providers/annotation_keyframe_timeline_provider.
 import '../features/crop/providers/crop_provider.dart';
 import '../features/crop/widgets/crop_controls.dart';
 import 'editor_toolbar.dart';
+import 'horizontal_tools_strip.dart';
 import 'inspector_panel.dart';
 
 // Breakpoints
@@ -21,9 +22,13 @@ const double _kTabletBreakpoint = 1024;
 class EditorScaffold extends ConsumerWidget {
   final bool isFullscreen;
   final bool showInspector;
+  final bool showToolsPanel;
+  final bool showToolsStrip;
   final Widget projectBrowser;
   final VoidCallback onToggleFullscreen;
   final VoidCallback onToggleInspector;
+  final VoidCallback onToggleToolsPanel;
+  final VoidCallback onToggleToolsStrip;
   final VoidCallback onOpenFile;
   final VoidCallback onOpenYouTube;
   final VoidCallback onOpenAnnotation;
@@ -33,6 +38,8 @@ class EditorScaffold extends ConsumerWidget {
   final VoidCallback onExportVideo;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenThemeManager;
+  final VoidCallback onOpenCommandPalette;
+  final String commandPaletteShortcutLabel;
   final bool isExporting;
   final bool showExportHourglassBottom;
   final void Function(String, BuildContext)? onMenuAction;
@@ -41,9 +48,13 @@ class EditorScaffold extends ConsumerWidget {
     super.key,
     required this.isFullscreen,
     required this.showInspector,
+    required this.showToolsPanel,
+    required this.showToolsStrip,
     required this.projectBrowser,
     required this.onToggleFullscreen,
     required this.onToggleInspector,
+    required this.onToggleToolsPanel,
+    required this.onToggleToolsStrip,
     required this.onOpenFile,
     required this.onOpenYouTube,
     required this.onOpenAnnotation,
@@ -53,6 +64,8 @@ class EditorScaffold extends ConsumerWidget {
     required this.onExportVideo,
     required this.onOpenSettings,
     required this.onOpenThemeManager,
+    required this.onOpenCommandPalette,
+    required this.commandPaletteShortcutLabel,
     required this.isExporting,
     required this.showExportHourglassBottom,
     this.onMenuAction,
@@ -113,6 +126,10 @@ class EditorScaffold extends ConsumerWidget {
         EditorToolbar(
           isDesktop: isDesktop,
           isInspectorVisible: showInspector,
+          isToolsPanelVisible: showToolsPanel,
+          isToolsStripVisible: showToolsStrip,
+          onToggleToolsPanel: onToggleToolsPanel,
+          onToggleToolsStrip: onToggleToolsStrip,
           isExporting: isExporting,
           showExportHourglassBottom: showExportHourglassBottom,
           onToggleInspector: onToggleInspector,
@@ -125,6 +142,8 @@ class EditorScaffold extends ConsumerWidget {
           onExportVideo: onExportVideo,
           onOpenSettings: onOpenSettings,
           onOpenThemeManager: onOpenThemeManager,
+          onOpenCommandPalette: onOpenCommandPalette,
+          commandPaletteShortcutLabel: commandPaletteShortcutLabel,
           onMenuAction: onMenuAction,
         ),
         Divider(height: 1, thickness: 1, color: palette.border),
@@ -154,6 +173,10 @@ class EditorScaffold extends ConsumerWidget {
         EditorToolbar(
           isDesktop: true,
           isInspectorVisible: showInspector,
+          isToolsPanelVisible: showToolsPanel,
+          isToolsStripVisible: showToolsStrip,
+          onToggleToolsPanel: onToggleToolsPanel,
+          onToggleToolsStrip: onToggleToolsStrip,
           isExporting: isExporting,
           showExportHourglassBottom: showExportHourglassBottom,
           onToggleInspector: onToggleInspector,
@@ -166,9 +189,16 @@ class EditorScaffold extends ConsumerWidget {
           onExportVideo: onExportVideo,
           onOpenSettings: onOpenSettings,
           onOpenThemeManager: onOpenThemeManager,
+          onOpenCommandPalette: onOpenCommandPalette,
+          commandPaletteShortcutLabel: commandPaletteShortcutLabel,
           onMenuAction: onMenuAction,
         ),
         Divider(height: 1, thickness: 1, color: palette.border),
+
+        if (showToolsStrip && !isCropModeActive) ...[
+          const HorizontalToolsStrip(),
+          Divider(height: 1, thickness: 1, color: palette.border),
+        ],
 
         // 2) Main content row: left tools | canvas | right inspector
         Expanded(
@@ -176,7 +206,7 @@ class EditorScaffold extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Left: drawing tools panel (fixed width, scrollable internally)
-              if (!isCropModeActive) ...[
+              if (showToolsPanel && !isCropModeActive) ...[
                 const SizedBox(width: 240, child: DrawingToolsPanel()),
                 VerticalDivider(width: 1, thickness: 1, color: palette.border),
               ],
@@ -220,6 +250,10 @@ class EditorScaffold extends ConsumerWidget {
         EditorToolbar(
           isDesktop: false,
           isInspectorVisible: showInspector,
+          isToolsPanelVisible: showToolsPanel,
+          isToolsStripVisible: showToolsStrip,
+          onToggleToolsPanel: onToggleToolsPanel,
+          onToggleToolsStrip: onToggleToolsStrip,
           isExporting: isExporting,
           showExportHourglassBottom: showExportHourglassBottom,
           onToggleInspector: onToggleInspector,
@@ -232,6 +266,8 @@ class EditorScaffold extends ConsumerWidget {
           onExportVideo: onExportVideo,
           onOpenSettings: onOpenSettings,
           onOpenThemeManager: onOpenThemeManager,
+          onOpenCommandPalette: onOpenCommandPalette,
+          commandPaletteShortcutLabel: commandPaletteShortcutLabel,
           onMenuAction: onMenuAction,
         ),
         Divider(height: 1, thickness: 1, color: palette.border),
@@ -276,6 +312,10 @@ class EditorScaffold extends ConsumerWidget {
         EditorToolbar(
           isDesktop: false,
           isInspectorVisible: showInspector,
+          isToolsPanelVisible: showToolsPanel,
+          isToolsStripVisible: showToolsStrip,
+          onToggleToolsPanel: onToggleToolsPanel,
+          onToggleToolsStrip: onToggleToolsStrip,
           isExporting: isExporting,
           showExportHourglassBottom: showExportHourglassBottom,
           onToggleInspector: onToggleInspector,
@@ -288,6 +328,8 @@ class EditorScaffold extends ConsumerWidget {
           onExportVideo: onExportVideo,
           onOpenSettings: onOpenSettings,
           onOpenThemeManager: onOpenThemeManager,
+          onOpenCommandPalette: onOpenCommandPalette,
+          commandPaletteShortcutLabel: commandPaletteShortcutLabel,
           onMenuAction: onMenuAction,
         ),
         Divider(height: 1, thickness: 1, color: palette.border),

@@ -66,14 +66,17 @@ class AppPalette {
     loopA: Color(0xFF67C88C),
     loopB: Color(0xFFF2B061),
     annotationSwatches: <Color>[
-      Color(0xFFF06A6E),
-      Color(0xFF59CC8B),
-      Color(0xFF59A8F2),
-      Color(0xFFF3C765),
-      Color(0xFFF39A5E),
-      Color(0xFFBE8CF2),
-      Color(0xFFF6F8FA),
-      Color(0xFF13161B),
+      Color(0xFF58D3C4), // Cyan (default)
+      Color(0xFF11B9D6), // Blue
+      Color(0xFF1FA1D6), // Dark blue
+      Color(0xFF22C55E), // Green
+      Color(0xFFEAB308), // Yellow
+      Color(0xFFF97316), // Orange
+      Color(0xFFEF4444), // Red
+      Color(0xFFEC4899), // Pink
+      Color(0xFF8B5CF6), // Purple
+      Color(0xFF000000), // Black
+      Color(0xFFF8FAFC), // Near-white for light surfaces
     ],
   );
 
@@ -96,14 +99,17 @@ class AppPalette {
     loopA: Color(0xFF2E9E5E),
     loopB: Color(0xFFC77A22),
     annotationSwatches: <Color>[
-      Color(0xFFD8474B),
-      Color(0xFF2FA662),
-      Color(0xFF2E7DCC),
-      Color(0xFFD7A82E),
-      Color(0xFFCE7431),
-      Color(0xFF8C5BD1),
-      Color(0xFFFDFDFD),
-      Color(0xFF111318),
+      Color(0xFF58D3C4), // Cyan (default)
+      Color(0xFF11B9D6), // Blue
+      Color(0xFF1FA1D6), // Dark blue
+      Color(0xFF22C55E), // Green
+      Color(0xFFEAB308), // Yellow
+      Color(0xFFF97316), // Orange
+      Color(0xFFEF4444), // Red
+      Color(0xFFEC4899), // Pink
+      Color(0xFF8B5CF6), // Purple
+      Color(0xFF000000), // Black
+      Color(0xFFFFFFFF), // White
     ],
   );
 
@@ -266,7 +272,7 @@ class AppPalette {
               Colors.red,
               Colors.green,
               Colors.blue,
-              Colors.white,
+              const Color(0xFFF8FAFC),
               Colors.black,
               Colors.orange,
               Colors.purple,

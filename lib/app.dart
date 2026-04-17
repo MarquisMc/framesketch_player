@@ -24,6 +24,8 @@ import 'core/services/file_association_service.dart';
 import 'core/theme/app_palette.dart';
 import 'core/theme/theme_provider.dart';
 import 'ui/editor_scaffold.dart';
+import 'ui/command_palette/command_palette.dart';
+import 'ui/command_palette/command_palette_model.dart';
 
 /// Main application widget
 class FrameSketchPlayerApp extends ConsumerStatefulWidget {
@@ -52,6 +54,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   int _keyRepeatGeneration = 0;
   bool _isFullscreen = false;
   bool _showInspector = true;
+  bool _showToolsPanel = true;
+  bool _showToolsStrip = false;
+  bool _showCommandPalette = false;
   bool _showExportHourglassBottom = false;
   int _loadingOverlayDepth = 0;
   String _loadingOverlayMessage = 'Loading...';
@@ -589,6 +594,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                 EditorScaffold(
                   isFullscreen: _isFullscreen,
                   showInspector: _showInspector,
+                  showToolsPanel: _showToolsPanel,
+                  showToolsStrip: _showToolsStrip,
                   projectBrowser: ProjectBrowser(
                     projects: _projects,
                     isLoading: _projectsLoading,
@@ -606,6 +613,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                   ),
                   onToggleFullscreen: _toggleFullscreenMode,
                   onToggleInspector: _toggleInspectorVisibility,
+                  onToggleToolsPanel: _toggleToolsPanelVisibility,
+                  onToggleToolsStrip: _toggleToolsStrip,
                   onOpenFile: _openFile,
                   onOpenYouTube: _openYouTubeUrl,
                   onOpenAnnotation: _openAnnotationJson,
@@ -615,12 +624,21 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                   onExportVideo: _exportVideoFromTopBar,
                   onOpenSettings: () => _openSettings(context),
                   onOpenThemeManager: () => _openThemeManager(context),
+                  onOpenCommandPalette: _openCommandPalette,
+                  commandPaletteShortcutLabel: _formatShortcutLabel(
+                    _shortcuts.openCommandPalette,
+                  ),
                   isExporting: isExporting,
                   showExportHourglassBottom: _showExportHourglassBottom,
                   onMenuAction: _handleMenuAction,
                 ),
                 if (_loadingOverlayDepth > 0)
                   _buildGlobalLoadingOverlay(context),
+                if (_showCommandPalette)
+                  CommandPalette(
+                    commands: _buildPaletteCommands(),
+                    onClose: _closeCommandPalette,
+                  ),
               ],
             ),
           ),
@@ -812,6 +830,11 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
     // General shortcuts
     if (_shortcuts.generalShortcutsEnabled) {
+      if (matchesShortcut(_shortcuts.openCommandPalette)) {
+        _openCommandPalette();
+        return KeyEventResult.handled;
+      }
+
       // Next frame (with repeat)
       if (matchesShortcut(_shortcuts.nextFrame)) {
         startKeyRepeat(() async => playerNotifier.stepForward());
@@ -1024,6 +1047,447 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     return KeyEventResult.ignored;
   }
 
+  void _openCommandPalette() {
+    if (_showCommandPalette) return;
+    setState(() => _showCommandPalette = true);
+  }
+
+  void _closeCommandPalette() {
+    if (!_showCommandPalette) return;
+    setState(() => _showCommandPalette = false);
+    _focusNode.requestFocus();
+  }
+
+  Future<void> _openRecentFromPalette() async {
+    final recent = await AnnotationStorageService().getRecentFiles();
+    if (!mounted) return;
+    if (recent.isEmpty) {
+      _scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: const Text('No recent files'),
+          backgroundColor: _activePalette.warning,
+        ),
+      );
+      return;
+    }
+
+    final dialogHostContext = _navigatorKey.currentContext;
+    if (dialogHostContext == null) return;
+
+    final chosen = await showDialog<String>(
+      // ignore: use_build_context_synchronously
+      context: dialogHostContext,
+      builder: (dialogContext) {
+        final palette = AppPalette.of(dialogContext);
+        return Dialog(
+          child: SizedBox(
+            width: 560,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Open Recent',
+                      style: TextStyle(
+                        color: palette.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                Divider(height: 1, color: palette.border),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: recent.length,
+                    itemBuilder: (_, i) {
+                      final path = recent[i];
+                      final name = path.replaceAll('\\', '/').split('/').last;
+                      return ListTile(
+                        leading: Icon(
+                          Icons.movie_outlined,
+                          size: 18,
+                          color: palette.textSecondary,
+                        ),
+                        title: Text(name),
+                        subtitle: Text(
+                          path,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () => Navigator.of(dialogContext).pop(path),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (chosen != null) {
+      await _loadInitialVideo(chosen);
+    }
+  }
+
+  PaletteStep _goToFrameStep() {
+    return PaletteStep(
+      title: 'Go to frame',
+      hint: 'Frame number (e.g. 120)',
+      helper: 'Jumps the player to the given frame.',
+      confirmLabel: 'Go',
+      onSubmit: (value) {
+        final frame = int.tryParse(value.trim());
+        if (frame == null || frame < 0) {
+          return 'Enter a valid frame number.';
+        }
+        final metadata = ref.read(playerProvider).metadata;
+        if (metadata == null) return 'Open a video before jumping to a frame.';
+        final targetMs = ((frame * 1000) / metadata.fps).round();
+        unawaited(
+          ref
+              .read(playerProvider.notifier)
+              .seek(Duration(milliseconds: targetMs)),
+        );
+        return null;
+      },
+    );
+  }
+
+  PaletteStep _setLoopPointStep({required bool isA}) {
+    return PaletteStep(
+      title: isA ? 'Set loop A (start)' : 'Set loop B (end)',
+      hint: 'Time in ms, or s:ms (blank = current position)',
+      helper: isA
+          ? 'Leave blank to use the current playhead position.'
+          : 'Must be after the A point.',
+      confirmLabel: 'Set',
+      onSubmit: (value) {
+        final trimmed = value.trim();
+        final loopNotifier = ref.read(loopProvider.notifier);
+
+        if (trimmed.isEmpty) {
+          if (isA) {
+            loopNotifier.setAPoint();
+          } else {
+            loopNotifier.setBPoint();
+          }
+          return null;
+        }
+
+        final ms = _parsePaletteDurationMs(trimmed);
+        if (ms == null) {
+          return 'Enter milliseconds or a value like 1:23.456.';
+        }
+        final position = Duration(milliseconds: ms);
+        if (isA) {
+          loopNotifier.setAPointAt(position);
+        } else {
+          loopNotifier.setBPointAt(position);
+        }
+        return null;
+      },
+    );
+  }
+
+  int? _parsePaletteDurationMs(String input) {
+    final direct = int.tryParse(input);
+    if (direct != null) return direct < 0 ? null : direct;
+    final parts = input.split(':');
+    if (parts.length == 2) {
+      final sec = int.tryParse(parts[0]);
+      final ms = int.tryParse(parts[1]);
+      if (sec != null && ms != null && sec >= 0 && ms >= 0) {
+        return sec * 1000 + ms;
+      }
+    }
+    return null;
+  }
+
+  String _formatShortcutLabel(KeyboardShortcut shortcut) {
+    final parts = <String>[];
+    if (shortcut.ctrlPressed) parts.add('Ctrl');
+    if (shortcut.shiftPressed) parts.add('Shift');
+    if (shortcut.altPressed) parts.add('Alt');
+    parts.add(
+      shortcut.key.keyLabel.isNotEmpty
+          ? shortcut.key.keyLabel
+          : shortcut.key.debugName ?? '',
+    );
+    return parts.join('+');
+  }
+
+  List<PaletteCommand> _buildPaletteCommands() {
+    final playerState = ref.read(playerProvider);
+    final loopState = ref.read(loopProvider);
+    final cropState = ref.read(cropProvider);
+    final annotationState = ref.read(annotationProvider);
+    final themeState = ref.read(themeControllerProvider);
+    final themeController = ref.read(themeControllerProvider.notifier);
+    final hasVideo = playerState.hasLoadedSource;
+    final hasLocal = playerState.isLocalFileSource;
+    final hasAnnotations = annotationState.annotationData != null;
+
+    return <PaletteCommand>[
+      // ─── File ────────────────────────────────────────────────────
+      PaletteCommand(
+        id: 'open-video',
+        label: 'Open Video\u2026',
+        category: 'File',
+        icon: Icons.folder_open_outlined,
+        shortcut: _formatShortcutLabel(_shortcuts.openFile),
+        run: () {
+          unawaited(_openFile());
+          return null;
+        },
+      ),
+      PaletteCommand(
+        id: 'open-recent',
+        label: 'Open Recent\u2026',
+        category: 'File',
+        icon: Icons.history,
+        run: () {
+          unawaited(_openRecentFromPalette());
+          return null;
+        },
+      ),
+      PaletteCommand(
+        id: 'save-project',
+        label: 'Save Project',
+        category: 'File',
+        icon: Icons.save_outlined,
+        shortcut: _formatShortcutLabel(_shortcuts.saveAnnotations),
+        enabled: hasAnnotations,
+        run: () {
+          unawaited(_saveAnnotations());
+          return null;
+        },
+      ),
+      PaletteCommand(
+        id: 'export-loop',
+        label: 'Export Loop',
+        category: 'File',
+        icon: Icons.movie_creation_outlined,
+        enabled: hasLocal && loopState.isSectionLoopValid,
+        subtitle: loopState.isSectionLoopValid
+            ? null
+            : 'Requires a valid A/B loop section',
+        run: () {
+          final cropNotifier = ref.read(cropProvider.notifier);
+          if (!cropState.isCropModeActive) {
+            cropNotifier.toggleCropMode();
+          }
+          cropNotifier.setExportRange(
+            start: loopState.loopStart,
+            end: loopState.loopEnd,
+          );
+          unawaited(_exportVideoFromTopBar());
+          return null;
+        },
+      ),
+
+      // ─── Playback ────────────────────────────────────────────────
+      PaletteCommand(
+        id: 'go-to-frame',
+        label: 'Go to Frame\u2026',
+        category: 'Playback',
+        icon: Icons.skip_next_outlined,
+        enabled: hasVideo,
+        run: () => _goToFrameStep(),
+      ),
+
+      // ─── Loop ────────────────────────────────────────────────────
+      PaletteCommand(
+        id: 'set-a',
+        label: 'Set Loop A (start)\u2026',
+        category: 'Loop',
+        icon: Icons.flag_outlined,
+        shortcut: _formatShortcutLabel(_shortcuts.setLoopStart),
+        enabled: hasVideo,
+        run: () => _setLoopPointStep(isA: true),
+      ),
+      PaletteCommand(
+        id: 'set-b',
+        label: 'Set Loop B (end)\u2026',
+        category: 'Loop',
+        icon: Icons.outlined_flag,
+        shortcut: _formatShortcutLabel(_shortcuts.setLoopEnd),
+        enabled: hasVideo,
+        run: () => _setLoopPointStep(isA: false),
+      ),
+      PaletteCommand(
+        id: 'toggle-loop',
+        label: loopState.isSectionLoopActive
+            ? 'Disable Section Loop'
+            : 'Toggle Section Loop (A-B)',
+        category: 'Loop',
+        icon: Icons.loop,
+        shortcut: _formatShortcutLabel(_shortcuts.toggleSectionLoop),
+        enabled: loopState.isSectionLoopValid,
+        run: () {
+          ref.read(loopProvider.notifier).toggleSectionLoop();
+          return null;
+        },
+      ),
+      PaletteCommand(
+        id: 'toggle-full-loop',
+        label: loopState.isFullVideoLoopActive
+            ? 'Disable Full Video Loop'
+            : 'Toggle Full Video Loop',
+        category: 'Loop',
+        icon: Icons.repeat,
+        shortcut: _formatShortcutLabel(_shortcuts.toggleFullLoop),
+        enabled: hasVideo,
+        run: () {
+          ref.read(loopProvider.notifier).toggleFullVideoLoop();
+          return null;
+        },
+      ),
+
+      // ─── Crop ────────────────────────────────────────────────────
+      PaletteCommand(
+        id: 'toggle-crop',
+        label: cropState.isCropModeActive
+            ? 'Exit Crop Mode'
+            : 'Enter Crop Mode',
+        category: 'Crop',
+        icon: Icons.crop,
+        shortcut: _formatShortcutLabel(_shortcuts.toggleCropMode),
+        enabled: hasVideo,
+        run: () {
+          final cropNotifier = ref.read(cropProvider.notifier);
+          final wasActive = cropState.isCropModeActive;
+          cropNotifier.toggleCropMode();
+          if (!wasActive) {
+            cropNotifier.setExportRange(
+              start: loopState.loopStart,
+              end: loopState.loopEnd,
+            );
+          }
+          return null;
+        },
+      ),
+
+      // ─── Markers ─────────────────────────────────────────────────
+      PaletteCommand(
+        id: 'add-marker',
+        label: 'Add Marker at Current Frame',
+        category: 'Markers',
+        icon: Icons.bookmark_add_outlined,
+        enabled: hasAnnotations,
+        run: () {
+          final frame = playerState.metadata == null
+              ? 0
+              : ((playerState.position.inMilliseconds *
+                            playerState.metadata!.fps) /
+                        1000)
+                    .round();
+          ref
+              .read(annotationProvider.notifier)
+              .upsertMarker(
+                label: 'Marker $frame',
+                color: _activePalette.accent,
+              );
+          return null;
+        },
+      ),
+
+      // ─── View ────────────────────────────────────────────────────
+      PaletteCommand(
+        id: 'switch-theme',
+        label: themeState.mode == ThemeMode.dark
+            ? 'Switch to Light Mode'
+            : 'Switch to Dark Mode',
+        category: 'View',
+        icon: themeState.mode == ThemeMode.dark
+            ? Icons.light_mode_outlined
+            : Icons.dark_mode_outlined,
+        run: () {
+          themeController.toggleThemeMode();
+          return null;
+        },
+      ),
+      PaletteCommand(
+        id: 'open-theme-manager',
+        label: 'Open Theme Manager\u2026',
+        category: 'View',
+        icon: Icons.palette_outlined,
+        run: () {
+          final ctx = _navigatorKey.currentContext;
+          if (ctx != null) _openThemeManager(ctx);
+          return null;
+        },
+      ),
+      PaletteCommand(
+        id: 'toggle-fullscreen',
+        label: _isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen',
+        category: 'View',
+        icon: Icons.fullscreen,
+        shortcut: _formatShortcutLabel(_shortcuts.toggleFullscreen),
+        run: () {
+          _toggleFullscreenMode();
+          return null;
+        },
+      ),
+
+      // ─── Help ────────────────────────────────────────────────────
+      ..._buildShortcutDiscoveryCommands(),
+    ];
+  }
+
+  List<PaletteCommand> _buildShortcutDiscoveryCommands() {
+    final entries = <(String, KeyboardShortcut)>[
+      ('Open Command Palette', _shortcuts.openCommandPalette),
+      ('Play / Pause', _shortcuts.playPause),
+      ('Next Frame', _shortcuts.nextFrame),
+      ('Previous Frame', _shortcuts.previousFrame),
+      ('Jump Forward 1s', _shortcuts.jumpForward),
+      ('Jump Backward 1s', _shortcuts.jumpBackward),
+      ('Next Marker', _shortcuts.nextMarker),
+      ('Previous Marker', _shortcuts.previousMarker),
+      ('Undo', _shortcuts.undo),
+      ('Redo', _shortcuts.redo),
+      ('Open File', _shortcuts.openFile),
+      ('Save Annotations', _shortcuts.saveAnnotations),
+      ('Toggle Fullscreen', _shortcuts.toggleFullscreen),
+      ('Pen Tool', _shortcuts.selectPenTool),
+      ('Eraser', _shortcuts.selectEraserTool),
+      ('Select Tool', _shortcuts.selectSelectionTool),
+      ('Rectangle', _shortcuts.selectRectangleTool),
+      ('Circle', _shortcuts.selectCircleTool),
+      ('Line', _shortcuts.selectLineTool),
+      ('Arrow', _shortcuts.selectArrowTool),
+      ('Text', _shortcuts.selectTextTool),
+      ('Toggle Keyframe Mode', _shortcuts.toggleKeyframeMode),
+      ('Create Manual Keyframe', _shortcuts.createManualKeyframe),
+      ('Set Loop A', _shortcuts.setLoopStart),
+      ('Set Loop B', _shortcuts.setLoopEnd),
+      ('Toggle Section Loop', _shortcuts.toggleSectionLoop),
+      ('Toggle Full Video Loop', _shortcuts.toggleFullLoop),
+      ('Toggle Crop Mode', _shortcuts.toggleCropMode),
+    ];
+
+    return entries
+        .map(
+          (e) => PaletteCommand(
+            id: 'shortcut-${e.$1}',
+            label: e.$1,
+            category: 'Keyboard Shortcuts',
+            icon: Icons.keyboard_outlined,
+            shortcut: _formatShortcutLabel(e.$2),
+            subtitle: 'Shortcut reference (read-only)',
+            enabled: false,
+          ),
+        )
+        .toList();
+  }
+
   void _toggleFullscreenMode() {
     _setFullscreenMode(!_isFullscreen);
   }
@@ -1031,6 +1495,20 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   void _toggleInspectorVisibility() {
     setState(() {
       _showInspector = !_showInspector;
+    });
+    _focusNode.requestFocus();
+  }
+
+  void _toggleToolsPanelVisibility() {
+    setState(() {
+      _showToolsPanel = !_showToolsPanel;
+    });
+    _focusNode.requestFocus();
+  }
+
+  void _toggleToolsStrip() {
+    setState(() {
+      _showToolsStrip = !_showToolsStrip;
     });
     _focusNode.requestFocus();
   }

@@ -140,6 +140,18 @@ class _SettingsDialogState extends State<SettingsDialog> {
               ),
               const SizedBox(height: 16),
               _ShortcutRow(
+                label: 'Open Command Palette',
+                shortcut: _shortcuts.openCommandPalette,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(
+                      openCommandPalette: shortcut,
+                    );
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
                 label: 'Open File',
                 shortcut: _shortcuts.openFile,
                 onChanged: (shortcut) {
