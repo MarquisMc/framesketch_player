@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -188,21 +189,253 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     );
   }
 
-  Size _estimateTextBounds(Stroke stroke) {
-    final rawText = stroke.text ?? '';
-    final lines = rawText.split('\n');
+  Set<String> _selectedStrokeIdSet() {
+    if (state.pendingTextStrokeId != null) {
+      return {state.pendingTextStrokeId!};
+    }
+
+    if (state.selectedStrokeIds.isNotEmpty) {
+      return state.selectedStrokeIds.toSet();
+    }
+
+    if (state.selectedStrokeId != null) {
+      return {state.selectedStrokeId!};
+    }
+
+    return const <String>{};
+  }
+
+  double _minimumTextWidthNormalized(double fontSize) {
+    final videoSize = _effectiveVideoSizeForTransform();
+    final minimumWidthPx = (fontSize * 4.0).clamp(120.0, double.infinity);
+    if (videoSize == null || videoSize.width <= 0) {
+      return 0.08 * (fontSize / 16.0);
+    }
+
+    return minimumWidthPx / videoSize.width;
+  }
+
+  double _minimumTextHeightNormalized(double fontSize) {
+    final videoSize = _effectiveVideoSizeForTransform();
+    final minimumHeightPx = (fontSize * 1.8).clamp(36.0, double.infinity);
+    if (videoSize == null || videoSize.height <= 0) {
+      return 0.03 * (fontSize / 16.0);
+    }
+
+    return minimumHeightPx / videoSize.height;
+  }
+
+  Size _measureTextBounds(
+    Stroke stroke, {
+    double? maxWidthNormalized,
+    bool includeHintText = false,
+  }) {
+    final rawText = (stroke.text ?? '').trimRight();
+    final measuredText = rawText.isEmpty
+        ? (includeHintText ? 'Type text...' : ' ')
+        : rawText;
+    final videoSize = _effectiveVideoSizeForTransform();
+
+    if (videoSize != null && videoSize.width > 0 && videoSize.height > 0) {
+      final maxWidthPx = maxWidthNormalized == null
+          ? double.infinity
+          : (maxWidthNormalized * videoSize.width)
+                .clamp(1.0, videoSize.width)
+                .toDouble();
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: measuredText,
+          style: TextStyle(fontSize: stroke.fontSize, height: 1.2),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: null,
+      )..layout(maxWidth: maxWidthPx);
+
+      return Size(
+        textPainter.width / videoSize.width,
+        textPainter.height / videoSize.height,
+      );
+    }
+
+    final lines = measuredText.split('\n');
     var longestLineLength = 0;
     for (final line in lines) {
       if (line.length > longestLineLength) {
         longestLineLength = line.length;
       }
     }
+
     final effectiveChars = longestLineLength == 0 ? 1 : longestLineLength;
-    final lineCount = lines.isEmpty ? 1 : lines.length;
     final effectiveFontSize = stroke.fontSize;
-    final estimatedWidth = effectiveChars * 0.008 * (effectiveFontSize / 16.0);
-    final estimatedHeight = lineCount * 0.028 * (effectiveFontSize / 16.0);
+    var estimatedWidth = effectiveChars * 0.008 * (effectiveFontSize / 16.0);
+    var estimatedHeight = lines.length * 0.028 * (effectiveFontSize / 16.0);
+
+    if (maxWidthNormalized != null && estimatedWidth > maxWidthNormalized) {
+      final lineCount = (estimatedWidth / maxWidthNormalized)
+          .ceil()
+          .clamp(1, 1000)
+          .toInt();
+      estimatedWidth = maxWidthNormalized;
+      estimatedHeight *= lineCount;
+    }
+
     return Size(estimatedWidth, estimatedHeight);
+  }
+
+  Stroke _withTextBounds(Stroke stroke, Rect rect) {
+    if (stroke.points.isEmpty) {
+      return stroke.copyWith(
+        points: [
+          StrokePoint(x: rect.left, y: rect.top, timestampMs: 0),
+          StrokePoint(x: rect.right, y: rect.bottom, timestampMs: 0),
+        ],
+      );
+    }
+    final firstTimestamp = stroke.points.first.timestampMs;
+    final secondTimestamp = stroke.points.length > 1
+        ? stroke.points.last.timestampMs
+        : firstTimestamp;
+    return stroke.copyWith(
+      points: [
+        StrokePoint(x: rect.left, y: rect.top, timestampMs: firstTimestamp),
+        StrokePoint(
+          x: rect.right,
+          y: rect.bottom,
+          timestampMs: secondTimestamp,
+        ),
+      ],
+    );
+  }
+
+  Stroke _ensureTextStrokeFitsBox(
+    Stroke stroke, {
+    bool allowWidthGrowth = false,
+    bool enforceMinimumSize = true,
+    bool includeHintText = false,
+  }) {
+    final bounds = _textBoundsRect(stroke);
+    final minimumWidth = enforceMinimumSize
+        ? _minimumTextWidthNormalized(stroke.fontSize)
+        : 0.0;
+    final minimumHeight = enforceMinimumSize
+        ? _minimumTextHeightNormalized(stroke.fontSize)
+        : 0.0;
+    final hasUsableBox = bounds.width > 0.0001 && bounds.height > 0.0001;
+    final currentWidth = hasUsableBox ? bounds.width : minimumWidth;
+    final targetWidth = allowWidthGrowth
+        ? currentWidth
+        : max(currentWidth, minimumWidth);
+    final measured = _measureTextBounds(
+      stroke,
+      maxWidthNormalized: targetWidth,
+      includeHintText: includeHintText,
+    );
+    final requiredWidth = allowWidthGrowth
+        ? max(measured.width, targetWidth)
+        : targetWidth;
+    final requiredHeight = measured.height > minimumHeight
+        ? measured.height
+        : minimumHeight;
+
+    final left = bounds.left.clamp(0.0, 1.0).toDouble();
+    final top = bounds.top.clamp(0.0, 1.0).toDouble();
+    final right = (left + requiredWidth).clamp(0.0, 1.0).toDouble();
+    final bottom = (top + requiredHeight).clamp(0.0, 1.0).toDouble();
+    return _withTextBounds(stroke, Rect.fromLTRB(left, top, right, bottom));
+  }
+
+  Rect? _resizeRectFromHandle(
+    Rect rect,
+    String handle,
+    StrokePoint currentPoint, {
+    double minWidth = 0.005,
+    double minHeight = 0.005,
+  }) {
+    var left = rect.left;
+    var right = rect.right;
+    var top = rect.top;
+    var bottom = rect.bottom;
+
+    final adjustLeft =
+        handle == 'left' || handle == 'topLeft' || handle == 'bottomLeft';
+    final adjustRight =
+        handle == 'right' || handle == 'topRight' || handle == 'bottomRight';
+    final adjustTop =
+        handle == 'top' || handle == 'topLeft' || handle == 'topRight';
+    final adjustBottom =
+        handle == 'bottom' || handle == 'bottomLeft' || handle == 'bottomRight';
+
+    if (adjustLeft) {
+      left = currentPoint.x.clamp(0.0, right - minWidth).toDouble();
+    }
+    if (adjustRight) {
+      right = currentPoint.x.clamp(left + minWidth, 1.0).toDouble();
+    }
+    if (adjustTop) {
+      top = currentPoint.y.clamp(0.0, bottom - minHeight).toDouble();
+    }
+    if (adjustBottom) {
+      bottom = currentPoint.y.clamp(top + minHeight, 1.0).toDouble();
+    }
+
+    if (right - left < minWidth) {
+      return null;
+    }
+    if (bottom - top < minHeight) {
+      return null;
+    }
+
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  Stroke _resizeStrokeToBounds(
+    Stroke stroke, {
+    required Rect originalBounds,
+    required Rect newBounds,
+  }) {
+    if (stroke.tool == DrawingTool.text) {
+      return _withTextBounds(stroke, newBounds);
+    }
+
+    const epsilon = 0.000001;
+    final originalWidth = originalBounds.width.abs();
+    final originalHeight = originalBounds.height.abs();
+    final centerX = originalBounds.center.dx;
+    final centerY = originalBounds.center.dy;
+    final pointCount = stroke.points.length;
+
+    final resizedPoints = <StrokePoint>[];
+    for (var i = 0; i < pointCount; i++) {
+      final point = stroke.points[i];
+
+      final relativeX = originalWidth < epsilon
+          ? pointCount <= 1
+                ? 0.5
+                : i / (pointCount - 1)
+          : (point.x - originalBounds.left) / originalWidth;
+      final relativeY = originalHeight < epsilon
+          ? pointCount <= 1
+                ? 0.5
+                : i / (pointCount - 1)
+          : (point.y - originalBounds.top) / originalHeight;
+
+      final fallbackX = point.x <= centerX ? 0.0 : 1.0;
+      final fallbackY = point.y <= centerY ? 0.0 : 1.0;
+      final normalizedX = (originalWidth < epsilon ? fallbackX : relativeX)
+          .clamp(0.0, 1.0);
+      final normalizedY = (originalHeight < epsilon ? fallbackY : relativeY)
+          .clamp(0.0, 1.0);
+
+      resizedPoints.add(
+        StrokePoint(
+          x: newBounds.left + (newBounds.width * normalizedX),
+          y: newBounds.top + (newBounds.height * normalizedY),
+          timestampMs: point.timestampMs,
+        ),
+      );
+    }
+
+    return stroke.copyWith(points: resizedPoints, scale: 1.0);
   }
 
   Rect _textBoundsRect(Stroke stroke) {
@@ -216,7 +449,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       return Rect.fromLTRB(left, top, right, bottom);
     }
 
-    final textBounds = _estimateTextBounds(stroke);
+    final textBounds = _measureTextBounds(stroke);
     return Rect.fromLTRB(
       anchor.x,
       anchor.y,
@@ -363,9 +596,10 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
           id: nextId,
           label: trimmedLabel,
           note: marker.note.trim(),
-          timeMs: _snapToFrameTimeMs(marker.timeMs, _effectiveFps)
-              .clamp(0, 1 << 30)
-              .toInt(),
+          timeMs: _snapToFrameTimeMs(
+            marker.timeMs,
+            _effectiveFps,
+          ).clamp(0, 1 << 30).toInt(),
         ),
       );
     }
@@ -719,9 +953,9 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   }
 
   Future<void> seekToMarker(FrameMarker marker) async {
-    await ref.read(playerProvider.notifier).seek(
-      _toExactFramePosition(marker.timeMs),
-    );
+    await ref
+        .read(playerProvider.notifier)
+        .seek(_toExactFramePosition(marker.timeMs));
   }
 
   /// Set current color
@@ -731,12 +965,83 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Set stroke width
   void setStrokeWidth(double width) {
-    state = state.copyWith(currentStrokeWidth: width);
+    final normalizedWidth = width.clamp(1.0, 10.0).toDouble();
+    final selectedIds = _selectedStrokeIdSet();
+    var didUpdateSelectedStroke = false;
+
+    if (state.annotationData != null && selectedIds.isNotEmpty) {
+      final updatedStrokes = state.allStrokes.map((stroke) {
+        if (!selectedIds.contains(stroke.id) ||
+            stroke.tool == DrawingTool.text) {
+          return stroke;
+        }
+
+        if ((stroke.strokeWidth - normalizedWidth).abs() < 0.001) {
+          return stroke;
+        }
+
+        didUpdateSelectedStroke = true;
+        return stroke.copyWith(strokeWidth: normalizedWidth);
+      }).toList();
+
+      if (didUpdateSelectedStroke) {
+        final updatedData = state.annotationData!.copyWith(
+          strokes: updatedStrokes,
+          updatedAt: DateTime.now(),
+        );
+        state = state.copyWith(
+          annotationData: updatedData,
+          currentStrokeWidth: normalizedWidth,
+          hasUnsavedChanges: true,
+        );
+        return;
+      }
+    }
+
+    state = state.copyWith(currentStrokeWidth: normalizedWidth);
   }
 
   /// Set font size for text tool
   void setFontSize(double size) {
-    state = state.copyWith(currentFontSize: size);
+    final normalizedSize = size.clamp(8.0, 72.0).toDouble();
+    final selectedIds = _selectedStrokeIdSet();
+    var didUpdateSelectedStroke = false;
+
+    if (state.annotationData != null && selectedIds.isNotEmpty) {
+      final updatedStrokes = state.allStrokes.map((stroke) {
+        if (!selectedIds.contains(stroke.id) ||
+            stroke.tool != DrawingTool.text) {
+          return stroke;
+        }
+
+        if ((stroke.fontSize - normalizedSize).abs() < 0.001) {
+          return stroke;
+        }
+
+        didUpdateSelectedStroke = true;
+        return _ensureTextStrokeFitsBox(
+          stroke.copyWith(fontSize: normalizedSize),
+          allowWidthGrowth: false,
+          enforceMinimumSize: true,
+          includeHintText: true,
+        );
+      }).toList();
+
+      if (didUpdateSelectedStroke) {
+        final updatedData = state.annotationData!.copyWith(
+          strokes: updatedStrokes,
+          updatedAt: DateTime.now(),
+        );
+        state = state.copyWith(
+          annotationData: updatedData,
+          currentFontSize: normalizedSize,
+          hasUnsavedChanges: true,
+        );
+        return;
+      }
+    }
+
+    state = state.copyWith(currentFontSize: normalizedSize);
   }
 
   /// Start drawing a new stroke
@@ -784,18 +1089,24 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     // If text tool, create stroke at click position and enter inline edit mode
     if (state.currentTool == DrawingTool.text) {
-      final initialHeight = 0.025 * (state.currentFontSize / 16.0);
-      const initialWidth = 0.08;
+      final initialWidth = _minimumTextWidthNormalized(state.currentFontSize);
+      final initialHeight = _minimumTextHeightNormalized(state.currentFontSize);
+      final left = point.x
+          .clamp(0.0, (1.0 - initialWidth).clamp(0.0, 1.0))
+          .toDouble();
+      final top = point.y
+          .clamp(0.0, (1.0 - initialHeight).clamp(0.0, 1.0))
+          .toDouble();
       final newStroke = Stroke(
         id: _uuid.v4(),
         tool: DrawingTool.text,
         color: state.currentColor,
         strokeWidth: state.currentStrokeWidth,
         points: [
-          point,
+          StrokePoint(x: left, y: top, timestampMs: point.timestampMs),
           StrokePoint(
-            x: point.x + initialWidth,
-            y: point.y + initialHeight,
+            x: (left + initialWidth).clamp(0.0, 1.0).toDouble(),
+            y: (top + initialHeight).clamp(0.0, 1.0).toDouble(),
             timestampMs: point.timestampMs,
           ),
         ],
@@ -1425,7 +1736,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     );
   }
 
-  /// Start scaling a selected stroke from a corner
+  /// Start resizing a selected stroke from a handle.
   void startScaling(String corner, StrokePoint point) {
     state = state.copyWith(
       isScaling: true,
@@ -1449,92 +1760,22 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     final stroke = state.allStrokes[strokeIndex];
 
-    if (stroke.tool == DrawingTool.text) {
-      final rect = _textBoundsRect(stroke);
-      final corner = state.scalingCorner!;
-      final fixedCorner = switch (corner) {
-        'topLeft' => StrokePoint(x: rect.right, y: rect.bottom),
-        'topRight' => StrokePoint(x: rect.left, y: rect.bottom),
-        'bottomLeft' => StrokePoint(x: rect.right, y: rect.top),
-        _ => StrokePoint(x: rect.left, y: rect.top),
-      };
-
-      final left = currentPoint.x < fixedCorner.x
-          ? currentPoint.x
-          : fixedCorner.x;
-      final right = currentPoint.x > fixedCorner.x
-          ? currentPoint.x
-          : fixedCorner.x;
-      final top = currentPoint.y < fixedCorner.y
-          ? currentPoint.y
-          : fixedCorner.y;
-      final bottom = currentPoint.y > fixedCorner.y
-          ? currentPoint.y
-          : fixedCorner.y;
-
-      const minSize = 0.005;
-      final safeRight = (right - left) < minSize ? left + minSize : right;
-      final safeBottom = (bottom - top) < minSize ? top + minSize : bottom;
-
-      final updatedStroke = stroke.copyWith(
-        points: [
-          StrokePoint(
-            x: left,
-            y: top,
-            timestampMs: stroke.points.first.timestampMs,
-          ),
-          StrokePoint(
-            x: safeRight,
-            y: safeBottom,
-            timestampMs: stroke.points.length > 1
-                ? stroke.points.last.timestampMs
-                : stroke.points.first.timestampMs,
-          ),
-        ],
-        scale: 1.0,
-      );
-      final updatedStrokes = List<Stroke>.from(state.allStrokes);
-      updatedStrokes[strokeIndex] = updatedStroke;
-
-      final updatedData = state.annotationData!.copyWith(
-        strokes: updatedStrokes,
-        updatedAt: DateTime.now(),
-      );
-
-      state = state.copyWith(
-        annotationData: updatedData,
-        dragStartPoint: currentPoint,
-        hasUnsavedChanges: true,
-      );
+    final originalBounds = _strokeBounds(stroke);
+    if (originalBounds == null) {
       return;
     }
 
-    // Calculate the center point of the annotation
-    final center = _getStrokeCenter(stroke);
+    final resizedBounds = _resizeRectFromHandle(
+      originalBounds,
+      state.scalingCorner!,
+      currentPoint,
+    );
+    if (resizedBounds == null) return;
 
-    // Calculate the new scale based on distance from center
-    final initialDistance = _calculateDistance(state.dragStartPoint!, center);
-    final currentDistance = _calculateDistance(currentPoint, center);
-
-    if (initialDistance == 0) return;
-
-    // Calculate scale multiplier (current distance / initial distance)
-    final scaleMultiplier = currentDistance / initialDistance;
-    final newScale = (stroke.scale * scaleMultiplier).clamp(0.1, 10.0);
-
-    // Scale all points relative to the center
-    final scaledPoints = stroke.points.map((p) {
-      final dx = p.x - center.x;
-      final dy = p.y - center.y;
-      return StrokePoint(
-        x: center.x + dx * (newScale / stroke.scale),
-        y: center.y + dy * (newScale / stroke.scale),
-        timestampMs: p.timestampMs,
-      );
-    }).toList();
-    final updatedStroke = stroke.copyWith(
-      points: scaledPoints,
-      scale: newScale,
+    final updatedStroke = _resizeStrokeToBounds(
+      stroke,
+      originalBounds: originalBounds,
+      newBounds: resizedBounds,
     );
     final updatedStrokes = List<Stroke>.from(state.allStrokes);
     updatedStrokes[strokeIndex] = updatedStroke;
@@ -1558,36 +1799,6 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       clearScalingCorner: true,
       clearDragStartPoint: true,
     );
-  }
-
-  /// Get the center point of a stroke
-  StrokePoint _getStrokeCenter(Stroke stroke) {
-    if (stroke.points.isEmpty) {
-      return const StrokePoint(x: 0.5, y: 0.5);
-    }
-
-    if (stroke.points.length == 1) {
-      return stroke.points.first;
-    }
-
-    double sumX = 0;
-    double sumY = 0;
-    for (final point in stroke.points) {
-      sumX += point.x;
-      sumY += point.y;
-    }
-
-    return StrokePoint(
-      x: sumX / stroke.points.length,
-      y: sumY / stroke.points.length,
-    );
-  }
-
-  /// Calculate distance between two points
-  double _calculateDistance(StrokePoint p1, StrokePoint p2) {
-    final dx = p2.x - p1.x;
-    final dy = p2.y - p1.y;
-    return (dx * dx + dy * dy);
   }
 
   /// Update text content for the currently edited text stroke.
@@ -1723,32 +1934,11 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       return;
     }
 
-    Stroke updatedStroke = existing.copyWith(text: normalizedText);
-    final bounds = _textBoundsRect(updatedStroke);
-    final estimated = _estimateTextBounds(updatedStroke);
-    final hasUsableBox = bounds.width > 0.006 && bounds.height > 0.006;
-    final needsWidthExpand = bounds.width < estimated.width;
-    final needsHeightExpand = bounds.height < estimated.height;
-    if (!hasUsableBox || needsWidthExpand || needsHeightExpand) {
-      final left = bounds.left;
-      final top = bounds.top;
-      final right = needsWidthExpand ? left + estimated.width : bounds.right;
-      final bottom = needsHeightExpand ? top + estimated.height : bounds.bottom;
-      final firstTimestamp = updatedStroke.points.first.timestampMs;
-      final secondTimestamp = updatedStroke.points.length > 1
-          ? updatedStroke.points.last.timestampMs
-          : firstTimestamp;
-      updatedStroke = updatedStroke.copyWith(
-        points: [
-          StrokePoint(x: left, y: top, timestampMs: firstTimestamp),
-          StrokePoint(
-            x: right.clamp(0.0, 1.0),
-            y: bottom.clamp(0.0, 1.0),
-            timestampMs: secondTimestamp,
-          ),
-        ],
-      );
-    }
+    final updatedStroke = _ensureTextStrokeFitsBox(
+      existing.copyWith(text: normalizedText),
+      allowWidthGrowth: false,
+      enforceMinimumSize: true,
+    );
     final updatedStrokes = List<Stroke>.from(state.allStrokes);
     updatedStrokes[strokeIndex] = updatedStroke;
 
@@ -1832,10 +2022,84 @@ final annotationProvider =
       return AnnotationNotifier(AnnotationStorageService(), ref);
     });
 
+List<Stroke> _resolveSelectedAnnotationStrokes(AnnotationState state) {
+  final targetIds = state.pendingTextStrokeId != null
+      ? {state.pendingTextStrokeId!}
+      : state.selectedStrokeIds.isNotEmpty
+      ? state.selectedStrokeIds.toSet()
+      : <String>{if (state.selectedStrokeId != null) state.selectedStrokeId!};
+
+  if (targetIds.isEmpty) return const [];
+
+  return state.allStrokes
+      .where((stroke) => targetIds.contains(stroke.id))
+      .toList();
+}
+
 final annotationKeyframeModeProvider = Provider<KeyframeCreationMode>((ref) {
   return ref.watch(
     annotationProvider.select((state) => state.keyframeCreationMode),
   );
+});
+
+final selectedAnnotationStrokesProvider = Provider<List<Stroke>>((ref) {
+  final state = ref.watch(annotationProvider);
+  return _resolveSelectedAnnotationStrokes(state);
+});
+
+final selectedAnnotationStrokeProvider = Provider<Stroke?>((ref) {
+  final selectedStrokes = ref.watch(selectedAnnotationStrokesProvider);
+  return selectedStrokes.isEmpty ? null : selectedStrokes.first;
+});
+
+final activeAnnotationSizingToolProvider = Provider<DrawingTool>((ref) {
+  final selectedStrokes = ref.watch(selectedAnnotationStrokesProvider);
+  final currentTool = ref.watch(
+    annotationProvider.select((state) => state.currentTool),
+  );
+  if (selectedStrokes.isEmpty) {
+    return currentTool;
+  }
+
+  final firstNonTextStroke = selectedStrokes
+      .where((stroke) => stroke.tool != DrawingTool.text)
+      .firstOrNull;
+  if (firstNonTextStroke != null) {
+    return firstNonTextStroke.tool;
+  }
+
+  return DrawingTool.text;
+});
+
+final activeAnnotationStrokeWidthProvider = Provider<double>((ref) {
+  final selectedStrokes = ref.watch(selectedAnnotationStrokesProvider);
+  final currentStrokeWidth = ref.watch(
+    annotationProvider.select((state) => state.currentStrokeWidth),
+  );
+  final firstNonTextStroke = selectedStrokes
+      .where((stroke) => stroke.tool != DrawingTool.text)
+      .firstOrNull;
+  if (firstNonTextStroke == null) {
+    return currentStrokeWidth;
+  }
+  return firstNonTextStroke.strokeWidth;
+});
+
+final activeAnnotationFontSizeProvider = Provider<double>((ref) {
+  final selectedStrokes = ref.watch(selectedAnnotationStrokesProvider);
+  final currentFontSize = ref.watch(
+    annotationProvider.select((state) => state.currentFontSize),
+  );
+  final firstTextStroke = selectedStrokes
+      .where((stroke) => stroke.tool == DrawingTool.text)
+      .firstOrNull;
+  final hasOnlyTextSelection =
+      firstTextStroke != null &&
+      selectedStrokes.every((stroke) => stroke.tool == DrawingTool.text);
+  if (!hasOnlyTextSelection) {
+    return currentFontSize;
+  }
+  return firstTextStroke.fontSize;
 });
 
 /// Sorted keyframes that contain at least one annotation stroke.

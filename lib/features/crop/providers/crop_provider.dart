@@ -105,7 +105,7 @@ class CropRect {
   double get height => bottom - top;
 
   /// Aspect ratio of the crop area
-  double get aspectRatio => width / height;
+  double get aspectRatio => height > 0 ? width / height : 1.0;
 
   /// Center X position (0-1)
   double get centerX => (left + right) / 2;
@@ -773,6 +773,15 @@ class CropNotifier extends StateNotifier<CropState> {
         );
         return;
       }
+      if (_cancelRequested) {
+        state = state.copyWith(
+          exportStatus: ExportStatus.cancelled,
+          exportProgress: 0.0,
+          clearPreparationMessage: true,
+          clearPreparationProgress: true,
+        );
+        return;
+      }
 
       final overlays = <_TimedOverlay>[];
       if (!useStreamCopy) {
@@ -789,6 +798,15 @@ class CropNotifier extends StateNotifier<CropState> {
             tempDir: overlayTempDir,
           ),
         );
+      }
+      if (_cancelRequested) {
+        state = state.copyWith(
+          exportStatus: ExportStatus.cancelled,
+          exportProgress: 0.0,
+          clearPreparationMessage: true,
+          clearPreparationProgress: true,
+        );
+        return;
       }
 
       // Smart export strategy:
@@ -954,7 +972,7 @@ class CropNotifier extends StateNotifier<CropState> {
           return;
         }
 
-        final validation = await Process.run(ffmpegPath, [
+        final validationProcess = await Process.start(ffmpegPath, [
           '-v',
           'error',
           '-i',
@@ -963,8 +981,47 @@ class CropNotifier extends StateNotifier<CropState> {
           'null',
           '-',
         ]);
-        if (validation.exitCode != 0) {
-          final validationOutput = (validation.stderr ?? '').toString();
+        _ffmpegProcess = validationProcess;
+        final validationStdout = StringBuffer();
+        final validationStderr = StringBuffer();
+        final validationStdoutDone = validationProcess.stdout
+            .transform(const SystemEncoding().decoder)
+            .forEach(validationStdout.write);
+        final validationStderrDone = validationProcess.stderr
+            .transform(const SystemEncoding().decoder)
+            .forEach(validationStderr.write);
+        Timer? validationCancelMonitor;
+        if (_cancelRequested) {
+          validationProcess.kill();
+        } else {
+          validationCancelMonitor = Timer.periodic(
+            const Duration(milliseconds: 200),
+            (_) {
+              if (_cancelRequested) {
+                validationProcess.kill();
+              }
+            },
+          );
+        }
+        final validationExitCode = await validationProcess.exitCode;
+        validationCancelMonitor?.cancel();
+        await Future.wait([validationStdoutDone, validationStderrDone]);
+
+        if (_cancelRequested) {
+          try {
+            await File(normalizedOutputPath).delete();
+          } catch (_) {}
+          state = state.copyWith(
+            exportStatus: ExportStatus.cancelled,
+            exportProgress: 0.0,
+            clearPreparationMessage: true,
+            clearPreparationProgress: true,
+          );
+          return;
+        }
+
+        if (validationExitCode != 0) {
+          final validationOutput = validationStderr.toString();
           final validationMessage = validationOutput.isEmpty
               ? 'Unknown validation error'
               : validationOutput.split('\n').take(5).join('\n');
@@ -1086,6 +1143,7 @@ class CropNotifier extends StateNotifier<CropState> {
     final overlays = <_TimedOverlay>[];
 
     for (int i = 0; i < keyframes.length; i++) {
+      if (_cancelRequested) break;
       final keyframeMs = keyframes[i];
       final nextKeyframeMs = i + 1 < keyframes.length
           ? keyframes[i + 1]

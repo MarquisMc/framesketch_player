@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show File;
+import 'dart:io' show Directory, File, Platform, Process, SystemEncoding;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,10 +11,13 @@ import 'features/player/providers/player_provider.dart';
 import 'features/annotations/providers/annotation_provider.dart';
 import 'features/annotations/models/stroke.dart';
 import 'core/services/annotation_storage_service.dart';
+import 'core/services/annotation_overlay_renderer_service.dart';
+import 'core/services/ffprobe_service.dart';
 import 'core/services/project_library_service.dart';
 import 'core/services/youtube_video_source_service.dart';
 import 'core/models/annotation_data.dart';
 import 'core/models/keyboard_shortcuts.dart';
+import 'core/models/video_metadata.dart';
 import 'features/projects/widgets/project_browser.dart';
 import 'features/settings/widgets/settings_dialog.dart';
 import 'features/settings/widgets/theme_dialog.dart';
@@ -45,6 +48,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
   final ProjectLibraryService _projectLibraryService = ProjectLibraryService();
+  final FFprobeService _ffprobeService = FFprobeService();
+  final AnnotationOverlayRendererService _overlayRenderer =
+      AnnotationOverlayRendererService();
   late KeyboardShortcuts _shortcuts;
   late final ProviderSubscription<(bool, DateTime?)> _autoSaveSubscription;
   Timer? _keyRepeatTimer;
@@ -60,6 +66,10 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   bool _showExportHourglassBottom = false;
   int _loadingOverlayDepth = 0;
   String _loadingOverlayMessage = 'Loading...';
+  String? _loadingOverlayCancelLabel;
+  VoidCallback? _loadingOverlayCancelAction;
+  bool _exportCancelRequested = false;
+  Process? _activeFrameExportProcess;
   bool _autoSaveEnabled = true;
   bool _isAutoSaving = false;
   bool _projectsLoading = false;
@@ -550,6 +560,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
   @override
   void dispose() {
+    _exportCancelRequested = true;
+    _activeFrameExportProcess?.kill();
+    _activeFrameExportProcess = null;
     _autoSaveSubscription.close();
     _keyRepeatTimer?.cancel();
     _exportIconTimer?.cancel();
@@ -668,11 +681,15 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   Future<T> _runWithLoadingOverlay<T>({
     required String message,
     required Future<T> Function() action,
+    String? cancelLabel,
+    VoidCallback? onCancel,
   }) async {
     if (mounted) {
       setState(() {
         _loadingOverlayDepth += 1;
         _loadingOverlayMessage = message;
+        _loadingOverlayCancelLabel = cancelLabel;
+        _loadingOverlayCancelAction = onCancel;
       });
     }
 
@@ -686,6 +703,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
           }
           if (_loadingOverlayDepth == 0) {
             _loadingOverlayMessage = 'Loading...';
+            _loadingOverlayCancelLabel = null;
+            _loadingOverlayCancelAction = null;
           }
         });
       }
@@ -732,6 +751,14 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                   'Please wait...',
                   style: TextStyle(color: palette.textSecondary, fontSize: 12),
                 ),
+                if (_loadingOverlayCancelAction != null) ...[
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.cancel_outlined, size: 16),
+                    label: Text(_loadingOverlayCancelLabel ?? 'Cancel'),
+                    onPressed: _loadingOverlayCancelAction,
+                  ),
+                ],
               ],
             ),
           ),
@@ -2013,88 +2040,526 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   Future<void> _exportVideoFromTopBar() async {
     try {
       final playerState = ref.read(playerProvider);
-      final cropState = ref.read(cropProvider);
-      final cropNotifier = ref.read(cropProvider.notifier);
+      final annotationData = ref.read(annotationProvider).annotationData;
 
       if (playerState.currentVideoPath == null) {
         _showErrorDialog('No video loaded');
         return;
       }
-      if (!playerState.isLocalFileSource) {
-        _showErrorDialog(
-          'Export is only available for local video files. YouTube sources are playback/annotation only.',
-        );
+      if (annotationData == null || playerState.metadata == null) {
+        _showErrorDialog('Open a video before exporting.');
         return;
       }
 
+      final cropState = ref.read(cropProvider);
       if (cropState.exportStatus == ExportStatus.exporting) {
         return;
       }
 
-      final inputFile = File(playerState.currentVideoPath!);
-      final inputName = inputFile.uri.pathSegments.isNotEmpty
-          ? inputFile.uri.pathSegments.last
-          : 'video';
-      final extIndex = inputName.lastIndexOf('.');
-      final nameWithoutExt = extIndex > 0
-          ? inputName.substring(0, extIndex)
-          : inputName;
-      final safeBaseName = _buildSafeOutputBaseName(nameWithoutExt);
+      final dialogHostContext = _navigatorKey.currentContext;
+      if (dialogHostContext == null || !mounted) {
+        return;
+      }
 
-      final outputPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Export Annotated Video',
-        fileName: '${safeBaseName}_annotated.mp4',
-        type: FileType.video,
+      final exportRequest = await showDialog<_ExportRequest>(
+        context: dialogHostContext,
+        builder: (dialogContext) => _ExportOptionsDialog(
+          initialFrame: ref.read(playerProvider.notifier).currentFrame,
+          metadata: playerState.metadata!,
+          suggestedBaseName: _buildSuggestedAnnotationFileBaseName(
+            annotationData: annotationData,
+            playerSourceLabel: playerState.currentSourceLabel,
+          ),
+          exportStart: cropState.exportStart,
+          exportEnd: cropState.exportEnd,
+          isLocalSource: playerState.isLocalFileSource,
+        ),
       );
 
-      if (outputPath == null) {
+      if (exportRequest == null) {
         _focusNode.requestFocus();
         return;
       }
 
-      await ref.read(annotationProvider.notifier).saveAnnotations();
-      await cropNotifier.exportCroppedVideo(
-        outputPath,
-        annotationData: ref.read(annotationProvider).annotationData,
-      );
-
-      if (!mounted) return;
-
-      final updatedCropState = ref.read(cropProvider);
-      switch (updatedCropState.exportStatus) {
-        case ExportStatus.success:
-          _scaffoldMessengerKey.currentState?.showSnackBar(
-            SnackBar(
-              content: Text(
-                'Export complete: ${updatedCropState.exportedFilePath ?? outputPath}',
-              ),
-              backgroundColor: _activePalette.success,
-            ),
-          );
+      switch (exportRequest.mode) {
+        case _ExportMode.frame:
+          await _exportSingleFrame(exportRequest);
           break;
-        case ExportStatus.cancelled:
-          _scaffoldMessengerKey.currentState?.showSnackBar(
-            SnackBar(
-              content: Text('Export cancelled'),
-              backgroundColor: _activePalette.warning,
-            ),
-          );
+        case _ExportMode.frames:
+          await _exportFrameRange(exportRequest);
           break;
-        case ExportStatus.error:
-          _showErrorDialog(updatedCropState.exportError ?? 'Export failed');
+        case _ExportMode.video:
+          await _exportAnnotatedVideo(exportRequest);
           break;
-        case ExportStatus.idle:
-        case ExportStatus.preparing:
-        case ExportStatus.exporting:
+        case _ExportMode.annotationFile:
+          await _exportAnnotationFile(exportRequest, annotationData);
           break;
       }
 
       _focusNode.requestFocus();
     } catch (e) {
+      if (e is _ExportCancelledException) {
+        _exportCancelRequested = false;
+        if (mounted) {
+          _showExportCancelledSnackBar();
+          _focusNode.requestFocus();
+        }
+        return;
+      }
       if (mounted) {
         _showErrorDialog('Error exporting video: $e');
       }
     }
+  }
+
+  Future<void> _exportSingleFrame(_ExportRequest request) async {
+    final playerState = ref.read(playerProvider);
+    final metadata = playerState.metadata;
+    final videoPath = playerState.currentVideoPath;
+    if (metadata == null || videoPath == null) {
+      _showErrorDialog('No local video loaded');
+      return;
+    }
+
+    final outputPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Export Frame',
+      fileName:
+          '${request.suggestedBaseName}_frame_${request.startFrame.toString().padLeft(6, '0')}.${request.frameExtension}',
+      type: FileType.custom,
+      allowedExtensions: [request.frameExtension],
+    );
+
+    if (outputPath == null) {
+      return;
+    }
+
+    final normalizedOutputPath = _ensureFileExtension(
+      outputPath,
+      request.frameExtension,
+    );
+    final timestamp = _durationForFrame(request.startFrame, metadata.fps);
+
+    await _runWithLoadingOverlay(
+      message: 'Exporting frame ${request.startFrame}...',
+      cancelLabel: 'Cancel Export',
+      onCancel: _requestExportCancel,
+      action: () async {
+        _exportCancelRequested = false;
+        await _exportFrameImage(
+          videoPath,
+          timestamp: timestamp,
+          outputPath: normalizedOutputPath,
+          metadata: metadata,
+          annotationData: ref.read(annotationProvider).annotationData,
+        );
+      },
+    );
+
+    if (!mounted) return;
+    if (_exportCancelRequested) {
+      _exportCancelRequested = false;
+      _showExportCancelledSnackBar();
+      return;
+    }
+    _scaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: Text('Frame exported: $normalizedOutputPath'),
+        backgroundColor: _activePalette.success,
+      ),
+    );
+  }
+
+  Future<void> _exportFrameRange(_ExportRequest request) async {
+    final playerState = ref.read(playerProvider);
+    final metadata = playerState.metadata;
+    final videoPath = playerState.currentVideoPath;
+    if (metadata == null || videoPath == null) {
+      _showErrorDialog('No local video loaded');
+      return;
+    }
+
+    final selectedDirectory = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Choose Folder for Exported Frames',
+    );
+    if (selectedDirectory == null) {
+      return;
+    }
+
+    final outputDirectory = Directory(selectedDirectory);
+    final frameNumbers = <int>[];
+    for (
+      var frame = request.startFrame;
+      frame <= request.endFrame;
+      frame += request.frameStep
+    ) {
+      frameNumbers.add(frame);
+    }
+
+    await _runWithLoadingOverlay(
+      message: 'Exporting ${frameNumbers.length} frames...',
+      cancelLabel: 'Cancel Export',
+      onCancel: _requestExportCancel,
+      action: () async {
+        _exportCancelRequested = false;
+        final annotationData = ref.read(annotationProvider).annotationData;
+        final totalFrames = frameNumbers.length;
+        for (var index = 0; index < totalFrames; index += 1) {
+          _throwIfExportCancelled();
+          final frame = frameNumbers[index];
+          if (mounted) {
+            final completedFrames = index + 1;
+            final progressPercent = ((completedFrames / totalFrames) * 100)
+                .round();
+            setState(() {
+              _loadingOverlayMessage =
+                  'Exporting frame $completedFrames/$totalFrames ($progressPercent%)';
+            });
+          }
+          final outputPath =
+              '${outputDirectory.path}${Platform.pathSeparator}'
+              '${request.suggestedBaseName}_frame_${frame.toString().padLeft(6, '0')}.${request.frameExtension}';
+          await _exportFrameImage(
+            videoPath,
+            timestamp: _durationForFrame(frame, metadata.fps),
+            outputPath: outputPath,
+            metadata: metadata,
+            annotationData: annotationData,
+          );
+        }
+      },
+    );
+
+    if (!mounted) return;
+    if (_exportCancelRequested) {
+      _exportCancelRequested = false;
+      _showExportCancelledSnackBar();
+      return;
+    }
+    _scaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Exported ${frameNumbers.length} frames to ${outputDirectory.path}',
+        ),
+        backgroundColor: _activePalette.success,
+      ),
+    );
+  }
+
+  Future<void> _exportAnnotatedVideo(_ExportRequest request) async {
+    final playerState = ref.read(playerProvider);
+    if (!playerState.isLocalFileSource) {
+      _showErrorDialog('Video export is only available for local video files.');
+      return;
+    }
+
+    final cropState = ref.read(cropProvider);
+    final cropNotifier = ref.read(cropProvider.notifier);
+    final annotationNotifier = ref.read(annotationProvider.notifier);
+    final outputPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Export Annotated Video',
+      fileName: '${request.suggestedBaseName}_annotated.mp4',
+      type: FileType.custom,
+      allowedExtensions: const ['mp4'],
+    );
+
+    if (outputPath == null) {
+      return;
+    }
+
+    final normalizedOutputPath = _ensureFileExtension(outputPath, 'mp4');
+    final metadata = playerState.metadata;
+    if (metadata == null) {
+      _showErrorDialog('No local video loaded');
+      return;
+    }
+
+    final previousStart = cropState.exportStart;
+    final previousEnd = cropState.exportEnd;
+
+    try {
+      cropNotifier.setExportRange(
+        start: _durationForFrame(request.startFrame, metadata.fps),
+        end: _durationForFrame(request.endFrame + 1, metadata.fps),
+      );
+
+      await annotationNotifier.saveAnnotations();
+      await _runWithLoadingOverlay(
+        message: 'Exporting annotated video...',
+        cancelLabel: 'Cancel Export',
+        onCancel: () {
+          cropNotifier.cancelExport();
+          if (!mounted) return;
+          setState(() {
+            _loadingOverlayMessage = 'Cancelling export...';
+          });
+        },
+        action: () => cropNotifier.exportCroppedVideo(
+          normalizedOutputPath,
+          annotationData: ref.read(annotationProvider).annotationData,
+        ),
+      );
+    } finally {
+      cropNotifier.setExportRange(start: previousStart, end: previousEnd);
+    }
+
+    if (!mounted) return;
+
+    final updatedCropState = ref.read(cropProvider);
+    switch (updatedCropState.exportStatus) {
+      case ExportStatus.success:
+        _scaffoldMessengerKey.currentState?.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Export complete: ${updatedCropState.exportedFilePath ?? normalizedOutputPath}',
+            ),
+            backgroundColor: _activePalette.success,
+          ),
+        );
+        break;
+      case ExportStatus.cancelled:
+        _scaffoldMessengerKey.currentState?.showSnackBar(
+          SnackBar(
+            content: const Text('Export cancelled'),
+            backgroundColor: _activePalette.warning,
+          ),
+        );
+        break;
+      case ExportStatus.error:
+        _showErrorDialog(updatedCropState.exportError ?? 'Export failed');
+        break;
+      case ExportStatus.idle:
+      case ExportStatus.preparing:
+      case ExportStatus.exporting:
+        break;
+    }
+  }
+
+  Future<void> _exportFrameImage(
+    String videoPath, {
+    required Duration timestamp,
+    required String outputPath,
+    required VideoMetadata metadata,
+    required AnnotationData? annotationData,
+  }) async {
+    _throwIfExportCancelled();
+    final visibleStrokes = ref
+        .read(annotationProvider.notifier)
+        .getVisibleStrokes(timestamp);
+    if (annotationData == null || visibleStrokes.isEmpty) {
+      final exported = await _extractFrameAtCancellable(
+        videoPath,
+        timestamp: timestamp,
+        outputPath: outputPath,
+      );
+      if (exported == null) {
+        throw StateError('Failed to export frame.');
+      }
+      return;
+    }
+
+    final ffmpegPath = await _ffprobeService.findFFmpegPath();
+    if (ffmpegPath == null) {
+      throw StateError(
+        'FFmpeg not found. Automatic provisioning failed. Check internet access and try again.',
+      );
+    }
+
+    Directory? tempDir;
+    try {
+      tempDir = await Directory.systemTemp.createTemp(
+        'framesketch_frame_export_',
+      );
+      final overlayPath =
+          '${tempDir.path}${Platform.pathSeparator}frame_overlay.png';
+      await _overlayRenderer.renderOverlayImage(
+        outputPath: overlayPath,
+        strokes: visibleStrokes,
+        width: metadata.width,
+        height: metadata.height,
+        viewportWidth: annotationData.viewportWidth,
+        viewportHeight: annotationData.viewportHeight,
+      );
+
+      final seconds = (timestamp.inMicroseconds / 1000000.0).toStringAsFixed(6);
+      _throwIfExportCancelled();
+      final process = await Process.start(ffmpegPath, [
+        '-hide_banner',
+        '-ss',
+        seconds,
+        '-i',
+        videoPath,
+        '-i',
+        overlayPath,
+        '-filter_complex',
+        '[0:v][1:v]overlay=0:0',
+        '-frames:v',
+        '1',
+        '-q:v',
+        '2',
+        '-y',
+        outputPath,
+      ]);
+      _activeFrameExportProcess = process;
+      unawaited(process.stdout.drain<void>());
+      unawaited(process.stderr.drain<void>());
+
+      final result = await process.exitCode
+          .timeout(
+            const Duration(minutes: 2),
+            onTimeout: () {
+              process.kill();
+              throw TimeoutException(
+                'FFmpeg frame export exceeded 2 minute timeout',
+              );
+            },
+          )
+          .then((exitCode) => _ProcessResult(exitCode, '', ''));
+
+      _throwIfExportCancelled();
+      if (result.exitCode != 0) {
+        throw StateError(
+          'Failed to burn annotations into frame: ${result.stderr}',
+        );
+      }
+    } finally {
+      if (tempDir != null && await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+      _activeFrameExportProcess = null;
+    }
+  }
+
+  Future<File?> _extractFrameAtCancellable(
+    String videoPath, {
+    required Duration timestamp,
+    required String outputPath,
+  }) async {
+    final ffmpegPath = await _ffprobeService.findFFmpegPath();
+    if (ffmpegPath == null) {
+      throw StateError('FFmpeg not found');
+    }
+
+    _throwIfExportCancelled();
+    final seconds = (timestamp.inMicroseconds / 1000000.0).toStringAsFixed(6);
+    final process = await Process.start(ffmpegPath, [
+      '-ss',
+      seconds,
+      '-i',
+      videoPath,
+      '-frames:v',
+      '1',
+      '-q:v',
+      '2',
+      outputPath,
+      '-y',
+    ]);
+    _activeFrameExportProcess = process;
+
+    final stderrBuffer = StringBuffer();
+    unawaited(process.stdout.drain<void>());
+    process.stderr
+        .transform(const SystemEncoding().decoder)
+        .listen(stderrBuffer.write);
+
+    final exitCode = await process.exitCode.timeout(
+      const Duration(minutes: 2),
+      onTimeout: () {
+        process.kill();
+        throw TimeoutException('FFmpeg frame export exceeded 2 minute timeout');
+      },
+    );
+    _activeFrameExportProcess = null;
+    _throwIfExportCancelled();
+    if (exitCode == 0) {
+      return File(outputPath);
+    }
+    throw StateError('Failed to export frame: ${stderrBuffer.toString()}');
+  }
+
+  void _requestExportCancel() {
+    _exportCancelRequested = true;
+    _activeFrameExportProcess?.kill();
+    if (!mounted) return;
+    setState(() {
+      _loadingOverlayMessage = 'Cancelling export...';
+    });
+  }
+
+  void _throwIfExportCancelled() {
+    if (_exportCancelRequested) {
+      throw const _ExportCancelledException();
+    }
+  }
+
+  void _showExportCancelledSnackBar() {
+    _scaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: const Text('Export cancelled'),
+        backgroundColor: _activePalette.warning,
+      ),
+    );
+  }
+
+  Future<void> _exportAnnotationFile(
+    _ExportRequest request,
+    AnnotationData annotationData,
+  ) async {
+    final playerState = ref.read(playerProvider);
+    if (!playerState.isLocalFileSource) {
+      _showErrorDialog(
+        'Annotation file export is only available for local video files.',
+      );
+      return;
+    }
+
+    final extension = request.annotationExtension;
+    final selectedPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Export Annotation File',
+      fileName: '${request.suggestedBaseName}.$extension',
+      type: FileType.custom,
+      allowedExtensions: ['framesketch', 'json'],
+    );
+
+    if (selectedPath == null) {
+      return;
+    }
+
+    final outputPath = _ensureFileExtension(selectedPath, extension);
+    final success = await ref
+        .read(annotationProvider.notifier)
+        .saveAnnotationsToFile(outputPath);
+
+    if (!mounted) return;
+    if (success) {
+      _scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('Annotation file exported: $outputPath'),
+          backgroundColor: _activePalette.success,
+        ),
+      );
+    } else {
+      _showErrorDialog('Failed to export annotation file');
+    }
+  }
+
+  Duration _durationForFrame(int frame, double fps) {
+    if (fps <= 0) {
+      return Duration(milliseconds: frame * 33);
+    }
+    final micros = ((frame * 1000000.0) / fps).round();
+    return Duration(microseconds: micros);
+  }
+
+  String _ensureFileExtension(String path, String extension) {
+    final normalizedExtension = extension.startsWith('.')
+        ? extension.substring(1)
+        : extension;
+    final lowerPath = path.toLowerCase();
+    final suffix = '.${normalizedExtension.toLowerCase()}';
+    if (lowerPath.endsWith(suffix)) {
+      return path;
+    }
+    return '$path.$normalizedExtension';
   }
 
   String _buildSafeOutputBaseName(String input) {
@@ -2268,5 +2733,362 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         ],
       ),
     );
+  }
+}
+
+enum _ExportMode { frame, frames, video, annotationFile }
+
+enum _FrameExportFormat { png, jpg }
+
+enum _AnnotationExportFormat { framesketch, json }
+
+class _ExportCancelledException implements Exception {
+  const _ExportCancelledException();
+}
+
+class _ProcessResult {
+  final int exitCode;
+  final String stdout;
+  final String stderr;
+
+  _ProcessResult(this.exitCode, this.stdout, this.stderr);
+}
+
+class _ExportRequest {
+  final _ExportMode mode;
+  final String suggestedBaseName;
+  final int startFrame;
+  final int endFrame;
+  final int frameStep;
+  final _FrameExportFormat frameFormat;
+  final _AnnotationExportFormat annotationFormat;
+
+  const _ExportRequest({
+    required this.mode,
+    required this.suggestedBaseName,
+    required this.startFrame,
+    required this.endFrame,
+    this.frameStep = 1,
+    this.frameFormat = _FrameExportFormat.png,
+    this.annotationFormat = _AnnotationExportFormat.framesketch,
+  });
+
+  String get frameExtension =>
+      frameFormat == _FrameExportFormat.jpg ? 'jpg' : 'png';
+
+  String get annotationExtension =>
+      annotationFormat == _AnnotationExportFormat.json ? 'json' : 'framesketch';
+}
+
+class _ExportOptionsDialog extends StatefulWidget {
+  final int initialFrame;
+  final VideoMetadata metadata;
+  final String suggestedBaseName;
+  final Duration? exportStart;
+  final Duration? exportEnd;
+  final bool isLocalSource;
+
+  const _ExportOptionsDialog({
+    required this.initialFrame,
+    required this.metadata,
+    required this.suggestedBaseName,
+    required this.exportStart,
+    required this.exportEnd,
+    required this.isLocalSource,
+  });
+
+  @override
+  State<_ExportOptionsDialog> createState() => _ExportOptionsDialogState();
+}
+
+class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
+  late _ExportMode _mode;
+  late _FrameExportFormat _frameFormat;
+  late _AnnotationExportFormat _annotationFormat;
+  late final TextEditingController _frameController;
+  late final TextEditingController _startFrameController;
+  late final TextEditingController _endFrameController;
+  late final TextEditingController _stepController;
+  String? _validationMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _mode = widget.isLocalSource ? _ExportMode.video : _ExportMode.frame;
+    _frameFormat = _FrameExportFormat.png;
+    _annotationFormat = _AnnotationExportFormat.framesketch;
+
+    final startFrame = widget.exportStart == null
+        ? 0
+        : _frameFromDuration(widget.exportStart!);
+    final endFrame = widget.exportEnd == null
+        ? _maxFrame
+        : (_frameFromDuration(widget.exportEnd!) - 1).clamp(0, _maxFrame);
+
+    _frameController = TextEditingController(
+      text: widget.initialFrame.toString(),
+    );
+    _startFrameController = TextEditingController(text: startFrame.toString());
+    _endFrameController = TextEditingController(text: endFrame.toString());
+    _stepController = TextEditingController(text: '1');
+  }
+
+  @override
+  void dispose() {
+    _frameController.dispose();
+    _startFrameController.dispose();
+    _endFrameController.dispose();
+    _stepController.dispose();
+    super.dispose();
+  }
+
+  int get _maxFrame => widget.metadata.frameCount > 0
+      ? widget.metadata.frameCount - 1
+      : widget.initialFrame;
+
+  int _frameFromDuration(Duration duration) {
+    final seconds = duration.inMicroseconds / 1000000.0;
+    return (seconds * widget.metadata.fps).round().clamp(0, _maxFrame);
+  }
+
+  int? _parseFrame(TextEditingController controller) {
+    return int.tryParse(controller.text.trim());
+  }
+
+  void _submit() {
+    final frame = _parseFrame(_frameController);
+    final startFrame = _parseFrame(_startFrameController);
+    final endFrame = _parseFrame(_endFrameController);
+    final step = _parseFrame(_stepController);
+
+    String? validationMessage;
+    if (_mode == _ExportMode.frame) {
+      if (frame == null || frame < 0 || frame > _maxFrame) {
+        validationMessage = 'Enter a frame between 0 and $_maxFrame.';
+      }
+    } else if (_mode == _ExportMode.frames) {
+      if (startFrame == null || endFrame == null) {
+        validationMessage = 'Enter a valid frame range.';
+      } else if (startFrame < 0 ||
+          endFrame > _maxFrame ||
+          startFrame > endFrame) {
+        validationMessage = 'Frame range must stay between 0 and $_maxFrame.';
+      } else if (step == null || step <= 0) {
+        validationMessage = 'Step must be 1 or greater.';
+      }
+    } else if (_mode == _ExportMode.video) {
+      if (startFrame == null || endFrame == null) {
+        validationMessage = 'Enter a valid video frame range.';
+      } else if (startFrame < 0 ||
+          endFrame > _maxFrame ||
+          startFrame > endFrame) {
+        validationMessage = 'Video range must stay between 0 and $_maxFrame.';
+      }
+    }
+
+    if (validationMessage != null) {
+      setState(() {
+        _validationMessage = validationMessage;
+      });
+      return;
+    }
+
+    final resolvedEndFrame = _mode == _ExportMode.frame
+        ? frame!
+        : (_mode == _ExportMode.annotationFile
+              ? (endFrame ?? _maxFrame)
+              : endFrame!);
+
+    Navigator.of(context).pop(
+      _ExportRequest(
+        mode: _mode,
+        suggestedBaseName: widget.suggestedBaseName,
+        startFrame: _mode == _ExportMode.frame ? frame! : (startFrame ?? 0),
+        endFrame: resolvedEndFrame,
+        frameStep: step ?? 1,
+        frameFormat: _frameFormat,
+        annotationFormat: _annotationFormat,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Export'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DropdownButtonFormField<_ExportMode>(
+                initialValue: _mode,
+                decoration: const InputDecoration(labelText: 'Export Mode'),
+                items: _modeItems,
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    _mode = value;
+                    _validationMessage = null;
+                  });
+                },
+              ),
+              const SizedBox(height: 14),
+              if (_mode == _ExportMode.frame) ...[
+                _frameField(controller: _frameController, label: 'Frame'),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<_FrameExportFormat>(
+                  initialValue: _frameFormat,
+                  decoration: const InputDecoration(labelText: 'Image Format'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: _FrameExportFormat.png,
+                      child: Text('PNG'),
+                    ),
+                    DropdownMenuItem(
+                      value: _FrameExportFormat.jpg,
+                      child: Text('JPG'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _frameFormat = value);
+                  },
+                ),
+              ],
+              if (_mode == _ExportMode.frames) ...[
+                _frameField(
+                  controller: _startFrameController,
+                  label: 'Start Frame',
+                ),
+                const SizedBox(height: 12),
+                _frameField(
+                  controller: _endFrameController,
+                  label: 'End Frame',
+                ),
+                const SizedBox(height: 12),
+                _frameField(
+                  controller: _stepController,
+                  label: 'Every N Frames',
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<_FrameExportFormat>(
+                  initialValue: _frameFormat,
+                  decoration: const InputDecoration(labelText: 'Image Format'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: _FrameExportFormat.png,
+                      child: Text('PNG'),
+                    ),
+                    DropdownMenuItem(
+                      value: _FrameExportFormat.jpg,
+                      child: Text('JPG'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _frameFormat = value);
+                  },
+                ),
+              ],
+              if (_mode == _ExportMode.video) ...[
+                _frameField(
+                  controller: _startFrameController,
+                  label: 'Start Frame',
+                ),
+                const SizedBox(height: 12),
+                _frameField(
+                  controller: _endFrameController,
+                  label: 'End Frame',
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Exports an annotated MP4 from the selected frame range.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+              if (_mode == _ExportMode.annotationFile) ...[
+                DropdownButtonFormField<_AnnotationExportFormat>(
+                  initialValue: _annotationFormat,
+                  decoration: const InputDecoration(labelText: 'File Format'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: _AnnotationExportFormat.framesketch,
+                      child: Text('.framesketch'),
+                    ),
+                    DropdownMenuItem(
+                      value: _AnnotationExportFormat.json,
+                      child: Text('.json'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _annotationFormat = value);
+                  },
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Exports the current annotation project file for this local video.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+              if (_validationMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _validationMessage!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Continue')),
+      ],
+    );
+  }
+
+  Widget _frameField({
+    required TextEditingController controller,
+    required String label,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      decoration: InputDecoration(
+        labelText: label,
+        helperText: '0 - $_maxFrame',
+      ),
+    );
+  }
+
+  List<DropdownMenuItem<_ExportMode>> get _modeItems {
+    return [
+      const DropdownMenuItem(
+        value: _ExportMode.frame,
+        child: Text('Single Frame'),
+      ),
+      const DropdownMenuItem(
+        value: _ExportMode.frames,
+        child: Text('Multiple Frames'),
+      ),
+      if (widget.isLocalSource) ...const [
+        DropdownMenuItem(
+          value: _ExportMode.video,
+          child: Text('Annotated Video'),
+        ),
+        DropdownMenuItem(
+          value: _ExportMode.annotationFile,
+          child: Text('Annotation File'),
+        ),
+      ],
+    ];
   }
 }

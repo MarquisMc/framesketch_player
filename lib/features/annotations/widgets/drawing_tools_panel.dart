@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_palette.dart';
 import '../models/stroke.dart';
 import '../providers/annotation_provider.dart';
+import 'annotation_size_control.dart';
 import '../../player/providers/player_provider.dart';
 
 /// Drawing tools panel
@@ -27,10 +28,14 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
     final drawingTargetKeyframeMs = ref.watch(
       drawingTargetAnnotationKeyframeProvider,
     );
+    final activeSizingTool = ref.watch(activeAnnotationSizingToolProvider);
+    final activeStrokeWidth = ref.watch(activeAnnotationStrokeWidthProvider);
+    final activeFontSize = ref.watch(activeAnnotationFontSizeProvider);
     final canCreateManualKeyframe = ref.watch(canCreateManualKeyframeProvider);
     final fps =
         ref.watch(playerProvider.select((state) => state.metadata?.fps)) ??
         30.0;
+    final showTextSizeControl = activeSizingTool == DrawingTool.text;
 
     return Container(
       width: 250,
@@ -317,96 +322,21 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
 
             Divider(height: 1, color: _palette.border),
 
-            // Stroke width
+            // Adaptive sizing control
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Stroke Width',
-                    style: TextStyle(
-                      color: _palette.textSecondary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Slider(
-                          value: annotationState.currentStrokeWidth,
-                          min: 1.0,
-                          max: 10.0,
-                          divisions: 18,
-                          label: annotationState.currentStrokeWidth
-                              .toStringAsFixed(1),
-                          onChanged: (value) {
-                            annotationNotifier.setStrokeWidth(value);
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        annotationState.currentStrokeWidth.toStringAsFixed(1),
-                        style: TextStyle(
-                          color: _palette.textSecondary,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+              child: AnnotationSizeControl(
+                label: showTextSizeControl ? 'Text Height' : 'Stroke Width',
+                value: showTextSizeControl ? activeFontSize : activeStrokeWidth,
+                min: showTextSizeControl ? 8.0 : 1.0,
+                max: showTextSizeControl ? 72.0 : 10.0,
+                divisions: showTextSizeControl ? 32 : 18,
+                isTextSize: showTextSizeControl,
+                onChanged: showTextSizeControl
+                    ? annotationNotifier.setFontSize
+                    : annotationNotifier.setStrokeWidth,
               ),
             ),
-
-            // Font size (visible when text tool is selected)
-            if (annotationState.currentTool == DrawingTool.text) ...[
-              Divider(height: 1, color: _palette.border),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Font Size',
-                      style: TextStyle(
-                        color: _palette.textSecondary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Slider(
-                            value: annotationState.currentFontSize,
-                            min: 8.0,
-                            max: 72.0,
-                            divisions: 32,
-                            label: annotationState.currentFontSize
-                                .toStringAsFixed(0),
-                            onChanged: (value) {
-                              annotationNotifier.setFontSize(value);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          annotationState.currentFontSize.toStringAsFixed(0),
-                          style: TextStyle(
-                            color: _palette.textSecondary,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
 
             Divider(height: 1, color: _palette.border),
 

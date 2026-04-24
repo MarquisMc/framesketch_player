@@ -6,6 +6,14 @@ import '../providers/annotation_provider.dart';
 import '../../player/providers/player_provider.dart';
 import '../../../core/utils/coordinate_transformer.dart';
 
+TextStyle _textStyleForStroke(Stroke stroke, {double? fontSize, Color? color}) {
+  return TextStyle(
+    color: color ?? stroke.color,
+    fontSize: fontSize ?? stroke.fontSize,
+    height: 1.2,
+  );
+}
+
 /// Annotation overlay widget for drawing on video
 class AnnotationOverlay extends ConsumerStatefulWidget {
   const AnnotationOverlay({super.key});
@@ -43,11 +51,12 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     final effectiveFontSize = stroke.fontSize;
     final textSpan = TextSpan(
       text: stroke.text ?? '',
-      style: TextStyle(color: stroke.color, fontSize: effectiveFontSize),
+      style: _textStyleForStroke(stroke, fontSize: effectiveFontSize),
     );
     final textPainter = TextPainter(
       text: textSpan,
       textDirection: TextDirection.ltr,
+      maxLines: null,
     )..layout();
     return Size(textPainter.width, textPainter.height);
   }
@@ -289,17 +298,23 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
             onChanged: (value) {
               final notifier = ref.read(annotationProvider.notifier);
               notifier.updatePendingTextStrokeText(value);
-              _autoGrowEditingTextBox(stroke, viewportSize, value);
+              final latestStroke = ref
+                  .read(annotationProvider)
+                  .allStrokes
+                  .where((s) => s.id == stroke.id)
+                  .firstOrNull;
+              if (latestStroke != null) {
+                _autoGrowEditingTextBox(latestStroke, viewportSize, value);
+              }
             },
             onSubmitted: (_) => _inlineTextFocusNode.unfocus(),
             onTapOutside: (_) => _inlineTextFocusNode.unfocus(),
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            textAlignVertical: TextAlignVertical.top,
             minLines: 1,
             maxLines: null,
-            style: TextStyle(
-              color: stroke.color,
-              fontSize: stroke.fontSize,
-              height: 1.2,
-            ),
+            style: _textStyleForStroke(stroke),
             decoration: InputDecoration(
               isDense: true,
               border: InputBorder.none,
@@ -308,9 +323,9 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
                 vertical: 4,
               ),
               hintText: 'Type text...',
-              hintStyle: TextStyle(
+              hintStyle: _textStyleForStroke(
+                stroke,
                 color: stroke.color.withValues(alpha: 0.6),
-                fontSize: stroke.fontSize,
               ),
             ),
           ),
@@ -343,30 +358,21 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     final measuredText = text.isEmpty ? 'Type text...' : text;
     final baseSpan = TextSpan(
       text: measuredText,
-      style: TextStyle(fontSize: stroke.fontSize, height: 1.2),
+      style: _textStyleForStroke(stroke),
     );
-
-    final naturalPainter = TextPainter(
-      text: baseSpan,
-      textDirection: TextDirection.ltr,
-    )..layout();
-    double targetWidth = max(
-      currentWidth,
-      naturalPainter.width + horizontalPadding,
-    ).clamp(minWidth, availableWidth).toDouble();
+    final targetWidth = currentWidth.clamp(minWidth, availableWidth).toDouble();
 
     final wrappedPainter = TextPainter(
       text: baseSpan,
       textDirection: TextDirection.ltr,
+      maxLines: null,
     )..layout(maxWidth: max(1.0, targetWidth - horizontalPadding));
     double targetHeight = max(
       currentHeight,
       wrappedPainter.height + verticalPadding,
     ).clamp(minHeight, availableHeight).toDouble();
 
-    final widthDelta = (targetWidth - currentWidth).abs();
-    final heightDelta = (targetHeight - currentHeight).abs();
-    if (widthDelta < 0.5 && heightDelta < 0.5) {
+    if ((targetHeight - currentHeight).abs() < 0.5) {
       return;
     }
 
@@ -519,85 +525,78 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     notifier.cancelStroke();
   }
 
-  /// Get which corner handle (if any) is at the given point
-  String? _getCornerAtPoint(Stroke stroke, Offset point, Size viewportSize) {
+  Rect? _selectionRectForStroke(
+    Stroke stroke,
+    CoordinateTransformer transformer, {
+    double padding = 8,
+  }) {
     if (stroke.points.isEmpty) return null;
-
-    final transformer = _createTransformer(viewportSize);
-    const handleSize = 12.0; // Hit area for corner handles
-
-    // Calculate bounding box based on stroke type
-    Rect? boundingBox;
 
     if (stroke.tool == DrawingTool.text &&
         stroke.text != null &&
         stroke.text!.isNotEmpty) {
       if (stroke.points.length >= 2) {
-        final start = transformer.toViewport(stroke.points.first);
-        final end = transformer.toViewport(stroke.points.last);
-        final left = start.dx < end.dx ? start.dx : end.dx;
-        final top = start.dy < end.dy ? start.dy : end.dy;
-        final right = start.dx > end.dx ? start.dx : end.dx;
-        final bottom = start.dy > end.dy ? start.dy : end.dy;
-        boundingBox = Rect.fromLTRB(left - 4, top - 4, right + 4, bottom + 4);
-      } else {
-        // Text bounding box fallback
-        final position = transformer.toViewport(stroke.points.first);
-        final textSpan = TextSpan(
-          text: stroke.text!,
-          style: TextStyle(color: stroke.color, fontSize: stroke.fontSize),
-        );
-        final textPainter = TextPainter(
-          text: textSpan,
-          textDirection: TextDirection.ltr,
-        );
-        textPainter.layout();
-        boundingBox = Rect.fromLTWH(
-          position.dx - 4,
-          position.dy - 4,
-          textPainter.width + 8,
-          textPainter.height + 8,
+        return Rect.fromPoints(
+          transformer.toViewport(stroke.points.first),
+          transformer.toViewport(stroke.points.last),
         );
       }
-    } else if (stroke.tool == DrawingTool.rectangle ||
-        stroke.tool == DrawingTool.filledSquare ||
-        stroke.tool == DrawingTool.circle ||
-        stroke.tool == DrawingTool.filledCircle ||
-        stroke.tool == DrawingTool.line ||
-        stroke.tool == DrawingTool.arrow) {
-      // Shape bounding box
-      if (stroke.points.length >= 2) {
-        final start = transformer.toViewport(stroke.points.first);
-        final end = transformer.toViewport(stroke.points.last);
-        final left = start.dx < end.dx ? start.dx : end.dx;
-        final top = start.dy < end.dy ? start.dy : end.dy;
-        final right = start.dx > end.dx ? start.dx : end.dx;
-        final bottom = start.dy > end.dy ? start.dy : end.dy;
-        boundingBox = Rect.fromLTRB(left - 4, top - 4, right + 4, bottom + 4);
-      }
-    } else if (stroke.tool == DrawingTool.pen) {
-      // Pen stroke bounding box
-      if (stroke.points.isNotEmpty) {
-        double minX = double.infinity;
-        double minY = double.infinity;
-        double maxX = double.negativeInfinity;
-        double maxY = double.negativeInfinity;
 
-        for (final p in stroke.points) {
-          final viewportPoint = transformer.toViewport(p);
-          if (viewportPoint.dx < minX) minX = viewportPoint.dx;
-          if (viewportPoint.dy < minY) minY = viewportPoint.dy;
-          if (viewportPoint.dx > maxX) maxX = viewportPoint.dx;
-          if (viewportPoint.dy > maxY) maxY = viewportPoint.dy;
-        }
-
-        boundingBox = Rect.fromLTRB(minX - 4, minY - 4, maxX + 4, maxY + 4);
-      }
+      final position = transformer.toViewport(stroke.points.first);
+      final textSpan = TextSpan(
+        text: stroke.text!,
+        style: _textStyleForStroke(stroke),
+      );
+      final textPainter = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+        maxLines: null,
+      )..layout();
+      return Rect.fromLTWH(
+        position.dx,
+        position.dy,
+        textPainter.width,
+        textPainter.height,
+      );
     }
+
+    double minX = double.infinity;
+    double minY = double.infinity;
+    double maxX = double.negativeInfinity;
+    double maxY = double.negativeInfinity;
+
+    for (final point in stroke.points) {
+      final viewportPoint = transformer.toViewport(point);
+      if (viewportPoint.dx < minX) minX = viewportPoint.dx;
+      if (viewportPoint.dy < minY) minY = viewportPoint.dy;
+      if (viewportPoint.dx > maxX) maxX = viewportPoint.dx;
+      if (viewportPoint.dy > maxY) maxY = viewportPoint.dy;
+    }
+
+    return Rect.fromLTRB(
+      minX - padding,
+      minY - padding,
+      maxX + padding,
+      maxY + padding,
+    );
+  }
+
+  /// Get which resize handle (if any) is at the given point.
+  String? _getCornerAtPoint(Stroke stroke, Offset point, Size viewportSize) {
+    if (stroke.points.isEmpty) return null;
+
+    final transformer = _createTransformer(viewportSize);
+    const handleSize = 12.0;
+    const edgeWidth = 28.0;
+    const edgeThickness = 16.0;
+    final boundingBox = _selectionRectForStroke(
+      stroke,
+      transformer,
+      padding: stroke.tool == DrawingTool.text ? 0 : 8,
+    );
 
     if (boundingBox == null) return null;
 
-    // Check each corner
     if ((point - Offset(boundingBox.left, boundingBox.top)).distance <
         handleSize) {
       return 'topLeft';
@@ -615,12 +614,62 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
       return 'bottomRight';
     }
 
+    if (stroke.tool != DrawingTool.text) {
+      final topHandle = Rect.fromCenter(
+        center: Offset(boundingBox.center.dx, boundingBox.top),
+        width: edgeWidth,
+        height: edgeThickness,
+      );
+      if (topHandle.contains(point)) {
+        return 'top';
+      }
+
+      final bottomHandle = Rect.fromCenter(
+        center: Offset(boundingBox.center.dx, boundingBox.bottom),
+        width: edgeWidth,
+        height: edgeThickness,
+      );
+      if (bottomHandle.contains(point)) {
+        return 'bottom';
+      }
+
+      final leftHandle = Rect.fromCenter(
+        center: Offset(boundingBox.left, boundingBox.center.dy),
+        width: edgeThickness,
+        height: edgeWidth,
+      );
+      if (leftHandle.contains(point)) {
+        return 'left';
+      }
+
+      final rightHandle = Rect.fromCenter(
+        center: Offset(boundingBox.right, boundingBox.center.dy),
+        width: edgeThickness,
+        height: edgeWidth,
+      );
+      if (rightHandle.contains(point)) {
+        return 'right';
+      }
+    }
+
     return null;
   }
 }
 
 /// Custom painter for rendering annotations
 class AnnotationPainter extends CustomPainter {
+  static const Color _selectionAccentColor = Color(0xFF4FC3F7);
+  static final Paint _selectionHandleFillPaint = Paint()
+    ..color = Colors.white
+    ..style = PaintingStyle.fill;
+  static final Paint _selectionHandleBorderPaint = Paint()
+    ..color = _selectionAccentColor
+    ..strokeWidth = 1.5
+    ..style = PaintingStyle.stroke;
+  static final Paint _selectionHandleShadowPaint = Paint()
+    ..color = Colors.black.withValues(alpha: 0.28)
+    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+
   final List<Stroke> strokes;
   final Stroke? currentStroke;
   final Size viewportSize;
@@ -962,12 +1011,13 @@ class AnnotationPainter extends CustomPainter {
 
     final textSpan = TextSpan(
       text: stroke.text!,
-      style: TextStyle(color: stroke.color, fontSize: stroke.fontSize),
+      style: _textStyleForStroke(stroke),
     );
 
     final textPainter = TextPainter(
       text: textSpan,
       textDirection: TextDirection.ltr,
+      maxLines: null,
     );
     if (stroke.points.length >= 2) {
       final textRect = Rect.fromPoints(
@@ -995,14 +1045,8 @@ class AnnotationPainter extends CustomPainter {
   ) {
     if (stroke.points.isEmpty) return;
 
-    final highlightPaint = Paint()
-      ..color = Colors.blue.withValues(alpha: 0.3)
-      ..strokeWidth = stroke.strokeWidth + 6
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
+    Rect? selectionRect;
 
-    // Draw bounding box for text strokes
     if (stroke.tool == DrawingTool.text) {
       if (stroke.points.isNotEmpty &&
           stroke.text != null &&
@@ -1011,14 +1055,17 @@ class AnnotationPainter extends CustomPainter {
 
         final textSpan = TextSpan(
           text: stroke.text!,
-          style: TextStyle(color: stroke.color, fontSize: stroke.fontSize),
+          style: _textStyleForStroke(stroke),
         );
         final textPainter = TextPainter(
           text: textSpan,
           textDirection: TextDirection.ltr,
+          maxLines: null,
         );
-        textPainter.layout();
-        final selectionRect = stroke.points.length >= 2
+        if (stroke.points.length < 2) {
+          textPainter.layout();
+        }
+        selectionRect = stroke.points.length >= 2
             ? Rect.fromPoints(
                 transformer.toViewport(stroke.points.first),
                 transformer.toViewport(stroke.points.last),
@@ -1029,169 +1076,157 @@ class AnnotationPainter extends CustomPainter {
                 textPainter.width + 8,
                 textPainter.height + 8,
               );
-
-        final selectionPaint = Paint()
-          ..color = Colors.blue.withValues(alpha: 0.5)
-          ..strokeWidth = 2
-          ..style = PaintingStyle.stroke;
-        canvas.drawRect(selectionRect, selectionPaint);
-
-        final handlePaint = Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.fill;
-        final borderPaint = Paint()
-          ..color = Colors.blue
-          ..strokeWidth = 1
-          ..style = PaintingStyle.stroke;
-        const handleSize = 6.0;
-
-        canvas.drawCircle(
-          Offset(selectionRect.left, selectionRect.top),
-          handleSize,
-          handlePaint,
-        );
-        canvas.drawCircle(
-          Offset(selectionRect.left, selectionRect.top),
-          handleSize,
-          borderPaint,
-        );
-        canvas.drawCircle(
-          Offset(selectionRect.right, selectionRect.top),
-          handleSize,
-          handlePaint,
-        );
-        canvas.drawCircle(
-          Offset(selectionRect.right, selectionRect.top),
-          handleSize,
-          borderPaint,
-        );
-        canvas.drawCircle(
-          Offset(selectionRect.left, selectionRect.bottom),
-          handleSize,
-          handlePaint,
-        );
-        canvas.drawCircle(
-          Offset(selectionRect.left, selectionRect.bottom),
-          handleSize,
-          borderPaint,
-        );
-        canvas.drawCircle(
-          Offset(selectionRect.right, selectionRect.bottom),
-          handleSize,
-          handlePaint,
-        );
-        canvas.drawCircle(
-          Offset(selectionRect.right, selectionRect.bottom),
-          handleSize,
-          borderPaint,
-        );
-      }
-    } else
-    // Draw bounding box for shapes
-    if (stroke.tool == DrawingTool.rectangle ||
-        stroke.tool == DrawingTool.filledSquare ||
-        stroke.tool == DrawingTool.circle ||
-        stroke.tool == DrawingTool.filledCircle ||
-        stroke.tool == DrawingTool.line ||
-        stroke.tool == DrawingTool.arrow) {
-      if (stroke.points.length >= 2) {
-        final start = transformer.toViewport(stroke.points.first);
-        final end = transformer.toViewport(stroke.points.last);
-
-        final left = start.dx < end.dx ? start.dx : end.dx;
-        final right = start.dx > end.dx ? start.dx : end.dx;
-        final top = start.dy < end.dy ? start.dy : end.dy;
-        final bottom = start.dy > end.dy ? start.dy : end.dy;
-
-        final selectionRect = Rect.fromLTRB(
-          left - 8,
-          top - 8,
-          right + 8,
-          bottom + 8,
-        );
-
-        final selectionPaint = Paint()
-          ..color = Colors.blue.withValues(alpha: 0.5)
-          ..strokeWidth = 2
-          ..style = PaintingStyle.stroke;
-
-        canvas.drawRect(selectionRect, selectionPaint);
-
-        // Draw corner handles
-        final handlePaint = Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.fill;
-
-        final borderPaint = Paint()
-          ..color = Colors.blue
-          ..strokeWidth = 1
-          ..style = PaintingStyle.stroke;
-
-        const handleSize = 6.0;
-
-        // Top-left
-        canvas.drawCircle(
-          Offset(selectionRect.left, selectionRect.top),
-          handleSize,
-          handlePaint,
-        );
-        canvas.drawCircle(
-          Offset(selectionRect.left, selectionRect.top),
-          handleSize,
-          borderPaint,
-        );
-
-        // Top-right
-        canvas.drawCircle(
-          Offset(selectionRect.right, selectionRect.top),
-          handleSize,
-          handlePaint,
-        );
-        canvas.drawCircle(
-          Offset(selectionRect.right, selectionRect.top),
-          handleSize,
-          borderPaint,
-        );
-
-        // Bottom-left
-        canvas.drawCircle(
-          Offset(selectionRect.left, selectionRect.bottom),
-          handleSize,
-          handlePaint,
-        );
-        canvas.drawCircle(
-          Offset(selectionRect.left, selectionRect.bottom),
-          handleSize,
-          borderPaint,
-        );
-
-        // Bottom-right
-        canvas.drawCircle(
-          Offset(selectionRect.right, selectionRect.bottom),
-          handleSize,
-          handlePaint,
-        );
-        canvas.drawCircle(
-          Offset(selectionRect.right, selectionRect.bottom),
-          handleSize,
-          borderPaint,
-        );
       }
     } else {
-      // For pen strokes, draw a highlighted version
-      final path = Path();
-      final offsets = transformer.strokeToOffsets(stroke);
+      double minX = double.infinity;
+      double minY = double.infinity;
+      double maxX = double.negativeInfinity;
+      double maxY = double.negativeInfinity;
 
-      if (offsets.isNotEmpty) {
-        path.moveTo(offsets.first.dx, offsets.first.dy);
-
-        for (int i = 1; i < offsets.length; i++) {
-          path.lineTo(offsets[i].dx, offsets[i].dy);
-        }
-
-        canvas.drawPath(path, highlightPaint);
+      for (final point in stroke.points) {
+        final viewportPoint = transformer.toViewport(point);
+        if (viewportPoint.dx < minX) minX = viewportPoint.dx;
+        if (viewportPoint.dy < minY) minY = viewportPoint.dy;
+        if (viewportPoint.dx > maxX) maxX = viewportPoint.dx;
+        if (viewportPoint.dy > maxY) maxY = viewportPoint.dy;
       }
+
+      selectionRect = Rect.fromLTRB(minX - 8, minY - 8, maxX + 8, maxY + 8);
     }
+
+    if (selectionRect == null) return;
+
+    // Subtle fill
+    canvas.drawRect(
+      selectionRect,
+      Paint()
+        ..color = const Color(0xFF4FC3F7).withValues(alpha: 0.07)
+        ..style = PaintingStyle.fill,
+    );
+
+    // Border with soft glow
+    final glowPaint = Paint()
+      ..color = const Color(0xFF4FC3F7).withValues(alpha: 0.22)
+      ..strokeWidth = 5
+      ..style = PaintingStyle.stroke
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    canvas.drawRect(selectionRect, glowPaint);
+
+    final borderPaint = Paint()
+      ..color = const Color(0xFF4FC3F7).withValues(alpha: 0.9)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    canvas.drawRect(selectionRect, borderPaint);
+
+    // Handles
+    _drawCornerHandle(
+      canvas,
+      Offset(selectionRect.left, selectionRect.top),
+      _selectionHandleFillPaint,
+      _selectionHandleBorderPaint,
+      _selectionHandleShadowPaint,
+    );
+    _drawCornerHandle(
+      canvas,
+      Offset(selectionRect.right, selectionRect.top),
+      _selectionHandleFillPaint,
+      _selectionHandleBorderPaint,
+      _selectionHandleShadowPaint,
+    );
+    _drawCornerHandle(
+      canvas,
+      Offset(selectionRect.left, selectionRect.bottom),
+      _selectionHandleFillPaint,
+      _selectionHandleBorderPaint,
+      _selectionHandleShadowPaint,
+    );
+    _drawCornerHandle(
+      canvas,
+      Offset(selectionRect.right, selectionRect.bottom),
+      _selectionHandleFillPaint,
+      _selectionHandleBorderPaint,
+      _selectionHandleShadowPaint,
+    );
+
+    if (stroke.tool != DrawingTool.text) {
+      _drawEdgeHandle(
+        canvas,
+        Rect.fromCenter(
+          center: Offset(selectionRect.center.dx, selectionRect.top),
+          width: 20,
+          height: 7,
+        ),
+        _selectionHandleFillPaint,
+        _selectionHandleBorderPaint,
+        _selectionHandleShadowPaint,
+      );
+      _drawEdgeHandle(
+        canvas,
+        Rect.fromCenter(
+          center: Offset(selectionRect.center.dx, selectionRect.bottom),
+          width: 20,
+          height: 7,
+        ),
+        _selectionHandleFillPaint,
+        _selectionHandleBorderPaint,
+        _selectionHandleShadowPaint,
+      );
+      _drawEdgeHandle(
+        canvas,
+        Rect.fromCenter(
+          center: Offset(selectionRect.left, selectionRect.center.dy),
+          width: 7,
+          height: 20,
+        ),
+        _selectionHandleFillPaint,
+        _selectionHandleBorderPaint,
+        _selectionHandleShadowPaint,
+      );
+      _drawEdgeHandle(
+        canvas,
+        Rect.fromCenter(
+          center: Offset(selectionRect.right, selectionRect.center.dy),
+          width: 7,
+          height: 20,
+        ),
+        _selectionHandleFillPaint,
+        _selectionHandleBorderPaint,
+        _selectionHandleShadowPaint,
+      );
+    }
+  }
+
+  void _drawCornerHandle(
+    Canvas canvas,
+    Offset center,
+    Paint fillPaint,
+    Paint borderPaint,
+    Paint shadowPaint,
+  ) {
+    const halfSize = 5.0;
+    const radius = Radius.circular(3);
+    final rect = Rect.fromCenter(
+      center: center,
+      width: halfSize * 2,
+      height: halfSize * 2,
+    );
+    final rrect = RRect.fromRectAndRadius(rect, radius);
+    canvas.drawRRect(rrect, shadowPaint);
+    canvas.drawRRect(rrect, fillPaint);
+    canvas.drawRRect(rrect, borderPaint);
+  }
+
+  void _drawEdgeHandle(
+    Canvas canvas,
+    Rect rect,
+    Paint fillPaint,
+    Paint borderPaint,
+    Paint shadowPaint,
+  ) {
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+    canvas.drawRRect(rrect, shadowPaint);
+    canvas.drawRRect(rrect, fillPaint);
+    canvas.drawRRect(rrect, borderPaint);
   }
 
   void _drawEraserCursor(Canvas canvas, Offset position) {

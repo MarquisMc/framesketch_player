@@ -461,7 +461,7 @@ class _FileMenuButtonState extends State<_FileMenuButton> {
                     ? Icons.hourglass_bottom
                     : Icons.hourglass_top)
               : Icons.movie_creation_outlined,
-          label: widget.isExporting ? 'Exporting\u2026' : 'Export Video',
+          label: widget.isExporting ? 'Exporting\u2026' : 'Export\u2026',
           enabled: canExport,
           palette: palette,
         ),

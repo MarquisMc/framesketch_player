@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_palette.dart';
 import '../features/annotations/models/stroke.dart';
 import '../features/annotations/providers/annotation_provider.dart';
+import '../features/annotations/widgets/annotation_size_control.dart';
 
 /// Preset colors matching the annotation tools panel.
 const _presetColors = <Color>[
@@ -50,9 +51,9 @@ class HorizontalToolsStrip extends ConsumerWidget {
     final currentColor = ref.watch(
       annotationProvider.select((s) => s.currentColor),
     );
-    final strokeWidth = ref.watch(
-      annotationProvider.select((s) => s.currentStrokeWidth),
-    );
+    final activeSizingTool = ref.watch(activeAnnotationSizingToolProvider);
+    final strokeWidth = ref.watch(activeAnnotationStrokeWidthProvider);
+    final fontSize = ref.watch(activeAnnotationFontSizeProvider);
     final canUndo = ref.watch(
       annotationProvider.select((s) => s.allStrokes.isNotEmpty),
     );
@@ -60,6 +61,7 @@ class HorizontalToolsStrip extends ConsumerWidget {
       annotationProvider.select((s) => s.undoStack.isNotEmpty),
     );
     final notifier = ref.read(annotationProvider.notifier);
+    final showTextSizeControl = activeSizingTool == DrawingTool.text;
 
     return Container(
       color: palette.panel,
@@ -93,40 +95,28 @@ class HorizontalToolsStrip extends ConsumerWidget {
             ),
           ),
 
-          // Stroke width
-          Tooltip(
-            message: 'Stroke Width: ${strokeWidth.toStringAsFixed(1)}',
-            waitDuration: const Duration(milliseconds: 500),
-            child: Row(
-              children: [
-                Icon(Icons.line_weight, size: 16, color: palette.textSecondary),
-                SizedBox(
-                  width: 100,
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 2,
-                      thumbShape: const RoundSliderThumbShape(
-                        enabledThumbRadius: 6,
-                      ),
-                      overlayShape: const RoundSliderOverlayShape(
-                        overlayRadius: 12,
-                      ),
-                    ),
-                    child: Slider(
-                      value: strokeWidth,
-                      min: 1.0,
-                      max: 10.0,
-                      divisions: 18,
-                      onChanged: (v) => notifier.setStrokeWidth(v),
-                    ),
-                  ),
-                ),
-                Text(
-                  strokeWidth.toStringAsFixed(1),
-                  style: TextStyle(fontSize: 11, color: palette.textSecondary),
-                ),
-              ],
-            ),
+          // Adaptive sizing control
+          Row(
+            children: [
+              Icon(
+                showTextSizeControl ? Icons.text_fields : Icons.line_weight,
+                size: 16,
+                color: palette.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              AnnotationSizeControl(
+                label: showTextSizeControl ? 'Text Height' : 'Stroke Width',
+                value: showTextSizeControl ? fontSize : strokeWidth,
+                min: showTextSizeControl ? 8.0 : 1.0,
+                max: showTextSizeControl ? 72.0 : 10.0,
+                divisions: showTextSizeControl ? 32 : 18,
+                isTextSize: showTextSizeControl,
+                compact: true,
+                onChanged: showTextSizeControl
+                    ? notifier.setFontSize
+                    : notifier.setStrokeWidth,
+              ),
+            ],
           ),
 
           // Divider

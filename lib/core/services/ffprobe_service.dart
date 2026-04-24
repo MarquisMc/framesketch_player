@@ -21,6 +21,11 @@ class FFprobeService {
     return _binaries.findFFprobePath();
   }
 
+  /// Get the ffmpeg executable path from app-managed binaries.
+  Future<String?> findFFmpegPath() async {
+    return _binaries.findFFmpegPath();
+  }
+
   /// Extract video metadata from file
   Future<VideoMetadata?> extractMetadata(String filePath) async {
     try {
@@ -117,14 +122,15 @@ class FFprobeService {
     String outputPath,
   ) async {
     try {
-      final ffmpegPath = await _findFFmpegPath();
+      final ffmpegPath = await findFFmpegPath();
       if (ffmpegPath == null) {
         throw Exception('FFmpeg not found');
       }
 
+      final seconds = (timestamp.inMicroseconds / 1000000.0).toStringAsFixed(6);
       final result = await Process.run(ffmpegPath, [
         '-ss',
-        timestamp.inSeconds.toString(),
+        seconds,
         '-i',
         videoPath,
         '-frames:v',
@@ -143,9 +149,5 @@ class FFprobeService {
       stderr.writeln('Error extracting frame: $e');
       return null;
     }
-  }
-
-  Future<String?> _findFFmpegPath() async {
-    return _binaries.findFFmpegPath();
   }
 }
