@@ -50,5 +50,35 @@ void main() {
       expect(leftBar.dx, closeTo(72.0, 0.001));
       expect(transform.styleScaleFactor, closeTo(1.0, 0.001));
     });
+
+    test('maps cropped source coordinates into cropped overlay output', () {
+      final transform = service.createOverlayTransform(
+        outputWidth: 960,
+        outputHeight: 540,
+        viewportWidth: 1920,
+        viewportHeight: 1080,
+        sourceCropLeft: 0.25,
+        sourceCropTop: 0.25,
+        sourceCropWidth: 0.5,
+        sourceCropHeight: 0.5,
+      );
+
+      final topLeft = transform.toOutputOffset(
+        const StrokePoint(x: 0.25, y: 0.25),
+      );
+      final center = transform.toOutputOffset(
+        const StrokePoint(x: 0.5, y: 0.5),
+      );
+      final bottomRight = transform.toOutputOffset(
+        const StrokePoint(x: 0.75, y: 0.75),
+      );
+
+      expect(topLeft.dx, closeTo(0.0, 0.001));
+      expect(topLeft.dy, closeTo(0.0, 0.001));
+      expect(center.dx, closeTo(480.0, 0.001));
+      expect(center.dy, closeTo(270.0, 0.001));
+      expect(bottomRight.dx, closeTo(960.0, 0.001));
+      expect(bottomRight.dy, closeTo(540.0, 0.001));
+    });
   });
 }

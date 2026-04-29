@@ -23,6 +23,7 @@ import 'features/settings/widgets/settings_dialog.dart';
 import 'features/settings/widgets/theme_dialog.dart';
 import 'features/loop/providers/loop_provider.dart';
 import 'features/crop/providers/crop_provider.dart';
+import 'core/services/video_export_models.dart';
 import 'core/services/file_association_service.dart';
 import 'core/theme/app_palette.dart';
 import 'core/theme/theme_provider.dart';
@@ -2186,46 +2187,51 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     }
 
     final outputDirectory = Directory(selectedDirectory);
-    final frameNumbers = <int>[];
+    final frameJobs = <_FrameExportJob>[];
     for (
       var frame = request.startFrame;
       frame <= request.endFrame;
       frame += request.frameStep
     ) {
-      frameNumbers.add(frame);
+      frameJobs.add(
+        _FrameExportJob(
+          frameNumber: frame,
+          timestamp: _durationForFrame(frame, metadata.fps),
+          outputPath:
+              '${outputDirectory.path}${Platform.pathSeparator}'
+              '${request.suggestedBaseName}_frame_${frame.toString().padLeft(6, '0')}.${request.frameExtension}',
+        ),
+      );
     }
 
     await _runWithLoadingOverlay(
-      message: 'Exporting ${frameNumbers.length} frames...',
+      message: 'Exporting ${frameJobs.length} frames...',
       cancelLabel: 'Cancel Export',
       onCancel: _requestExportCancel,
       action: () async {
         _exportCancelRequested = false;
         final annotationData = ref.read(annotationProvider).annotationData;
-        final totalFrames = frameNumbers.length;
-        for (var index = 0; index < totalFrames; index += 1) {
-          _throwIfExportCancelled();
-          final frame = frameNumbers[index];
-          if (mounted) {
-            final completedFrames = index + 1;
-            final progressPercent = ((completedFrames / totalFrames) * 100)
-                .round();
-            setState(() {
-              _loadingOverlayMessage =
-                  'Exporting frame $completedFrames/$totalFrames ($progressPercent%)';
-            });
-          }
-          final outputPath =
-              '${outputDirectory.path}${Platform.pathSeparator}'
-              '${request.suggestedBaseName}_frame_${frame.toString().padLeft(6, '0')}.${request.frameExtension}';
-          await _exportFrameImage(
-            videoPath,
-            timestamp: _durationForFrame(frame, metadata.fps),
-            outputPath: outputPath,
-            metadata: metadata,
-            annotationData: annotationData,
+        final ffmpegPath = await _findExportFfmpegPath();
+        final plannedJobs = _planFrameExportJobs(frameJobs);
+
+        if (annotationData == null ||
+            plannedJobs.every((job) => job.visibleStrokes.isEmpty)) {
+          await _exportUnannotatedFrameRange(
+            ffmpegPath: ffmpegPath,
+            videoPath: videoPath,
+            jobs: plannedJobs,
+            frameExtension: request.frameExtension,
           );
+          return;
         }
+
+        await _exportAnnotatedFrameRange(
+          ffmpegPath: ffmpegPath,
+          videoPath: videoPath,
+          jobs: plannedJobs,
+          metadata: metadata,
+          annotationData: annotationData,
+        );
       },
     );
 
@@ -2238,7 +2244,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     _scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
         content: Text(
-          'Exported ${frameNumbers.length} frames to ${outputDirectory.path}',
+          'Exported ${frameJobs.length} frames to ${outputDirectory.path}',
         ),
         backgroundColor: _activePalette.success,
       ),
@@ -2296,6 +2302,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         action: () => cropNotifier.exportCroppedVideo(
           normalizedOutputPath,
           annotationData: ref.read(annotationProvider).annotationData,
+          preset: request.videoPreset,
         ),
       );
     } finally {
@@ -2433,15 +2440,13 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     String videoPath, {
     required Duration timestamp,
     required String outputPath,
+    String? ffmpegPath,
   }) async {
-    final ffmpegPath = await _ffprobeService.findFFmpegPath();
-    if (ffmpegPath == null) {
-      throw StateError('FFmpeg not found');
-    }
+    final resolvedFfmpegPath = ffmpegPath ?? await _findExportFfmpegPath();
 
     _throwIfExportCancelled();
     final seconds = (timestamp.inMicroseconds / 1000000.0).toStringAsFixed(6);
-    final process = await Process.start(ffmpegPath, [
+    final process = await Process.start(resolvedFfmpegPath, [
       '-ss',
       seconds,
       '-i',
@@ -2474,6 +2479,259 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       return File(outputPath);
     }
     throw StateError('Failed to export frame: ${stderrBuffer.toString()}');
+  }
+
+  Future<String> _findExportFfmpegPath() async {
+    final ffmpegPath = await _ffprobeService.findFFmpegPath();
+    if (ffmpegPath == null) {
+      throw StateError(
+        'FFmpeg not found. Automatic provisioning failed. Check internet access and try again.',
+      );
+    }
+    return ffmpegPath;
+  }
+
+  List<_PlannedFrameExportJob> _planFrameExportJobs(
+    List<_FrameExportJob> jobs,
+  ) {
+    final annotationNotifier = ref.read(annotationProvider.notifier);
+    return [
+      for (final job in jobs)
+        _PlannedFrameExportJob(
+          frameNumber: job.frameNumber,
+          timestamp: job.timestamp,
+          outputPath: job.outputPath,
+          activeKeyframeMs: annotationNotifier.getActiveKeyframeTimeMs(
+            job.timestamp,
+          ),
+          visibleStrokes: annotationNotifier.getVisibleStrokes(job.timestamp),
+        ),
+    ];
+  }
+
+  Future<void> _exportUnannotatedFrameRange({
+    required String ffmpegPath,
+    required String videoPath,
+    required List<_PlannedFrameExportJob> jobs,
+    required String frameExtension,
+  }) async {
+    if (jobs.isEmpty) return;
+
+    Directory? tempDir;
+    try {
+      tempDir = await Directory.systemTemp.createTemp(
+        'framesketch_frame_range_',
+      );
+      final tempPattern =
+          '${tempDir.path}${Platform.pathSeparator}frame_%06d.$frameExtension';
+      final selectFilter = _buildFrameSelectExpression(jobs);
+
+      _throwIfExportCancelled();
+      final process = await Process.start(ffmpegPath, [
+        '-hide_banner',
+        '-i',
+        videoPath,
+        '-vf',
+        'select=$selectFilter',
+        '-vsync',
+        '0',
+        '-q:v',
+        '2',
+        '-y',
+        tempPattern,
+      ]);
+      _activeFrameExportProcess = process;
+
+      final stderrBuffer = StringBuffer();
+      unawaited(process.stdout.drain<void>());
+      process.stderr
+          .transform(const SystemEncoding().decoder)
+          .listen(stderrBuffer.write);
+
+      final exitCode = await process.exitCode.timeout(
+        const Duration(minutes: 10),
+        onTimeout: () {
+          process.kill();
+          throw TimeoutException(
+            'FFmpeg frame range export exceeded 10 minute timeout',
+          );
+        },
+      );
+      _activeFrameExportProcess = null;
+      _throwIfExportCancelled();
+
+      if (exitCode != 0) {
+        throw StateError(
+          'Failed to export frame range: ${stderrBuffer.toString()}',
+        );
+      }
+
+      for (var index = 0; index < jobs.length; index += 1) {
+        _throwIfExportCancelled();
+        final tempPath =
+            '${tempDir.path}${Platform.pathSeparator}frame_${(index + 1).toString().padLeft(6, '0')}.$frameExtension';
+        final tempFile = File(tempPath);
+        if (!await tempFile.exists()) {
+          throw StateError(
+            'Frame range export produced fewer frames than expected.',
+          );
+        }
+        final outputFile = File(jobs[index].outputPath);
+        if (await outputFile.exists()) {
+          await outputFile.delete();
+        }
+        await tempFile.rename(jobs[index].outputPath);
+        _updateFrameRangeProgress(index + 1, jobs.length);
+      }
+    } finally {
+      _activeFrameExportProcess = null;
+      if (tempDir != null && await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    }
+  }
+
+  String _buildFrameSelectExpression(List<_PlannedFrameExportJob> jobs) {
+    if (jobs.length == 1) {
+      return 'eq(n\\,${jobs.first.frameNumber})';
+    }
+
+    final first = jobs.first.frameNumber;
+    final last = jobs.last.frameNumber;
+    final step = jobs[1].frameNumber - jobs[0].frameNumber;
+    final isArithmetic =
+        step > 0 &&
+        jobs.indexed.every((entry) {
+          final expected = first + entry.$1 * step;
+          return entry.$2.frameNumber == expected;
+        });
+
+    if (!isArithmetic) {
+      return jobs.map((job) => 'eq(n\\,${job.frameNumber})').join('+');
+    }
+
+    if (step == 1) {
+      return 'between(n\\,$first\\,$last)';
+    }
+
+    return 'between(n\\,$first\\,$last)*not(mod(n-$first\\,$step))';
+  }
+
+  Future<void> _exportAnnotatedFrameRange({
+    required String ffmpegPath,
+    required String videoPath,
+    required List<_PlannedFrameExportJob> jobs,
+    required VideoMetadata metadata,
+    required AnnotationData annotationData,
+  }) async {
+    Directory? tempDir;
+    try {
+      tempDir = await Directory.systemTemp.createTemp(
+        'framesketch_annotated_frames_',
+      );
+      final overlayCache = <int, String>{};
+
+      for (var index = 0; index < jobs.length; index += 1) {
+        _throwIfExportCancelled();
+        final job = jobs[index];
+        if (job.visibleStrokes.isEmpty) {
+          final exported = await _extractFrameAtCancellable(
+            videoPath,
+            timestamp: job.timestamp,
+            outputPath: job.outputPath,
+            ffmpegPath: ffmpegPath,
+          );
+          if (exported == null) {
+            throw StateError('Failed to export frame.');
+          }
+          _updateFrameRangeProgress(index + 1, jobs.length);
+          continue;
+        }
+
+        final keyframeMs = job.activeKeyframeMs ?? job.timestamp.inMilliseconds;
+        var overlayPath = overlayCache[keyframeMs];
+        if (overlayPath == null) {
+          overlayPath =
+              '${tempDir.path}${Platform.pathSeparator}overlay_${overlayCache.length.toString().padLeft(4, '0')}.png';
+          await _overlayRenderer.renderOverlayImage(
+            outputPath: overlayPath,
+            strokes: job.visibleStrokes,
+            width: metadata.width,
+            height: metadata.height,
+            viewportWidth: annotationData.viewportWidth,
+            viewportHeight: annotationData.viewportHeight,
+          );
+          overlayCache[keyframeMs] = overlayPath;
+        }
+
+        await _exportAnnotatedFrameImageWithOverlay(
+          ffmpegPath: ffmpegPath,
+          videoPath: videoPath,
+          timestamp: job.timestamp,
+          outputPath: job.outputPath,
+          overlayPath: overlayPath,
+        );
+        _updateFrameRangeProgress(index + 1, jobs.length);
+      }
+    } finally {
+      if (tempDir != null && await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+      _activeFrameExportProcess = null;
+    }
+  }
+
+  Future<void> _exportAnnotatedFrameImageWithOverlay({
+    required String ffmpegPath,
+    required String videoPath,
+    required Duration timestamp,
+    required String outputPath,
+    required String overlayPath,
+  }) async {
+    final seconds = (timestamp.inMicroseconds / 1000000.0).toStringAsFixed(6);
+    _throwIfExportCancelled();
+    final process = await Process.start(ffmpegPath, [
+      '-hide_banner',
+      '-ss',
+      seconds,
+      '-i',
+      videoPath,
+      '-i',
+      overlayPath,
+      '-filter_complex',
+      '[0:v][1:v]overlay=0:0',
+      '-frames:v',
+      '1',
+      '-q:v',
+      '2',
+      '-y',
+      outputPath,
+    ]);
+    _activeFrameExportProcess = process;
+    unawaited(process.stdout.drain<void>());
+    unawaited(process.stderr.drain<void>());
+
+    final exitCode = await process.exitCode.timeout(
+      const Duration(minutes: 2),
+      onTimeout: () {
+        process.kill();
+        throw TimeoutException('FFmpeg frame export exceeded 2 minute timeout');
+      },
+    );
+    _activeFrameExportProcess = null;
+    _throwIfExportCancelled();
+    if (exitCode != 0) {
+      throw StateError('Failed to burn annotations into frame.');
+    }
+  }
+
+  void _updateFrameRangeProgress(int completedFrames, int totalFrames) {
+    if (!mounted) return;
+    final progressPercent = ((completedFrames / totalFrames) * 100).round();
+    setState(() {
+      _loadingOverlayMessage =
+          'Exporting frame $completedFrames/$totalFrames ($progressPercent%)';
+    });
   }
 
   void _requestExportCancel() {
@@ -2754,6 +3012,31 @@ class _ProcessResult {
   _ProcessResult(this.exitCode, this.stdout, this.stderr);
 }
 
+class _FrameExportJob {
+  final int frameNumber;
+  final Duration timestamp;
+  final String outputPath;
+
+  const _FrameExportJob({
+    required this.frameNumber,
+    required this.timestamp,
+    required this.outputPath,
+  });
+}
+
+class _PlannedFrameExportJob extends _FrameExportJob {
+  final int? activeKeyframeMs;
+  final List<Stroke> visibleStrokes;
+
+  const _PlannedFrameExportJob({
+    required super.frameNumber,
+    required super.timestamp,
+    required super.outputPath,
+    required this.activeKeyframeMs,
+    required this.visibleStrokes,
+  });
+}
+
 class _ExportRequest {
   final _ExportMode mode;
   final String suggestedBaseName;
@@ -2762,6 +3045,7 @@ class _ExportRequest {
   final int frameStep;
   final _FrameExportFormat frameFormat;
   final _AnnotationExportFormat annotationFormat;
+  final VideoExportPreset videoPreset;
 
   const _ExportRequest({
     required this.mode,
@@ -2771,6 +3055,7 @@ class _ExportRequest {
     this.frameStep = 1,
     this.frameFormat = _FrameExportFormat.png,
     this.annotationFormat = _AnnotationExportFormat.framesketch,
+    this.videoPreset = VideoExportPreset.compatible,
   });
 
   String get frameExtension =>
@@ -2805,6 +3090,7 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
   late _ExportMode _mode;
   late _FrameExportFormat _frameFormat;
   late _AnnotationExportFormat _annotationFormat;
+  late VideoExportPreset _videoPreset;
   late final TextEditingController _frameController;
   late final TextEditingController _startFrameController;
   late final TextEditingController _endFrameController;
@@ -2817,6 +3103,7 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
     _mode = widget.isLocalSource ? _ExportMode.video : _ExportMode.frame;
     _frameFormat = _FrameExportFormat.png;
     _annotationFormat = _AnnotationExportFormat.framesketch;
+    _videoPreset = VideoExportPreset.compatible;
 
     final startFrame = widget.exportStart == null
         ? 0
@@ -2908,6 +3195,7 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
         frameStep: step ?? 1,
         frameFormat: _frameFormat,
         annotationFormat: _annotationFormat,
+        videoPreset: _videoPreset,
       ),
     );
   }
@@ -3003,9 +3291,28 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
                   controller: _endFrameController,
                   label: 'End Frame',
                 ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<VideoExportPreset>(
+                  initialValue: _videoPreset,
+                  decoration: const InputDecoration(
+                    labelText: 'Speed / Quality',
+                  ),
+                  items: VideoExportPreset.values
+                      .map(
+                        (preset) => DropdownMenuItem(
+                          value: preset,
+                          child: Text(preset.displayName),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _videoPreset = value);
+                  },
+                ),
                 const SizedBox(height: 8),
                 Text(
-                  'Exports an annotated MP4 from the selected frame range.',
+                  _videoPreset.description,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

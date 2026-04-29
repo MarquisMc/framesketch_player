@@ -2,8 +2,10 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import '../models/annotation_timeline_index.dart';
 import '../models/frame_marker.dart';
 import '../models/stroke.dart';
+import '../models/stroke_simplifier.dart';
 import '../../../core/models/annotation_data.dart';
 import '../../../core/services/annotation_storage_service.dart';
 import '../../../core/utils/coordinate_transformer.dart';
@@ -33,6 +35,7 @@ class AnnotationState {
   final bool isScaling;
   final String? scalingCorner;
   final KeyframeCreationMode keyframeCreationMode;
+  final AnnotationTimelineIndex timelineIndex;
 
   const AnnotationState({
     this.annotationData,
@@ -55,6 +58,14 @@ class AnnotationState {
     this.isScaling = false,
     this.scalingCorner,
     this.keyframeCreationMode = KeyframeCreationMode.automatic,
+    this.timelineIndex = const AnnotationTimelineIndex(
+      fps: 30.0,
+      sortedKeyframeTimesMs: [],
+      strokesByKeyframeTimeMs: {},
+      sortedMarkers: [],
+      sortedMarkerFrameTimesMs: [],
+      markersByFrameTimeMs: {},
+    ),
   });
 
   AnnotationState copyWith({
@@ -84,8 +95,9 @@ class AnnotationState {
     bool clearScalingCorner = false,
     KeyframeCreationMode? keyframeCreationMode,
   }) {
+    final nextAnnotationData = annotationData ?? this.annotationData;
     return AnnotationState(
-      annotationData: annotationData ?? this.annotationData,
+      annotationData: nextAnnotationData,
       undoStack: undoStack ?? this.undoStack,
       redoStack: redoStack ?? this.redoStack,
       currentTool: currentTool ?? this.currentTool,
@@ -119,6 +131,13 @@ class AnnotationState {
           ? null
           : (scalingCorner ?? this.scalingCorner),
       keyframeCreationMode: keyframeCreationMode ?? this.keyframeCreationMode,
+      timelineIndex: annotationData == null
+          ? timelineIndex
+          : AnnotationTimelineIndex.build(
+              strokes: nextAnnotationData?.strokes ?? const [],
+              markers: nextAnnotationData?.markers ?? const [],
+              fps: nextAnnotationData?.fps ?? 30.0,
+            ),
     );
   }
 
@@ -170,10 +189,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   }
 
   int _snapToFrameTimeMs(int positionMs, double fps) {
-    if (fps <= 0) return positionMs;
-    final frameDurationMs = 1000.0 / fps;
-    final frameIndex = (positionMs / frameDurationMs).round();
-    return (frameIndex * frameDurationMs).round();
+    return AnnotationTimelineIndex.snapToFrameTimeMs(positionMs, fps);
   }
 
   StrokePoint _squareConstrainedPoint(StrokePoint start, StrokePoint point) {
@@ -475,77 +491,26 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   }
 
   List<int> _sortedKeyframeTimesMs() {
-    if (state.allStrokes.isEmpty) return const [];
-
-    final fps = _effectiveFps;
-    final uniqueKeyframes = <int>{};
-
-    for (final stroke in state.allStrokes) {
-      uniqueKeyframes.add(_snapToFrameTimeMs(stroke.startTimeMs, fps));
-    }
-
-    final sorted = uniqueKeyframes.toList()..sort();
-    return sorted;
+    return state.timelineIndex.sortedKeyframeTimesMs;
   }
 
   int? _activeKeyframeTimeMsAt(int positionMs) {
-    final keyframes = _sortedKeyframeTimesMs();
-    if (keyframes.isEmpty) return null;
-    final snappedPositionMs = _snapToFrameTimeMs(positionMs, _effectiveFps);
-
-    // Exact keyframe match for the current frame gets highest priority.
-    if (keyframes.contains(snappedPositionMs)) {
-      return snappedPositionMs;
-    }
-
-    int? activeKeyframe;
-    for (final keyframeMs in keyframes) {
-      if (keyframeMs <= snappedPositionMs) {
-        activeKeyframe = keyframeMs;
-      } else {
-        break;
-      }
-    }
-
-    return activeKeyframe;
+    return state.timelineIndex.activeKeyframeTimeMsAt(positionMs);
   }
 
   List<Stroke> _strokesAtKeyframe(int keyframeMs) {
-    final fps = _effectiveFps;
-    return state.allStrokes
-        .where(
-          (stroke) => _snapToFrameTimeMs(stroke.startTimeMs, fps) == keyframeMs,
-        )
-        .toList();
-  }
-
-  int _compareMarkers(FrameMarker a, FrameMarker b) {
-    final byTime = a.timeMs.compareTo(b.timeMs);
-    if (byTime != 0) return byTime;
-
-    final byLabel = a.label.toLowerCase().compareTo(b.label.toLowerCase());
-    if (byLabel != 0) return byLabel;
-
-    return a.id.compareTo(b.id);
+    return state.timelineIndex.strokesAtKeyframe(keyframeMs);
   }
 
   List<FrameMarker> _sortedMarkers([List<FrameMarker>? markers]) {
-    final sorted = [...(markers ?? state.allMarkers)];
-    sorted.sort(_compareMarkers);
-    return sorted;
+    if (markers != null) {
+      return AnnotationTimelineIndex.sortMarkers(markers);
+    }
+    return state.timelineIndex.sortedMarkers;
   }
 
   FrameMarker? _markerAtFrame(int positionMs) {
-    final snappedPositionMs = _snapToFrameTimeMs(positionMs, _effectiveFps);
-
-    for (final marker in _sortedMarkers()) {
-      final markerFrameMs = _snapToFrameTimeMs(marker.timeMs, _effectiveFps);
-      if (markerFrameMs == snappedPositionMs) {
-        return marker;
-      }
-    }
-
-    return null;
+    return state.timelineIndex.markerAtFrame(positionMs);
   }
 
   Duration _toExactFramePosition(int positionMs) {
@@ -608,32 +573,11 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   }
 
   FrameMarker? _adjacentMarker({required bool forward, Duration? position}) {
-    final markers = _sortedMarkers();
-    if (markers.isEmpty) return null;
-
     final targetPosition = position ?? ref.read(playerProvider).position;
-    final currentFrameMs = _snapToFrameTimeMs(
-      targetPosition.inMilliseconds,
-      _effectiveFps,
+    return state.timelineIndex.adjacentMarker(
+      forward: forward,
+      positionMs: targetPosition.inMilliseconds,
     );
-
-    if (forward) {
-      for (final marker in markers) {
-        final markerFrameMs = _snapToFrameTimeMs(marker.timeMs, _effectiveFps);
-        if (markerFrameMs > currentFrameMs) {
-          return marker;
-        }
-      }
-      return markers.first;
-    }
-
-    for (final marker in markers.reversed) {
-      final markerFrameMs = _snapToFrameTimeMs(marker.timeMs, _effectiveFps);
-      if (markerFrameMs < currentFrameMs) {
-        return marker;
-      }
-    }
-    return markers.last;
   }
 
   /// Initialize annotations for a video
@@ -1223,8 +1167,10 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     if (state.currentStroke == null) return;
 
-    // Add stroke to annotation data
-    final updatedStrokes = [...state.allStrokes, state.currentStroke!];
+    final finalizedStroke = StrokeSimplifier.simplifyPenStroke(
+      state.currentStroke!,
+    );
+    final updatedStrokes = [...state.allStrokes, finalizedStroke];
     final updatedData = state.annotationData!.copyWith(
       strokes: updatedStrokes,
       updatedAt: DateTime.now(),

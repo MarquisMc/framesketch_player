@@ -229,7 +229,7 @@ lib/features/
 │       └── loop_controls.dart       # Loop UI controls
 ├── crop/
 │   ├── providers/
-│   │   └── crop_provider.dart       # Crop state & FFmpeg export
+│   │   └── crop_provider.dart       # Crop state & export UI orchestration
 │   └── widgets/
 │       ├── crop_overlay.dart        # Interactive crop UI
 │       └── crop_controls.dart       # Crop panel & controls
@@ -282,22 +282,16 @@ final pixels = cropRect.toPixels(videoWidth, videoHeight);
 // Returns: (x: int, y: int, width: int, height: int)
 ```
 
-### FFmpeg Progress Parsing
+### Export Pipeline
 
-Progress is extracted from FFmpeg's output stream:
+Video export is implemented by `lib/core/services/video_export_service.dart`.
+`CropNotifier` remains responsible for local-file validation, Riverpod status
+updates, progress callbacks, and cancellation handoff.
 
-```dart
-_ffmpegProcess!.stdout.transform(systemEncoding.decoder).listen((data) {
-  final timeMatch = RegExp(r'out_time_ms=(\d+)').firstMatch(data);
-  if (timeMatch != null && duration.inMicroseconds > 0) {
-    final outTimeUs = int.parse(timeMatch.group(1)!);
-    final progress = outTimeUs / duration.inMicroseconds;
-    state = state.copyWith(exportProgress: progress.clamp(0.0, 1.0));
-  }
-});
-```
-
-This provides smooth, accurate progress updates without polling.
+`VideoExportService` owns FFmpeg argument generation, overlay preparation,
+process execution, fast output validation, cleanup, and cancellation of the
+active process. It stream-copies when no crop or annotation work is needed and
+re-encodes only for crop or burned-in overlay output.
 
 ---
 
@@ -398,9 +392,9 @@ Potential improvements for future versions:
 - Check error message for details
 
 ### Export quality issues
-- Crop exports use original codec by default
-- Audio is copied without re-encoding
-- For quality control, modify FFmpeg command in crop_provider.dart
+- Use the export preset selector for annotated video exports
+- Choose Compatible for broad MP4 playback support
+- Re-encoded exports use H.264/AAC MP4 output
 
 ---
 

@@ -16,6 +16,10 @@ class OverlayTransform {
   final double videoHeightInViewport;
   final double styleScaleFactor;
   final bool usesViewportProjection;
+  final double sourceCropLeft;
+  final double sourceCropTop;
+  final double sourceCropWidth;
+  final double sourceCropHeight;
 
   const OverlayTransform({
     required this.outputWidth,
@@ -28,12 +32,21 @@ class OverlayTransform {
     required this.videoHeightInViewport,
     required this.styleScaleFactor,
     required this.usesViewportProjection,
-  });
+    this.sourceCropLeft = 0.0,
+    this.sourceCropTop = 0.0,
+    this.sourceCropWidth = 1.0,
+    this.sourceCropHeight = 1.0,
+  }) : assert(sourceCropWidth > 0, 'sourceCropWidth must be positive'),
+       assert(sourceCropHeight > 0, 'sourceCropHeight must be positive');
 
   Offset toOutputOffset(StrokePoint point) {
     // Annotation points are stored in video-normalized space.
-    // Export should mirror in-app rendering exactly: direct [0..1] mapping.
-    return Offset(point.x * outputWidth, point.y * outputHeight);
+    // Export should mirror in-app rendering exactly while allowing cropped
+    // overlay buffers to avoid full-source-size transparent frames.
+    return Offset(
+      ((point.x - sourceCropLeft) / sourceCropWidth) * outputWidth,
+      ((point.y - sourceCropTop) / sourceCropHeight) * outputHeight,
+    );
   }
 }
 
@@ -45,6 +58,10 @@ class AnnotationOverlayRendererService {
     required int height,
     required int viewportWidth,
     required int viewportHeight,
+    double sourceCropLeft = 0.0,
+    double sourceCropTop = 0.0,
+    double sourceCropWidth = 1.0,
+    double sourceCropHeight = 1.0,
   }) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(
@@ -56,6 +73,10 @@ class AnnotationOverlayRendererService {
       outputHeight: height,
       viewportWidth: viewportWidth,
       viewportHeight: viewportHeight,
+      sourceCropLeft: sourceCropLeft,
+      sourceCropTop: sourceCropTop,
+      sourceCropWidth: sourceCropWidth,
+      sourceCropHeight: sourceCropHeight,
     );
 
     for (final stroke in strokes) {
@@ -81,9 +102,15 @@ class AnnotationOverlayRendererService {
     required int outputHeight,
     required int viewportWidth,
     required int viewportHeight,
+    double sourceCropLeft = 0.0,
+    double sourceCropTop = 0.0,
+    double sourceCropWidth = 1.0,
+    double sourceCropHeight = 1.0,
   }) {
     final safeOutputWidth = outputWidth > 0 ? outputWidth : 1;
     final safeOutputHeight = outputHeight > 0 ? outputHeight : 1;
+    final safeCropWidth = sourceCropWidth > 0 ? sourceCropWidth : 1.0;
+    final safeCropHeight = sourceCropHeight > 0 ? sourceCropHeight : 1.0;
 
     return OverlayTransform(
       outputWidth: safeOutputWidth,
@@ -96,6 +123,10 @@ class AnnotationOverlayRendererService {
       videoHeightInViewport: safeOutputHeight.toDouble(),
       styleScaleFactor: 1.0,
       usesViewportProjection: false,
+      sourceCropLeft: sourceCropLeft,
+      sourceCropTop: sourceCropTop,
+      sourceCropWidth: safeCropWidth,
+      sourceCropHeight: safeCropHeight,
     );
   }
 

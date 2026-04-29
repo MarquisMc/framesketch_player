@@ -69,10 +69,12 @@ This document captures the current implementation snapshot plus the roadmap-styl
 - Interactive crop overlay
 - Aspect ratio presets including `Original`, `16:9`, `1:1`, `9:16`, `4:3`, and `3:4`
 - Export selected range or full duration
+- Fast, Balanced, and Compatible video export presets
 - Burned-in annotation export for local videos
 - Cancelable export
 - Stream copy when no visual transform is required
 - Re-encode path when crop or overlays are required
+- Fast output validation after export
 
 ### Customization and Platform Support
 
@@ -94,15 +96,29 @@ This document captures the current implementation snapshot plus the roadmap-styl
 
 ### Export Pipeline
 
+The export pipeline is centralized in `VideoExportService`, with `CropNotifier`
+handling local-file validation, Riverpod status updates, progress callbacks, and
+cancellation handoff. Both the top-bar annotated-video export and crop-mode
+export route through this shared service.
+
 The export flow currently does the following:
 
 1. Resolves a local source video
 2. Applies optional time-range trimming
 3. Applies optional crop filtering
-4. Renders annotation overlays to temporary PNGs
-5. Burns overlays into the output video when annotations are present
-6. Writes MP4 output using H.264/AAC when re-encoding is required
-7. Falls back to stream copy when no crop or overlay work is needed
+4. Plans annotation overlay timing against the selected export subrange
+5. Renders crop-aware transparent overlay frames only when needed
+6. Feeds FFmpeg one timed overlay stream when annotations are present
+7. Uses Fast, Balanced, or Compatible preset settings for H.264/AAC re-encode
+8. Writes MP4 output with fast-start metadata
+9. Uses fast output probing for validation
+10. Falls back to stream copy when no crop or overlay work is needed
+
+Current preset behavior:
+
+- Fast: `libx264` `veryfast`, CRF 23, H.264/AAC MP4
+- Balanced: `libx264` `medium`, CRF 21, H.264/AAC MP4
+- Compatible: `libx264` `medium`, CRF 20, baseline profile, H.264/AAC MP4
 
 ### Annotation Model
 
@@ -149,7 +165,7 @@ These are the remaining ideas and future-facing features that still make sense t
 - Timeline thumbnail preview on scrub/hover
 - Recent files access separate from the project browser
 - Playback speed control
-- Clearer export presets and export-history UX
+- Export-history UX
 - More polish around large-project handling and responsiveness
 
 ### Annotation Enhancements

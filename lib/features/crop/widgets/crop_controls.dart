@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import '../../../core/theme/app_palette.dart';
 import '../../../core/utils/timecode_formatter.dart';
+import '../../../core/services/video_export_models.dart';
 import '../providers/crop_provider.dart';
 import '../../player/providers/player_provider.dart';
 import '../../loop/providers/loop_provider.dart';
@@ -199,7 +200,8 @@ class CropControlsPanel extends ConsumerWidget {
     final playerState = ref.read(playerProvider);
     final cropNotifier = ref.read(cropProvider.notifier);
 
-    if (playerState.currentVideoPath == null || !playerState.isLocalFileSource) {
+    if (playerState.currentVideoPath == null ||
+        !playerState.isLocalFileSource) {
       return;
     }
 
@@ -209,11 +211,21 @@ class CropControlsPanel extends ConsumerWidget {
     final nameWithoutExt = inputName.substring(0, inputName.lastIndexOf('.'));
     final safeBaseName = _buildSafeOutputBaseName(nameWithoutExt);
 
+    final preset = await showDialog<VideoExportPreset>(
+      context: context,
+      builder: (dialogContext) => const _CropExportPresetDialog(),
+    );
+
+    if (preset == null) {
+      return;
+    }
+
     // Ask user for save location
     final result = await FilePicker.platform.saveFile(
       dialogTitle: 'Export Cropped Video',
       fileName: '${safeBaseName}_cropped.mp4',
-      type: FileType.video,
+      type: FileType.custom,
+      allowedExtensions: const ['mp4'],
     );
 
     if (result != null) {
@@ -223,6 +235,7 @@ class CropControlsPanel extends ConsumerWidget {
       cropNotifier.exportCroppedVideo(
         result,
         annotationData: currentAnnotationData,
+        preset: preset,
       );
     }
   }
@@ -243,6 +256,65 @@ class CropControlsPanel extends ConsumerWidget {
     }
 
     return sanitized.substring(0, maxLen).trimRight();
+  }
+}
+
+class _CropExportPresetDialog extends StatefulWidget {
+  const _CropExportPresetDialog();
+
+  @override
+  State<_CropExportPresetDialog> createState() =>
+      _CropExportPresetDialogState();
+}
+
+class _CropExportPresetDialogState extends State<_CropExportPresetDialog> {
+  VideoExportPreset _preset = VideoExportPreset.compatible;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Export Cropped Video'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DropdownButtonFormField<VideoExportPreset>(
+              initialValue: _preset,
+              decoration: const InputDecoration(labelText: 'Speed / Quality'),
+              items: VideoExportPreset.values
+                  .map(
+                    (preset) => DropdownMenuItem(
+                      value: preset,
+                      child: Text(preset.displayName),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => _preset = value);
+              },
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _preset.description,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_preset),
+          child: const Text('Continue'),
+        ),
+      ],
+    );
   }
 }
 

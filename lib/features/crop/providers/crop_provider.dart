@@ -1,13 +1,12 @@
-import 'dart:async';
-import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as path;
 import '../../player/providers/player_provider.dart';
-import '../../annotations/models/stroke.dart';
-import '../../../core/services/annotation_overlay_renderer_service.dart';
-import '../../../core/services/annotation_storage_service.dart';
-import '../../../core/services/ffmpeg_binaries_service.dart';
 import '../../../core/models/annotation_data.dart';
+import '../../../core/services/video_export_models.dart';
+import '../../../core/services/video_export_service.dart';
+
+final videoExportServiceProvider = Provider<VideoExportService>((ref) {
+  return VideoExportService();
+});
 
 /// Available aspect ratio presets for cropping
 enum CropAspectRatio {
@@ -289,14 +288,12 @@ enum CropHandle {
 /// Notifier for crop state management
 class CropNotifier extends StateNotifier<CropState> {
   final Ref _ref;
-  Process? _ffmpegProcess;
-  bool _cancelRequested = false;
-  Timer? _progressTimer;
-  final AnnotationOverlayRendererService _overlayRenderer =
-      AnnotationOverlayRendererService();
-  final FFmpegBinariesService _ffmpegBinaries = FFmpegBinariesService();
+  final VideoExportService _videoExportService;
 
-  CropNotifier(this._ref) : super(const CropState());
+  CropNotifier(this._ref, {VideoExportService? videoExportService})
+    : _videoExportService =
+          videoExportService ?? _ref.read(videoExportServiceProvider),
+      super(const CropState());
 
   /// Toggle crop mode on/off
   void toggleCropMode() {
@@ -678,17 +675,11 @@ class CropNotifier extends StateNotifier<CropState> {
     state = state.copyWith(clearExportStart: true, clearExportEnd: true);
   }
 
-  /// Find FFmpeg executable managed by the app.
-  Future<String?> _findFFmpegPath({
-    FFmpegProvisioningProgressCallback? onProgress,
-  }) async {
-    return _ffmpegBinaries.findFFmpegPath(onProgress: onProgress);
-  }
-
   /// Export cropped video using FFmpeg (bundled with media_kit)
   Future<void> exportCroppedVideo(
     String outputPath, {
     AnnotationData? annotationData,
+    VideoExportPreset preset = VideoExportPreset.compatible,
   }) async {
     final playerState = _ref.read(playerProvider);
     if (playerState.currentVideoPath == null ||
@@ -704,41 +695,7 @@ class CropNotifier extends StateNotifier<CropState> {
     }
 
     final inputPath = playerState.currentVideoPath!;
-    final normalizedOutputPath = _normalizeOutputPath(outputPath);
-    final fullDuration = playerState.duration;
-    final fullMs = fullDuration.inMilliseconds;
-
-    var startMs = state.exportStart?.inMilliseconds ?? 0;
-    var endMs = state.exportEnd?.inMilliseconds ?? fullMs;
-
-    startMs = startMs.clamp(0, fullMs);
-    endMs = endMs.clamp(0, fullMs);
-
-    final targetDurationMs = endMs - startMs;
-    final isSegmentedExport = startMs > 0 || endMs < fullMs;
-
-    if (targetDurationMs <= 0) {
-      state = state.copyWith(
-        exportStatus: ExportStatus.error,
-        clearPreparationMessage: true,
-        clearPreparationProgress: true,
-        exportError: 'Invalid export range selected',
-      );
-      return;
-    }
-
-    final normalizedCropFilter = _buildNormalizedCropFilter(state.cropRect);
-    final isFullFrameCrop = _isFullFrameCrop(state.cropRect);
     final metadata = playerState.metadata!;
-    final effectiveAnnotationData =
-        annotationData ??
-        await AnnotationStorageService().loadAnnotations(inputPath);
-    final hasActiveAnnotations = _hasAnnotationsInRange(
-      annotationData: effectiveAnnotationData,
-      startMs: startMs,
-      endMs: endMs,
-    );
-    final useStreamCopy = isFullFrameCrop && !hasActiveAnnotations;
 
     state = state.copyWith(
       exportStatus: ExportStatus.preparing,
@@ -749,510 +706,76 @@ class CropNotifier extends StateNotifier<CropState> {
       clearExportedFilePath: true,
     );
 
-    _cancelRequested = false;
-    Directory? overlayTempDir;
-
-    try {
-      // Find FFmpeg executable
-      final ffmpegPath = await _findFFmpegPath(
-        onProgress: (progress) {
-          if (state.exportStatus != ExportStatus.preparing) return;
-          state = state.copyWith(
-            preparationMessage: progress.message,
-            preparationProgress: progress.progress,
-          );
-        },
-      );
-      if (ffmpegPath == null) {
+    final result = await _videoExportService.export(
+      VideoExportRequest(
+        inputPath: inputPath,
+        outputPath: outputPath,
+        cropRect: VideoExportCropRect(
+          left: state.cropRect.left,
+          top: state.cropRect.top,
+          right: state.cropRect.right,
+          bottom: state.cropRect.bottom,
+        ),
+        videoWidth: metadata.width,
+        videoHeight: metadata.height,
+        fullDuration: playerState.duration,
+        start: state.exportStart,
+        end: state.exportEnd,
+        annotationData: annotationData,
+        preset: preset,
+      ),
+      onPreparationProgress: (progress) {
+        if (state.exportStatus != ExportStatus.preparing) return;
         state = state.copyWith(
-          exportStatus: ExportStatus.error,
-          clearPreparationMessage: true,
-          clearPreparationProgress: true,
-          exportError:
-              'FFmpeg not found. Automatic provisioning failed. Check internet access and try again.',
+          preparationMessage: progress.message,
+          preparationProgress: progress.progress,
         );
-        return;
-      }
-      if (_cancelRequested) {
+      },
+      onExporting: () {
         state = state.copyWith(
-          exportStatus: ExportStatus.cancelled,
-          exportProgress: 0.0,
-          clearPreparationMessage: true,
-          clearPreparationProgress: true,
-        );
-        return;
-      }
-
-      final overlays = <_TimedOverlay>[];
-      if (!useStreamCopy) {
-        overlayTempDir = await Directory.systemTemp.createTemp(
-          'framesketch_annotation_overlays_',
-        );
-        overlays.addAll(
-          await _prepareAnnotationOverlays(
-            annotationData: effectiveAnnotationData,
-            videoWidth: metadata.width,
-            videoHeight: metadata.height,
-            startMs: startMs,
-            endMs: endMs,
-            tempDir: overlayTempDir,
-          ),
-        );
-      }
-      if (_cancelRequested) {
-        state = state.copyWith(
-          exportStatus: ExportStatus.cancelled,
-          exportProgress: 0.0,
+          exportStatus: ExportStatus.exporting,
           clearPreparationMessage: true,
           clearPreparationProgress: true,
         );
-        return;
-      }
+      },
+      onProgress: (progress) {
+        if (state.exportStatus != ExportStatus.exporting) return;
+        state = state.copyWith(exportProgress: progress);
+      },
+    );
 
-      // Smart export strategy:
-      // 1) Stream copy when no visual transform is needed for same quality + speed.
-      // 2) Re-encode only when crop/overlay processing is required.
-      final args = useStreamCopy
-          ? <String>[
-              '-hide_banner',
-              if (startMs > 0) ...[
-                '-ss',
-                (startMs / 1000.0).toStringAsFixed(3),
-              ],
-              '-i',
-              inputPath,
-              if (isSegmentedExport) ...[
-                '-t',
-                (targetDurationMs / 1000.0).toStringAsFixed(3),
-              ],
-              '-map',
-              '0:v:0',
-              '-map',
-              '0:a:0?',
-              '-c',
-              'copy',
-              '-movflags',
-              '+faststart',
-              '-avoid_negative_ts',
-              'make_zero',
-              '-y',
-              normalizedOutputPath,
-            ]
-          : <String>[
-              '-hide_banner',
-              '-fflags',
-              '+genpts',
-              if (startMs > 0) ...[
-                '-ss',
-                (startMs / 1000.0).toStringAsFixed(3),
-              ],
-              '-i',
-              inputPath,
-              for (final overlay in overlays) ...[
-                '-loop',
-                '1',
-                '-i',
-                overlay.path,
-              ],
-              // Annotation overlays are provided as looped still-image inputs.
-              // For full-range exports, adding an explicit duration prevents FFmpeg
-              // from waiting forever on those looped inputs.
-              if (isSegmentedExport || overlays.isNotEmpty) ...[
-                '-t',
-                (targetDurationMs / 1000.0).toStringAsFixed(3),
-              ],
-              if (overlays.isNotEmpty) ...[
-                '-filter_complex',
-                _buildFilterComplex(
-                  overlays: overlays,
-                  cropFilter: normalizedCropFilter,
-                ),
-                '-map',
-                '[vout]',
-              ] else ...[
-                '-vf',
-                '$normalizedCropFilter,setsar=1',
-                '-map',
-                '0:v:0',
-              ],
-              '-map',
-              '0:a:0?',
-              // Use broadly compatible encoding so exported files open reliably
-              // in default OS players outside the app.
-              '-c:v',
-              'libx264',
-              '-preset',
-              'medium',
-              '-crf',
-              '20',
-              '-profile:v',
-              'baseline',
-              '-level',
-              '3.0',
-              '-pix_fmt',
-              'yuv420p',
-              '-c:a',
-              'aac',
-              '-profile:a',
-              'aac_low',
-              '-ar',
-              '44100',
-              '-ac',
-              '2',
-              '-b:a',
-              '192k',
-              '-f',
-              'mp4',
-              '-movflags',
-              '+faststart',
-              '-avoid_negative_ts',
-              'make_zero',
-              '-y', // Overwrite output
-              normalizedOutputPath,
-            ];
-
-      state = state.copyWith(
-        exportStatus: ExportStatus.exporting,
-        clearPreparationMessage: true,
-        clearPreparationProgress: true,
-      );
-
-      // Start FFmpeg process
-      _ffmpegProcess = await Process.start(ffmpegPath, args);
-      // Drain stdout to avoid process pipe backpressure deadlocks.
-      unawaited(_ffmpegProcess!.stdout.drain<void>());
-
-      // Track duration for progress calculation
-      final durationSeconds = targetDurationMs / 1000.0;
-
-      // Monitor stderr for progress (FFmpeg outputs progress to stderr)
-      final stderrLines = <String>[];
-      _ffmpegProcess!.stderr.transform(const SystemEncoding().decoder).listen((
-        data,
-      ) {
-        stderrLines.add(data);
-
-        // Parse progress: look for "time=" in output
-        final timeMatch = RegExp(
-          r'time=(\d+):(\d+):(\d+\.\d+)',
-        ).firstMatch(data);
-        if (timeMatch != null && durationSeconds > 0) {
-          final hours = int.parse(timeMatch.group(1)!);
-          final minutes = int.parse(timeMatch.group(2)!);
-          final seconds = double.parse(timeMatch.group(3)!);
-          final currentSeconds = hours * 3600 + minutes * 60 + seconds;
-          final progress = currentSeconds / durationSeconds;
-          state = state.copyWith(exportProgress: progress.clamp(0.0, 1.0));
-        }
-      });
-
-      // Wait for process to complete
-      final exitCode = await _ffmpegProcess!.exitCode;
-
-      if (_cancelRequested) {
-        // Clean up partial file
-        try {
-          await File(normalizedOutputPath).delete();
-        } catch (_) {}
-        state = state.copyWith(
-          exportStatus: ExportStatus.cancelled,
-          exportProgress: 0.0,
-          clearPreparationMessage: true,
-          clearPreparationProgress: true,
-        );
-      } else if (exitCode == 0) {
-        final outputFile = File(normalizedOutputPath);
-        if (!await outputFile.exists() || await outputFile.length() == 0) {
-          state = state.copyWith(
-            exportStatus: ExportStatus.error,
-            clearPreparationMessage: true,
-            clearPreparationProgress: true,
-            exportError: 'Export completed but output file is invalid.',
-          );
-          return;
-        }
-
-        final validationProcess = await Process.start(ffmpegPath, [
-          '-v',
-          'error',
-          '-i',
-          normalizedOutputPath,
-          '-f',
-          'null',
-          '-',
-        ]);
-        _ffmpegProcess = validationProcess;
-        final validationStdout = StringBuffer();
-        final validationStderr = StringBuffer();
-        final validationStdoutDone = validationProcess.stdout
-            .transform(const SystemEncoding().decoder)
-            .forEach(validationStdout.write);
-        final validationStderrDone = validationProcess.stderr
-            .transform(const SystemEncoding().decoder)
-            .forEach(validationStderr.write);
-        Timer? validationCancelMonitor;
-        if (_cancelRequested) {
-          validationProcess.kill();
-        } else {
-          validationCancelMonitor = Timer.periodic(
-            const Duration(milliseconds: 200),
-            (_) {
-              if (_cancelRequested) {
-                validationProcess.kill();
-              }
-            },
-          );
-        }
-        final validationExitCode = await validationProcess.exitCode;
-        validationCancelMonitor?.cancel();
-        await Future.wait([validationStdoutDone, validationStderrDone]);
-
-        if (_cancelRequested) {
-          try {
-            await File(normalizedOutputPath).delete();
-          } catch (_) {}
-          state = state.copyWith(
-            exportStatus: ExportStatus.cancelled,
-            exportProgress: 0.0,
-            clearPreparationMessage: true,
-            clearPreparationProgress: true,
-          );
-          return;
-        }
-
-        if (validationExitCode != 0) {
-          final validationOutput = validationStderr.toString();
-          final validationMessage = validationOutput.isEmpty
-              ? 'Unknown validation error'
-              : validationOutput.split('\n').take(5).join('\n');
-          try {
-            await File(normalizedOutputPath).delete();
-          } catch (_) {}
-          state = state.copyWith(
-            exportStatus: ExportStatus.error,
-            clearPreparationMessage: true,
-            clearPreparationProgress: true,
-            exportError: 'Exported file failed validation:\n$validationMessage',
-          );
-          return;
-        }
-
+    switch (result.status) {
+      case VideoExportResultStatus.success:
         state = state.copyWith(
           exportStatus: ExportStatus.success,
           exportProgress: 1.0,
           clearPreparationMessage: true,
           clearPreparationProgress: true,
-          exportedFilePath: normalizedOutputPath,
+          exportedFilePath: result.outputPath,
         );
-      } else {
-        try {
-          await File(normalizedOutputPath).delete();
-        } catch (_) {}
-        final tail = stderrLines
-            .join('\n')
-            .split('\n')
-            .where((line) => line.trim().isNotEmpty)
-            .toList();
-        final tailMessage = tail.isEmpty
-            ? 'No ffmpeg stderr output captured.'
-            : tail.skip(tail.length > 12 ? tail.length - 12 : 0).join('\n');
+        break;
+      case VideoExportResultStatus.cancelled:
+        state = state.copyWith(
+          exportStatus: ExportStatus.cancelled,
+          exportProgress: 0.0,
+          clearPreparationMessage: true,
+          clearPreparationProgress: true,
+        );
+        break;
+      case VideoExportResultStatus.error:
         state = state.copyWith(
           exportStatus: ExportStatus.error,
           clearPreparationMessage: true,
           clearPreparationProgress: true,
-          exportError: 'Export failed (exit code: $exitCode)\n$tailMessage',
+          exportError: result.errorMessage ?? 'Failed to export video.',
         );
-      }
-    } catch (e) {
-      state = state.copyWith(
-        exportStatus: ExportStatus.error,
-        clearPreparationMessage: true,
-        clearPreparationProgress: true,
-        exportError: 'Failed to export video: $e',
-      );
-    } finally {
-      _progressTimer?.cancel();
-      _ffmpegProcess = null;
-      if (overlayTempDir != null) {
-        try {
-          if (await overlayTempDir.exists()) {
-            await overlayTempDir.delete(recursive: true);
-          }
-        } catch (_) {}
-      }
+        break;
     }
-  }
-
-  bool _isFullFrameCrop(CropRect rect) {
-    const epsilon = 0.0005;
-    return rect.left.abs() <= epsilon &&
-        rect.top.abs() <= epsilon &&
-        (1.0 - rect.right).abs() <= epsilon &&
-        (1.0 - rect.bottom).abs() <= epsilon;
-  }
-
-  bool _hasAnnotationsInRange({
-    required AnnotationData? annotationData,
-    required int startMs,
-    required int endMs,
-  }) {
-    if (annotationData == null || annotationData.strokes.isEmpty) return false;
-
-    for (final stroke in annotationData.strokes) {
-      final strokeStart = stroke.startTimeMs;
-      final strokeEnd = stroke.endTimeMs > strokeStart
-          ? stroke.endTimeMs
-          : strokeStart + 1;
-      if (strokeEnd <= startMs || strokeStart >= endMs) {
-        continue;
-      }
-      return true;
-    }
-
-    return false;
-  }
-
-  Future<List<_TimedOverlay>> _prepareAnnotationOverlays({
-    required AnnotationData? annotationData,
-    required int videoWidth,
-    required int videoHeight,
-    required int startMs,
-    required int endMs,
-    required Directory tempDir,
-  }) async {
-    if (annotationData == null || annotationData.strokes.isEmpty) {
-      return const [];
-    }
-
-    final fps = annotationData.fps > 0 ? annotationData.fps : 30.0;
-    int snap(int ms) {
-      final frameMs = 1000.0 / fps;
-      final frame = (ms / frameMs).round();
-      return (frame * frameMs).round();
-    }
-
-    final grouped = <int, List<Stroke>>{};
-    for (final stroke in annotationData.strokes) {
-      final keyframeMs = snap(stroke.startTimeMs);
-      grouped.putIfAbsent(keyframeMs, () => <Stroke>[]).add(stroke);
-    }
-
-    if (grouped.isEmpty) return const [];
-
-    final keyframes = grouped.keys.toList()..sort();
-    final overlays = <_TimedOverlay>[];
-
-    for (int i = 0; i < keyframes.length; i++) {
-      if (_cancelRequested) break;
-      final keyframeMs = keyframes[i];
-      final nextKeyframeMs = i + 1 < keyframes.length
-          ? keyframes[i + 1]
-          : endMs;
-
-      final intervalStartMs = keyframeMs > startMs ? keyframeMs : startMs;
-      final intervalEndMs = nextKeyframeMs < endMs ? nextKeyframeMs : endMs;
-      if (intervalEndMs <= intervalStartMs) continue;
-
-      final relativeStart = (intervalStartMs - startMs) / 1000.0;
-      final relativeEnd = (intervalEndMs - startMs) / 1000.0;
-
-      final overlayPath = path.join(
-        tempDir.path,
-        'overlay_${i.toString().padLeft(4, '0')}.png',
-      );
-
-      await _overlayRenderer.renderOverlayImage(
-        outputPath: overlayPath,
-        strokes: grouped[keyframeMs]!,
-        width: videoWidth,
-        height: videoHeight,
-        viewportWidth: annotationData.viewportWidth,
-        viewportHeight: annotationData.viewportHeight,
-      );
-
-      overlays.add(
-        _TimedOverlay(
-          path: overlayPath,
-          startSec: relativeStart,
-          endSec: relativeEnd,
-        ),
-      );
-    }
-
-    return overlays;
-  }
-
-  String _buildFilterComplex({
-    required List<_TimedOverlay> overlays,
-    required String cropFilter,
-  }) {
-    if (overlays.isEmpty) {
-      return '[0:v]$cropFilter,setsar=1[vout]';
-    }
-
-    final steps = <String>[];
-    String previous = '0:v';
-
-    for (int i = 0; i < overlays.length; i++) {
-      final inputLabel = '${i + 1}:v';
-      final outputLabel = i == overlays.length - 1 ? 'v_overlayed' : 'v$i';
-      final start = overlays[i].startSec.toStringAsFixed(3);
-      final end = overlays[i].endSec.toStringAsFixed(3);
-      steps.add(
-        '[$previous][$inputLabel]overlay=enable=\'between(t\\,$start\\,$end)\'[$outputLabel]',
-      );
-      previous = outputLabel;
-    }
-
-    steps.add('[$previous]$cropFilter,setsar=1[vout]');
-    return steps.join(';');
-  }
-
-  String _buildNormalizedCropFilter(CropRect rect) {
-    final safeLeft = rect.left.clamp(0.0, 1.0);
-    final safeTop = rect.top.clamp(0.0, 1.0);
-    final safeWidth = rect.width.clamp(0.01, 1.0);
-    final safeHeight = rect.height.clamp(0.01, 1.0);
-
-    String f(double v) => v.toStringAsFixed(6);
-
-    final wExpr = 'max(2\\,floor(iw*${f(safeWidth)}/2)*2)';
-    final hExpr = 'max(2\\,floor(ih*${f(safeHeight)}/2)*2)';
-    final xExpr = 'min(max(0\\,floor(iw*${f(safeLeft)}))\\,iw-$wExpr)';
-    final yExpr = 'min(max(0\\,floor(ih*${f(safeTop)}))\\,ih-$hExpr)';
-
-    return 'crop=$wExpr:$hExpr:$xExpr:$yExpr';
-  }
-
-  String _normalizeOutputPath(String outputPath) {
-    final trimmed = outputPath.trim();
-    final extension = path.extension(trimmed).toLowerCase();
-
-    final hasValidExtension =
-        extension.isNotEmpty &&
-        extension != '.' &&
-        RegExp(r'^\.[a-z0-9]+$').hasMatch(extension);
-
-    if (!hasValidExtension) {
-      return '${trimmed.replaceAll(RegExp(r'[. ]+$'), '')}.mp4';
-    }
-
-    if (extension != '.mp4') {
-      final withoutExt = trimmed.substring(
-        0,
-        trimmed.length - extension.length,
-      );
-      return '$withoutExt.mp4';
-    }
-
-    return trimmed.replaceAll(RegExp(r'[. ]+$'), '');
   }
 
   /// Cancel ongoing export
   void cancelExport() {
-    _cancelRequested = true;
-    _ffmpegProcess?.kill();
-    _progressTimer?.cancel();
+    _videoExportService.cancel();
   }
 
   /// Reset export state
@@ -1282,17 +805,8 @@ class CropNotifier extends StateNotifier<CropState> {
 
 /// Crop provider instance
 final cropProvider = StateNotifierProvider<CropNotifier, CropState>((ref) {
-  return CropNotifier(ref);
+  return CropNotifier(
+    ref,
+    videoExportService: ref.read(videoExportServiceProvider),
+  );
 });
-
-class _TimedOverlay {
-  final String path;
-  final double startSec;
-  final double endSec;
-
-  const _TimedOverlay({
-    required this.path,
-    required this.startSec,
-    required this.endSec,
-  });
-}
