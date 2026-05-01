@@ -63,6 +63,83 @@ void main() {
       expect(StrokeSimplifier.simplifyPenStroke(shortPen), same(shortPen));
       expect(StrokeSimplifier.simplifyPenStroke(line), same(line));
     });
+
+    test(
+      'does not collapse compact closed pen strokes into a zero-length path',
+      () {
+        final points = <StrokePoint>[
+          for (var i = 0; i < 20; i += 1)
+            StrokePoint(
+              x: 0.5 + (i.isEven ? 0.0005 : -0.0005),
+              y: 0.5 + (i < 10 ? 0.0005 : -0.0005),
+              timestampMs: i,
+            ),
+          const StrokePoint(x: 0.5, y: 0.5, timestampMs: 20),
+        ];
+        final stroke = _penStroke(points);
+
+        final simplified = StrokeSimplifier.simplifyPenStroke(stroke);
+
+        expect(simplified, same(stroke));
+        expect(simplified.points.length, points.length);
+      },
+    );
+
+    test(
+      'does not simplify compact crossed pen strokes into a tiny segment',
+      () {
+        final points = <StrokePoint>[
+          for (var i = 0; i < 20; i += 1)
+            StrokePoint(
+              x: 0.5 + (i * 0.0002),
+              y: 0.5 + (i.isEven ? 0.0004 : -0.0004),
+              timestampMs: i,
+            ),
+        ];
+        final stroke = _penStroke(points);
+
+        final simplifiedPoints = StrokeSimplifier.simplifyPoints(
+          points,
+          StrokeSimplifier.defaultTolerance,
+        );
+        final simplified = StrokeSimplifier.simplifyPenStroke(stroke);
+
+        expect(simplifiedPoints.length, lessThan(points.length));
+        expect(simplified, same(stroke));
+        expect(simplified.points.length, points.length);
+      },
+    );
+
+    test('does not simplify self-intersecting pen strokes', () {
+      final points = <StrokePoint>[
+        ..._linePoints(
+          const StrokePoint(x: 0.45, y: 0.45),
+          const StrokePoint(x: 0.55, y: 0.55),
+          startTimestampMs: 0,
+        ),
+        ..._linePoints(
+          const StrokePoint(x: 0.55, y: 0.55),
+          const StrokePoint(x: 0.55, y: 0.45),
+          startTimestampMs: 10,
+        ).skip(1),
+        ..._linePoints(
+          const StrokePoint(x: 0.55, y: 0.45),
+          const StrokePoint(x: 0.45, y: 0.55),
+          startTimestampMs: 20,
+        ).skip(1),
+      ];
+      final stroke = _penStroke(points);
+
+      final simplifiedPoints = StrokeSimplifier.simplifyPoints(
+        points,
+        StrokeSimplifier.defaultTolerance,
+      );
+      final simplified = StrokeSimplifier.simplifyPenStroke(stroke);
+
+      expect(simplifiedPoints.length, lessThan(points.length));
+      expect(simplified, same(stroke));
+      expect(simplified.points.length, points.length);
+    });
   });
 }
 
@@ -76,4 +153,19 @@ Stroke _penStroke(List<StrokePoint> points) {
     startTimeMs: 0,
     endTimeMs: 100,
   );
+}
+
+List<StrokePoint> _linePoints(
+  StrokePoint start,
+  StrokePoint end, {
+  required int startTimestampMs,
+}) {
+  return [
+    for (var i = 0; i < 10; i += 1)
+      StrokePoint(
+        x: start.x + ((end.x - start.x) * i / 9),
+        y: start.y + ((end.y - start.y) * i / 9),
+        timestampMs: startTimestampMs + i,
+      ),
+  ];
 }

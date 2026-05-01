@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/stroke.dart';
@@ -50,6 +51,7 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
   late final TextEditingController _inlineTextController;
   late final FocusNode _inlineTextFocusNode;
   String? _editingStrokeId;
+  int? _activePointer;
 
   @override
   void initState() {
@@ -170,12 +172,14 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
               : MouseCursor.defer,
           child: Stack(
             children: [
-              GestureDetector(
-                onPanStart: (details) => _handlePanStart(details, viewportSize),
-                onPanUpdate: (details) =>
-                    _handlePanUpdate(details, viewportSize),
-                onPanEnd: (_) => _handlePanEnd(),
-                onPanCancel: () => _handlePanCancel(),
+              Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (event) =>
+                    _handlePointerDown(event, viewportSize),
+                onPointerMove: (event) =>
+                    _handlePointerMove(event, viewportSize),
+                onPointerUp: (event) => _handlePointerUp(event),
+                onPointerCancel: (event) => _handlePointerCancel(event),
                 child: CustomPaint(
                   size: Size.infinite,
                   painter: AnnotationPainter(
@@ -442,7 +446,40 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
         );
   }
 
-  void _handlePanStart(DragStartDetails details, Size viewportSize) {
+  void _handlePointerDown(PointerDownEvent event, Size viewportSize) {
+    if (_activePointer != null) return;
+    if (!_isPrimaryDrawingPointer(event)) return;
+
+    _activePointer = event.pointer;
+    _handleStrokeStart(event.localPosition, viewportSize);
+  }
+
+  void _handlePointerMove(PointerMoveEvent event, Size viewportSize) {
+    if (_activePointer != event.pointer) return;
+    _handleStrokeUpdate(event.localPosition, viewportSize);
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    if (_activePointer != event.pointer) return;
+    _activePointer = null;
+    _handleStrokeEnd();
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    if (_activePointer != event.pointer) return;
+    _activePointer = null;
+    _handleStrokeCancel();
+  }
+
+  bool _isPrimaryDrawingPointer(PointerDownEvent event) {
+    if (event.kind == PointerDeviceKind.mouse) {
+      return event.buttons & kPrimaryMouseButton != 0;
+    }
+
+    return true;
+  }
+
+  void _handleStrokeStart(Offset position, Size viewportSize) {
     final annotationState = ref.read(annotationProvider);
     final notifier = ref.read(annotationProvider.notifier);
 
@@ -453,24 +490,24 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     }
 
     final now = DateTime.now();
-    final position = details.localPosition;
 
     // Check for double-tap to edit text annotations
     if (_lastTapTime != null &&
         _lastTapPosition != null &&
         now.difference(_lastTapTime!).inMilliseconds < 300 &&
         (position - _lastTapPosition!).distance < 20) {
-      _handleDoubleTap(position, viewportSize);
       _lastTapTime = null;
       _lastTapPosition = null;
-      return;
+      if (_handleDoubleTap(position, viewportSize)) {
+        return;
+      }
+    } else {
+      _lastTapTime = now;
+      _lastTapPosition = position;
     }
 
-    _lastTapTime = now;
-    _lastTapPosition = position;
-
     final transformer = _createTransformer(viewportSize);
-    final normalizedPoint = transformer.toNormalized(details.localPosition);
+    final normalizedPoint = transformer.toNormalized(position);
 
     // Check if user clicked on a corner handle of a selected stroke
     if (annotationState.currentTool == DrawingTool.select &&
@@ -497,7 +534,7 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     notifier.startStroke(normalizedPoint);
   }
 
-  void _handleDoubleTap(Offset position, Size viewportSize) {
+  bool _handleDoubleTap(Offset position, Size viewportSize) {
     final transformer = _createTransformer(viewportSize);
     final normalizedPoint = transformer.toNormalized(position);
     final notifier = ref.read(annotationProvider.notifier);
@@ -517,19 +554,21 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
             normalizedPoint.y >= bounds.top - threshold &&
             normalizedPoint.y <= bounds.bottom + threshold) {
           notifier.editTextStroke(stroke.id);
-          return;
+          return true;
         }
       }
     }
+
+    return false;
   }
 
-  void _handlePanUpdate(DragUpdateDetails details, Size viewportSize) {
+  void _handleStrokeUpdate(Offset position, Size viewportSize) {
     final transformer = _createTransformer(viewportSize);
-    final normalizedPoint = transformer.toNormalized(details.localPosition);
+    final normalizedPoint = transformer.toNormalized(position);
 
     // Update cursor position for eraser visual feedback
     setState(() {
-      _currentCursorPosition = details.localPosition;
+      _currentCursorPosition = position;
     });
 
     final annotationState = ref.read(annotationProvider);
@@ -544,7 +583,7 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     notifier.addPointToStroke(normalizedPoint);
   }
 
-  void _handlePanEnd() {
+  void _handleStrokeEnd() {
     final annotationState = ref.read(annotationProvider);
     final notifier = ref.read(annotationProvider.notifier);
 
@@ -556,12 +595,17 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     notifier.finishStroke();
   }
 
-  void _handlePanCancel() {
+  void _handleStrokeCancel() {
     final annotationState = ref.read(annotationProvider);
     final notifier = ref.read(annotationProvider.notifier);
 
     if (annotationState.isScaling) {
       notifier.finishScaling();
+      return;
+    }
+
+    if (annotationState.currentStroke != null) {
+      notifier.finishStroke();
       return;
     }
 

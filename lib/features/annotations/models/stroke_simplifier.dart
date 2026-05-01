@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'stroke.dart';
 
 class StrokeSimplifier {
@@ -18,6 +20,14 @@ class StrokeSimplifier {
 
     final simplifiedPoints = simplifyPoints(stroke.points, tolerance);
     if (simplifiedPoints.length == stroke.points.length) {
+      return stroke;
+    }
+
+    if (_shouldKeepOriginalPenStroke(
+      originalPoints: stroke.points,
+      simplifiedPoints: simplifiedPoints,
+      tolerance: tolerance,
+    )) {
       return stroke;
     }
 
@@ -122,5 +132,136 @@ class StrokeSimplifier {
     final dx = a.x - b.x;
     final dy = a.y - b.y;
     return dx * dx + dy * dy;
+  }
+
+  static bool _shouldKeepOriginalPenStroke({
+    required List<StrokePoint> originalPoints,
+    required List<StrokePoint> simplifiedPoints,
+    required double tolerance,
+  }) {
+    if (originalPoints.length <= 2) {
+      return false;
+    }
+
+    if (_hasSelfIntersection(originalPoints)) {
+      return true;
+    }
+
+    if (_isCompactStroke(originalPoints, tolerance)) {
+      return true;
+    }
+
+    if (simplifiedPoints.length > 2) {
+      return false;
+    }
+
+    var pathLength = 0.0;
+    for (var i = 1; i < originalPoints.length; i += 1) {
+      pathLength += _distance(originalPoints[i - 1], originalPoints[i]);
+    }
+
+    final endpointDistance = _distance(
+      simplifiedPoints.first,
+      simplifiedPoints.last,
+    );
+    final detourDistance = pathLength - endpointDistance;
+
+    return detourDistance > math.max(tolerance * 2, endpointDistance * 0.5);
+  }
+
+  static bool _isCompactStroke(List<StrokePoint> points, double tolerance) {
+    var minX = double.infinity;
+    var minY = double.infinity;
+    var maxX = double.negativeInfinity;
+    var maxY = double.negativeInfinity;
+
+    for (final point in points) {
+      if (point.x < minX) minX = point.x;
+      if (point.y < minY) minY = point.y;
+      if (point.x > maxX) maxX = point.x;
+      if (point.y > maxY) maxY = point.y;
+    }
+
+    final width = maxX - minX;
+    final height = maxY - minY;
+    final compactThreshold = tolerance * 4;
+    return math.sqrt(width * width + height * height) <= compactThreshold;
+  }
+
+  static bool _hasSelfIntersection(List<StrokePoint> points) {
+    if (points.length < 4) {
+      return false;
+    }
+
+    for (var firstStart = 0; firstStart < points.length - 1; firstStart += 1) {
+      final firstEnd = firstStart + 1;
+      for (
+        var secondStart = firstEnd + 1;
+        secondStart < points.length - 1;
+        secondStart += 1
+      ) {
+        final secondEnd = secondStart + 1;
+        if (firstStart == 0 &&
+            secondEnd == points.length - 1 &&
+            _distanceSquared(points.first, points.last) <= 1e-12) {
+          continue;
+        }
+
+        if (_segmentsIntersect(
+          points[firstStart],
+          points[firstEnd],
+          points[secondStart],
+          points[secondEnd],
+        )) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  static bool _segmentsIntersect(
+    StrokePoint a,
+    StrokePoint b,
+    StrokePoint c,
+    StrokePoint d,
+  ) {
+    final orientation1 = _orientation(a, b, c);
+    final orientation2 = _orientation(a, b, d);
+    final orientation3 = _orientation(c, d, a);
+    final orientation4 = _orientation(c, d, b);
+
+    if (orientation1 != orientation2 && orientation3 != orientation4) {
+      return true;
+    }
+
+    return orientation1 == 0 && _pointOnSegment(a, c, b) ||
+        orientation2 == 0 && _pointOnSegment(a, d, b) ||
+        orientation3 == 0 && _pointOnSegment(c, a, d) ||
+        orientation4 == 0 && _pointOnSegment(c, b, d);
+  }
+
+  static int _orientation(StrokePoint a, StrokePoint b, StrokePoint c) {
+    const epsilon = 1e-12;
+    final value = (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
+    if (value.abs() <= epsilon) {
+      return 0;
+    }
+
+    return value > 0 ? 1 : 2;
+  }
+
+  static bool _pointOnSegment(StrokePoint a, StrokePoint point, StrokePoint b) {
+    return point.x >= math.min(a.x, b.x) &&
+        point.x <= math.max(a.x, b.x) &&
+        point.y >= math.min(a.y, b.y) &&
+        point.y <= math.max(a.y, b.y);
+  }
+
+  static double _distance(StrokePoint a, StrokePoint b) {
+    final dx = a.x - b.x;
+    final dy = a.y - b.y;
+    return math.sqrt(dx * dx + dy * dy);
   }
 }

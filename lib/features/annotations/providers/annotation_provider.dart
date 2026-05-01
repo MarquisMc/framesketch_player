@@ -5,7 +5,6 @@ import 'package:uuid/uuid.dart';
 import '../models/annotation_timeline_index.dart';
 import '../models/frame_marker.dart';
 import '../models/stroke.dart';
-import '../models/stroke_simplifier.dart';
 import '../../../core/models/annotation_data.dart';
 import '../../../core/services/annotation_storage_service.dart';
 import '../../../core/utils/coordinate_transformer.dart';
@@ -87,6 +86,7 @@ class AnnotationState {
     StrokePoint? selectionBoxStartPoint,
     StrokePoint? selectionBoxEndPoint,
     bool? isBoxSelecting,
+    bool clearCurrentStroke = false,
     bool clearSelectedStroke = false,
     bool clearDragStartPoint = false,
     bool clearSelectionBox = false,
@@ -106,7 +106,6 @@ class AnnotationState {
       currentTool: currentTool ?? this.currentTool,
       currentColor: currentColor ?? this.currentColor,
       currentStrokeWidth: currentStrokeWidth ?? this.currentStrokeWidth,
-      currentStroke: currentStroke,
       isDrawing: isDrawing ?? this.isDrawing,
       hasUnsavedChanges: hasUnsavedChanges ?? this.hasUnsavedChanges,
       selectedStrokeId: clearSelectedStroke
@@ -125,6 +124,9 @@ class AnnotationState {
           ? null
           : (selectionBoxEndPoint ?? this.selectionBoxEndPoint),
       isBoxSelecting: isBoxSelecting ?? this.isBoxSelecting,
+      currentStroke: clearCurrentStroke
+          ? null
+          : (currentStroke ?? this.currentStroke),
       currentFontSize: currentFontSize ?? this.currentFontSize,
       pendingTextStrokeId: clearPendingTextStrokeId
           ? null
@@ -594,6 +596,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
       state = state.copyWith(
         annotationData: migratedData,
+        clearCurrentStroke: true,
         hasUnsavedChanges: didMigrate,
       );
 
@@ -617,7 +620,11 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
         viewportHeight: 0,
       );
 
-      state = state.copyWith(annotationData: newData, hasUnsavedChanges: false);
+      state = state.copyWith(
+        annotationData: newData,
+        clearCurrentStroke: true,
+        hasUnsavedChanges: false,
+      );
     }
   }
 
@@ -636,6 +643,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
           : existingData.copyWith(youtubeUrl: youtubeUrl);
       state = state.copyWith(
         annotationData: normalizedData,
+        clearCurrentStroke: true,
         hasUnsavedChanges: normalizedData != existingData,
       );
       return;
@@ -653,7 +661,11 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       viewportHeight: 0,
     );
 
-    state = state.copyWith(annotationData: newData, hasUnsavedChanges: false);
+    state = state.copyWith(
+      annotationData: newData,
+      clearCurrentStroke: true,
+      hasUnsavedChanges: false,
+    );
   }
 
   /// Initialize annotation state from an imported/shared annotation JSON.
@@ -662,6 +674,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       annotationData: data,
       undoStack: const [],
       redoStack: const [],
+      clearCurrentStroke: true,
       clearSelectedStroke: true,
       clearSelectionBox: true,
       clearDragStartPoint: true,
@@ -710,7 +723,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Set current drawing tool
   void setTool(DrawingTool tool) {
-    state = state.copyWith(currentTool: tool);
+    state = state.copyWith(currentTool: tool, clearCurrentStroke: true);
   }
 
   /// Toggle whether keyframes are created automatically while drawing.
@@ -1170,9 +1183,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     if (state.currentStroke == null) return;
 
-    final finalizedStroke = StrokeSimplifier.simplifyPenStroke(
-      state.currentStroke!,
-    );
+    final finalizedStroke = state.currentStroke!;
     final updatedStrokes = [...state.allStrokes, finalizedStroke];
     final updatedData = state.annotationData!.copyWith(
       strokes: updatedStrokes,
@@ -1181,7 +1192,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     state = state.copyWith(
       annotationData: updatedData,
-      currentStroke: null,
+      clearCurrentStroke: true,
       isDrawing: false,
       hasUnsavedChanges: true,
       redoStack: [], // Clear redo stack when new action is performed
@@ -1191,7 +1202,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   /// Cancel current stroke
   void cancelStroke() {
     state = state.copyWith(
-      currentStroke: null,
+      clearCurrentStroke: true,
       isDrawing: false,
       isBoxSelecting: false,
       clearSelectionBox: true,
@@ -1246,6 +1257,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     state = state.copyWith(
       annotationData: updatedData,
+      clearCurrentStroke: true,
       undoStack: [],
       redoStack: [],
       hasUnsavedChanges: true,
