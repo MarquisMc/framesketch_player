@@ -13,6 +13,9 @@ import '../../player/providers/player_provider.dart';
 
 enum KeyframeCreationMode { automatic, manual }
 
+const double _textReferenceVideoHeight = 720.0;
+const double _fallbackTextReferenceAspectRatio = 16.0 / 9.0;
+
 /// Annotation state
 class AnnotationState {
   final AnnotationData? annotationData;
@@ -53,7 +56,7 @@ class AnnotationState {
     this.selectionBoxStartPoint,
     this.selectionBoxEndPoint,
     this.isBoxSelecting = false,
-    this.currentFontSize = 16.0,
+    this.currentFontSize = 32.0,
     this.pendingTextStrokeId,
     this.isScaling = false,
     this.scalingCorner,
@@ -222,23 +225,23 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   }
 
   double _minimumTextWidthNormalized(double fontSize) {
-    final videoSize = _effectiveVideoSizeForTransform();
+    final referenceWidth = _textReferenceWidth();
     final minimumWidthPx = (fontSize * 4.0).clamp(120.0, double.infinity);
-    if (videoSize == null || videoSize.width <= 0) {
-      return 0.08 * (fontSize / 16.0);
-    }
-
-    return minimumWidthPx / videoSize.width;
+    return minimumWidthPx / referenceWidth;
   }
 
   double _minimumTextHeightNormalized(double fontSize) {
-    final videoSize = _effectiveVideoSizeForTransform();
     final minimumHeightPx = (fontSize * 1.8).clamp(36.0, double.infinity);
-    if (videoSize == null || videoSize.height <= 0) {
-      return 0.03 * (fontSize / 16.0);
-    }
+    return minimumHeightPx / _textReferenceVideoHeight;
+  }
 
-    return minimumHeightPx / videoSize.height;
+  double _textReferenceWidth() {
+    final videoSize = _effectiveVideoSizeForTransform();
+    final aspectRatio =
+        videoSize == null || videoSize.width <= 0 || videoSize.height <= 0
+        ? _fallbackTextReferenceAspectRatio
+        : videoSize.width / videoSize.height;
+    return _textReferenceVideoHeight * aspectRatio;
   }
 
   Size _measureTextBounds(
@@ -250,13 +253,13 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     final measuredText = rawText.isEmpty
         ? (includeHintText ? 'Type text...' : ' ')
         : rawText;
-    final videoSize = _effectiveVideoSizeForTransform();
+    final referenceWidth = _textReferenceWidth();
 
-    if (videoSize != null && videoSize.width > 0 && videoSize.height > 0) {
+    if (referenceWidth > 0) {
       final maxWidthPx = maxWidthNormalized == null
           ? double.infinity
-          : (maxWidthNormalized * videoSize.width)
-                .clamp(1.0, videoSize.width)
+          : (maxWidthNormalized * referenceWidth)
+                .clamp(1.0, referenceWidth)
                 .toDouble();
       final textPainter = TextPainter(
         text: TextSpan(
@@ -268,8 +271,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       )..layout(maxWidth: maxWidthPx);
 
       return Size(
-        textPainter.width / videoSize.width,
-        textPainter.height / videoSize.height,
+        textPainter.width / referenceWidth,
+        textPainter.height / _textReferenceVideoHeight,
       );
     }
 
@@ -283,8 +286,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     final effectiveChars = longestLineLength == 0 ? 1 : longestLineLength;
     final effectiveFontSize = stroke.fontSize;
-    var estimatedWidth = effectiveChars * 0.008 * (effectiveFontSize / 16.0);
-    var estimatedHeight = lines.length * 0.028 * (effectiveFontSize / 16.0);
+    var estimatedWidth = effectiveChars * 0.008 * (effectiveFontSize / 32.0);
+    var estimatedHeight = lines.length * 0.028 * (effectiveFontSize / 32.0);
 
     if (maxWidthNormalized != null && estimatedWidth > maxWidthNormalized) {
       final lineCount = (estimatedWidth / maxWidthNormalized)
@@ -947,7 +950,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Set font size for text tool
   void setFontSize(double size) {
-    final normalizedSize = size.clamp(8.0, 72.0).toDouble();
+    final normalizedSize = size.clamp(12.0, 100.0).toDouble();
     final selectedIds = _selectedStrokeIdSet();
     var didUpdateSelectedStroke = false;
 

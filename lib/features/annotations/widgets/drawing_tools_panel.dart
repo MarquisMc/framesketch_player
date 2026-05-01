@@ -326,11 +326,11 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
             Padding(
               padding: const EdgeInsets.all(16),
               child: AnnotationSizeControl(
-                label: showTextSizeControl ? 'Text Height' : 'Stroke Width',
+                label: showTextSizeControl ? 'Text Size' : 'Stroke Width',
                 value: showTextSizeControl ? activeFontSize : activeStrokeWidth,
-                min: showTextSizeControl ? 8.0 : 1.0,
-                max: showTextSizeControl ? 72.0 : 10.0,
-                divisions: showTextSizeControl ? 32 : 18,
+                min: showTextSizeControl ? 12.0 : 1.0,
+                max: showTextSizeControl ? 100.0 : 10.0,
+                divisions: showTextSizeControl ? 44 : 18,
                 isTextSize: showTextSizeControl,
                 onChanged: showTextSizeControl
                     ? annotationNotifier.setFontSize

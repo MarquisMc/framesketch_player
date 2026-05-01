@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../../features/annotations/models/stroke.dart';
 
+const double _textReferenceVideoHeight = 720.0;
+
 @immutable
 class OverlayTransform {
   final int outputWidth;
@@ -121,7 +123,9 @@ class AnnotationOverlayRendererService {
       videoTopInViewport: 0.0,
       videoWidthInViewport: safeOutputWidth.toDouble(),
       videoHeightInViewport: safeOutputHeight.toDouble(),
-      styleScaleFactor: 1.0,
+      styleScaleFactor: (safeOutputHeight / _textReferenceVideoHeight)
+          .clamp(0.01, double.infinity)
+          .toDouble(),
       usesViewportProjection: false,
       sourceCropLeft: sourceCropLeft,
       sourceCropTop: sourceCropTop,

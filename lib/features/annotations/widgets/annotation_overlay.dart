@@ -6,12 +6,32 @@ import '../providers/annotation_provider.dart';
 import '../../player/providers/player_provider.dart';
 import '../../../core/utils/coordinate_transformer.dart';
 
+const double _textReferenceVideoHeight = 720.0;
+
 TextStyle _textStyleForStroke(Stroke stroke, {double? fontSize, Color? color}) {
   return TextStyle(
     color: color ?? stroke.color,
     fontSize: fontSize ?? stroke.fontSize,
     height: 1.2,
   );
+}
+
+double _videoPixelScale(CoordinateTransformer transformer) {
+  final videoRect = transformer.videoRectInViewport;
+  if (videoRect.width <= 0 || videoRect.height <= 0) {
+    return 1.0;
+  }
+
+  return (videoRect.height / _textReferenceVideoHeight)
+      .clamp(0.01, double.infinity)
+      .toDouble();
+}
+
+double _scaledFontSizeForStroke(
+  Stroke stroke,
+  CoordinateTransformer transformer,
+) {
+  return max(1.0, stroke.fontSize * _videoPixelScale(transformer));
 }
 
 /// Annotation overlay widget for drawing on video
@@ -47,8 +67,8 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     super.dispose();
   }
 
-  Size _estimateTextSize(Stroke stroke) {
-    final effectiveFontSize = stroke.fontSize;
+  Size _estimateTextSize(Stroke stroke, CoordinateTransformer transformer) {
+    final effectiveFontSize = _scaledFontSizeForStroke(stroke, transformer);
     final textSpan = TextSpan(
       text: stroke.text ?? '',
       style: _textStyleForStroke(stroke, fontSize: effectiveFontSize),
@@ -61,7 +81,7 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     return Size(textPainter.width, textPainter.height);
   }
 
-  Rect _textBoundsNormalized(Stroke stroke, Size viewportSize) {
+  Rect _textBoundsNormalized(Stroke stroke, CoordinateTransformer transformer) {
     final anchor = stroke.points.first;
     if (stroke.points.length >= 2) {
       final p2 = stroke.points.last;
@@ -72,15 +92,12 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
       return Rect.fromLTRB(left, top, right, bottom);
     }
 
-    final estimatedSize = _estimateTextSize(stroke);
-    final width = estimatedSize.width / viewportSize.width;
-    final height = estimatedSize.height / viewportSize.height;
-    return Rect.fromLTRB(
-      anchor.x,
-      anchor.y,
-      anchor.x + width,
-      anchor.y + height,
+    final estimatedSize = _estimateTextSize(stroke, transformer);
+    final anchorOffset = transformer.toViewport(anchor);
+    final bottomRight = transformer.toNormalized(
+      anchorOffset + Offset(estimatedSize.width, estimatedSize.height),
     );
+    return Rect.fromLTRB(anchor.x, anchor.y, bottomRight.x, bottomRight.y);
   }
 
   Size? _resolveVideoSize() {
@@ -260,15 +277,36 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     ref.read(annotationProvider.notifier).finalizePendingTextStroke();
   }
 
+  _TextBoxDefaults _textBoxDefaults(
+    Stroke stroke,
+    CoordinateTransformer transformer,
+    Offset anchor,
+  ) {
+    final videoScale = _videoPixelScale(transformer);
+    final scaledFontSize = _scaledFontSizeForStroke(stroke, transformer);
+    final fallbackBottomRight = Offset(
+      anchor.dx + max(120 * videoScale, scaledFontSize * 4.0),
+      anchor.dy + max((stroke.fontSize + 12) * videoScale, 36 * videoScale),
+    );
+
+    return _TextBoxDefaults(
+      minWidth: max(120.0 * videoScale, scaledFontSize * 4.0),
+      minHeight: max(36.0 * videoScale, scaledFontSize * 1.8),
+      fallbackBottomRight: fallbackBottomRight,
+      scaledFontSize: scaledFontSize,
+    );
+  }
+
   Widget _buildInlineTextEditor(Stroke stroke, Size viewportSize) {
     final transformer = _createTransformer(viewportSize);
     final anchor = transformer.toViewport(stroke.points.first);
+    final defaults = _textBoxDefaults(stroke, transformer, anchor);
     final bottomRight = stroke.points.length >= 2
         ? transformer.toViewport(stroke.points.last)
-        : Offset(anchor.dx + 120, anchor.dy + max(stroke.fontSize + 12, 36));
+        : defaults.fallbackBottomRight;
     final rect = Rect.fromPoints(anchor, bottomRight);
-    final minWidth = max(120.0, stroke.fontSize * 4.0);
-    final minHeight = max(36.0, stroke.fontSize * 1.8);
+    final minWidth = defaults.minWidth;
+    final minHeight = defaults.minHeight;
     final width = max(rect.width, minWidth).clamp(80.0, viewportSize.width);
     final height = max(rect.height, minHeight).clamp(32.0, viewportSize.height);
     final maxLeft = max(0.0, viewportSize.width - width);
@@ -314,7 +352,10 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
             textAlignVertical: TextAlignVertical.top,
             minLines: 1,
             maxLines: null,
-            style: _textStyleForStroke(stroke),
+            style: _textStyleForStroke(
+              stroke,
+              fontSize: defaults.scaledFontSize,
+            ),
             decoration: InputDecoration(
               isDense: true,
               border: InputBorder.none,
@@ -325,6 +366,7 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
               hintText: 'Type text...',
               hintStyle: _textStyleForStroke(
                 stroke,
+                fontSize: defaults.scaledFontSize,
                 color: stroke.color.withValues(alpha: 0.6),
               ),
             ),
@@ -337,13 +379,14 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
   void _autoGrowEditingTextBox(Stroke stroke, Size viewportSize, String text) {
     final transformer = _createTransformer(viewportSize);
     final anchor = transformer.toViewport(stroke.points.first);
+    final defaults = _textBoxDefaults(stroke, transformer, anchor);
     final bottomRight = stroke.points.length >= 2
         ? transformer.toViewport(stroke.points.last)
-        : Offset(anchor.dx + 120, anchor.dy + max(stroke.fontSize + 12, 36));
+        : defaults.fallbackBottomRight;
     final currentRect = Rect.fromPoints(anchor, bottomRight);
 
-    final minWidth = max(120.0, stroke.fontSize * 4.0);
-    final minHeight = max(36.0, stroke.fontSize * 1.8);
+    final minWidth = defaults.minWidth;
+    final minHeight = defaults.minHeight;
     final currentWidth = max(currentRect.width, minWidth);
     final currentHeight = max(currentRect.height, minHeight);
 
@@ -358,7 +401,7 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     final measuredText = text.isEmpty ? 'Type text...' : text;
     final baseSpan = TextSpan(
       text: measuredText,
-      style: _textStyleForStroke(stroke),
+      style: _textStyleForStroke(stroke, fontSize: defaults.scaledFontSize),
     );
     final targetWidth = currentWidth.clamp(minWidth, availableWidth).toDouble();
 
@@ -466,7 +509,7 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
       if (stroke.tool == DrawingTool.text &&
           stroke.text != null &&
           stroke.text!.isNotEmpty) {
-        final bounds = _textBoundsNormalized(stroke, viewportSize);
+        final bounds = _textBoundsNormalized(stroke, transformer);
         const threshold = 0.02;
 
         if (normalizedPoint.x >= bounds.left - threshold &&
@@ -545,7 +588,10 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
       final position = transformer.toViewport(stroke.points.first);
       final textSpan = TextSpan(
         text: stroke.text!,
-        style: _textStyleForStroke(stroke),
+        style: _textStyleForStroke(
+          stroke,
+          fontSize: _scaledFontSizeForStroke(stroke, transformer),
+        ),
       );
       final textPainter = TextPainter(
         text: textSpan,
@@ -1011,7 +1057,10 @@ class AnnotationPainter extends CustomPainter {
 
     final textSpan = TextSpan(
       text: stroke.text!,
-      style: _textStyleForStroke(stroke),
+      style: _textStyleForStroke(
+        stroke,
+        fontSize: _scaledFontSizeForStroke(stroke, transformer),
+      ),
     );
 
     final textPainter = TextPainter(
@@ -1055,7 +1104,10 @@ class AnnotationPainter extends CustomPainter {
 
         final textSpan = TextSpan(
           text: stroke.text!,
-          style: _textStyleForStroke(stroke),
+          style: _textStyleForStroke(
+            stroke,
+            fontSize: _scaledFontSizeForStroke(stroke, transformer),
+          ),
         );
         final textPainter = TextPainter(
           text: textSpan,
@@ -1273,4 +1325,18 @@ class AnnotationPainter extends CustomPainter {
         oldDelegate.isBoxSelecting != isBoxSelecting ||
         oldDelegate.editingTextStrokeId != editingTextStrokeId;
   }
+}
+
+class _TextBoxDefaults {
+  const _TextBoxDefaults({
+    required this.minWidth,
+    required this.minHeight,
+    required this.fallbackBottomRight,
+    required this.scaledFontSize,
+  });
+
+  final double minWidth;
+  final double minHeight;
+  final Offset fallbackBottomRight;
+  final double scaledFontSize;
 }

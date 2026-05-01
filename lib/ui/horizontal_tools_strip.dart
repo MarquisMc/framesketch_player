@@ -26,13 +26,9 @@ class HorizontalToolsStrip extends ConsumerWidget {
   const HorizontalToolsStrip({super.key});
 
   static const _entries = <_ToolEntry>[
-    _ToolEntry(DrawingTool.select, Icons.near_me_outlined, 'Select (V)'),
-    _ToolEntry(DrawingTool.pen, Icons.edit_outlined, 'Pen (P)'),
-    _ToolEntry(
-      DrawingTool.eraser,
-      Icons.cleaning_services_outlined,
-      'Eraser (E)',
-    ),
+    _ToolEntry(DrawingTool.select, Icons.near_me, 'Select (V)'),
+    _ToolEntry(DrawingTool.pen, Icons.edit, 'Pen (P)'),
+    _ToolEntry(DrawingTool.eraser, Icons.auto_fix_high, 'Eraser (E)'),
     _ToolEntry(DrawingTool.rectangle, Icons.crop_square, 'Rectangle (R)'),
     _ToolEntry(DrawingTool.filledSquare, Icons.square, 'Filled Rectangle'),
     _ToolEntry(DrawingTool.circle, Icons.circle_outlined, 'Circle (Shift+O)'),
@@ -105,11 +101,11 @@ class HorizontalToolsStrip extends ConsumerWidget {
               ),
               const SizedBox(width: 6),
               AnnotationSizeControl(
-                label: showTextSizeControl ? 'Text Height' : 'Stroke Width',
+                label: showTextSizeControl ? 'Text Size' : 'Stroke Width',
                 value: showTextSizeControl ? fontSize : strokeWidth,
-                min: showTextSizeControl ? 8.0 : 1.0,
-                max: showTextSizeControl ? 72.0 : 10.0,
-                divisions: showTextSizeControl ? 32 : 18,
+                min: showTextSizeControl ? 12.0 : 1.0,
+                max: showTextSizeControl ? 100.0 : 10.0,
+                divisions: showTextSizeControl ? 44 : 18,
                 isTextSize: showTextSizeControl,
                 compact: true,
                 onChanged: showTextSizeControl
@@ -272,10 +268,8 @@ class _StripIconButton extends StatelessWidget {
   }
 }
 
-/// Single-swatch button that opens a preset color grid in a dialog.
-/// Used by both the horizontal tools strip and the annotation tools panel
-/// so the picker looks and behaves identically in both places.
-class ColorPickerButton extends StatelessWidget {
+/// Inline swatch button that expands into a horizontal preset color strip.
+class ColorPickerButton extends StatefulWidget {
   final Color color;
   final List<Color> presets;
   final ValueChanged<Color> onColorChanged;
@@ -290,94 +284,185 @@ class ColorPickerButton extends StatelessWidget {
   });
 
   @override
+  State<ColorPickerButton> createState() => _ColorPickerButtonState();
+}
+
+class _ColorPickerButtonState extends State<ColorPickerButton> {
+  bool _isOpen = false;
+
+  @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
+    final swatchButtonWidth = widget.size + 8;
+    final trayWidth = (widget.presets.length * 28.0) + 34.0;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Tooltip(
+          message: _isOpen ? 'Close Colors' : 'Stroke Color',
+          waitDuration: const Duration(milliseconds: 500),
+          child: InkWell(
+            onTap: () => setState(() => _isOpen = !_isOpen),
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              width: swatchButtonWidth,
+              height: widget.size,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: _isOpen ? palette.accent : palette.border,
+                  width: 1,
+                ),
+              ),
+              child: _ColorSwatch(
+                color: widget.color,
+                selected: false,
+                size: widget.size * 0.625,
+                borderRadius: 4,
+              ),
+            ),
+          ),
+        ),
+        ClipRect(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            width: _isOpen ? trayWidth : 0,
+            height: widget.size,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              widthFactor: 1,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: palette.panelElevated,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: palette.border),
+                  ),
+                  child: SizedBox(
+                    height: widget.size,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(width: 5),
+                          for (final preset in widget.presets) ...[
+                            _InlineColorChoice(
+                              color: preset,
+                              selected:
+                                  preset.toARGB32() == widget.color.toARGB32(),
+                              onTap: () => widget.onColorChanged(preset),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Tooltip(
+                            message: 'Close Colors',
+                            waitDuration: const Duration(milliseconds: 500),
+                            child: InkWell(
+                              onTap: () => setState(() => _isOpen = false),
+                              borderRadius: BorderRadius.circular(4),
+                              child: SizedBox(
+                                width: 26,
+                                height: widget.size,
+                                child: Icon(
+                                  Icons.close,
+                                  size: 16,
+                                  color: palette.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InlineColorChoice extends StatelessWidget {
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _InlineColorChoice({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Tooltip(
-      message: 'Stroke Color',
+      message: '#${color.toARGB32().toRadixString(16).padLeft(8, '0')}',
       waitDuration: const Duration(milliseconds: 500),
       child: InkWell(
-        onTap: () => _showColorPicker(context, palette),
-        borderRadius: BorderRadius.circular(6),
-        child: Container(
-          width: size + 8,
-          height: size,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: palette.border, width: 1),
-          ),
-          child: Container(
-            width: size * 0.625,
-            height: size * 0.625,
-            decoration: BoxDecoration(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: SizedBox(
+          width: 24,
+          height: 28,
+          child: Center(
+            child: _ColorSwatch(
               color: color,
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(
-                color: color.computeLuminance() > 0.5
-                    ? Colors.black.withValues(alpha: 0.3)
-                    : Colors.white.withValues(alpha: 0.3),
-                width: 0.5,
-              ),
+              selected: selected,
+              size: 18,
+              borderRadius: 999,
             ),
           ),
         ),
       ),
     );
   }
+}
 
-  void _showColorPicker(BuildContext context, AppPalette palette) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Pick Stroke Color'),
-          content: SizedBox(
-            width: 280,
-            child: GridView.count(
-              crossAxisCount: 4,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              shrinkWrap: true,
-              children: presets.map((c) {
-                final isSelected = c.toARGB32() == color.toARGB32();
-                return GestureDetector(
-                  onTap: () {
-                    onColorChanged(c);
-                    Navigator.of(dialogContext).pop();
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: c,
-                      shape: BoxShape.circle,
-                      border: isSelected
-                          ? Border.all(color: palette.accentBright, width: 3)
-                          : Border.all(
-                              color: c.computeLuminance() < 0.08
-                                  ? palette.border
-                                  : Colors.transparent,
-                              width: 1,
-                            ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.22),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
+class _ColorSwatch extends StatelessWidget {
+  final Color color;
+  final bool selected;
+  final double size;
+  final double borderRadius;
+
+  const _ColorSwatch({
+    required this.color,
+    required this.selected,
+    required this.size,
+    required this.borderRadius,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
+    final borderColor = selected
+        ? palette.accentBright
+        : (color.computeLuminance() > 0.5
+              ? Colors.black.withValues(alpha: 0.3)
+              : Colors.white.withValues(alpha: 0.3));
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(color: borderColor, width: selected ? 2 : 0.5),
+        boxShadow: [
+          if (selected)
+            BoxShadow(
+              color: palette.accentBright.withValues(alpha: 0.26),
+              blurRadius: 5,
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Done'),
-            ),
-          ],
-        );
-      },
+        ],
+      ),
     );
   }
 }
