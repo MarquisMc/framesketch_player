@@ -1,0 +1,12 @@
+<svg width="800" height="800" viewBox="0 0 800 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tealGradient" x1="200" y1="100" x2="600" y2="700" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#15D1CF"/>
+      <stop offset="1" stop-color="#08B8B5"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#tealGradient)">
+    <path d="M260 160H600V210H320C290 210 270 230 270 260V540C270 575 240 600 210 600V260C210 200 260 160 320 160H260Z"/>
+    <path d="M430 300H600V350H430C390 350 360 380 360 420C360 460 390 490 430 490H520C540 490 555 505 555 525C555 545 540 560 520 560H360V610H520C580 610 620 570 620 525C620 480 580 440 520 440H430C420 440 415 435 415 420C415 405 420 400 430 400H600V300H430Z"/>
+  </g>
+</svg>

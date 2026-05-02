@@ -9,6 +9,7 @@ import '../../../core/models/annotation_data.dart';
 import '../../../core/services/annotation_storage_service.dart';
 import '../../../core/utils/coordinate_transformer.dart';
 import '../../player/providers/player_provider.dart';
+import '../widgets/annotation_hit_testing.dart';
 
 enum KeyframeCreationMode { automatic, manual }
 
@@ -35,7 +36,7 @@ class AnnotationState {
   final double currentFontSize;
   final String? pendingTextStrokeId;
   final bool isScaling;
-  final String? scalingCorner;
+  final ResizeHandle? scalingCorner;
   final KeyframeCreationMode keyframeCreationMode;
   final AnnotationTimelineIndex timelineIndex;
 
@@ -94,7 +95,7 @@ class AnnotationState {
     String? pendingTextStrokeId,
     bool clearPendingTextStrokeId = false,
     bool? isScaling,
-    String? scalingCorner,
+    ResizeHandle? scalingCorner,
     bool clearScalingCorner = false,
     KeyframeCreationMode? keyframeCreationMode,
   }) {
@@ -367,7 +368,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   Rect? _resizeRectFromHandle(
     Rect rect,
-    String handle,
+    ResizeHandle handle,
     StrokePoint currentPoint, {
     double minWidth = 0.005,
     double minHeight = 0.005,
@@ -378,13 +379,21 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     var bottom = rect.bottom;
 
     final adjustLeft =
-        handle == 'left' || handle == 'topLeft' || handle == 'bottomLeft';
+        handle == ResizeHandle.left ||
+        handle == ResizeHandle.topLeft ||
+        handle == ResizeHandle.bottomLeft;
     final adjustRight =
-        handle == 'right' || handle == 'topRight' || handle == 'bottomRight';
+        handle == ResizeHandle.right ||
+        handle == ResizeHandle.topRight ||
+        handle == ResizeHandle.bottomRight;
     final adjustTop =
-        handle == 'top' || handle == 'topLeft' || handle == 'topRight';
+        handle == ResizeHandle.top ||
+        handle == ResizeHandle.topLeft ||
+        handle == ResizeHandle.topRight;
     final adjustBottom =
-        handle == 'bottom' || handle == 'bottomLeft' || handle == 'bottomRight';
+        handle == ResizeHandle.bottom ||
+        handle == ResizeHandle.bottomLeft ||
+        handle == ResizeHandle.bottomRight;
 
     if (adjustLeft) {
       left = currentPoint.x.clamp(0.0, right - minWidth).toDouble();
@@ -1698,7 +1707,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   }
 
   /// Start resizing a selected stroke from a handle.
-  void startScaling(String corner, StrokePoint point) {
+  void startScaling(ResizeHandle corner, StrokePoint point) {
     state = state.copyWith(
       isScaling: true,
       scalingCorner: corner,

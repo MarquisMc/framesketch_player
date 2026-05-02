@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:io' show Platform;
 import '../core/theme/app_palette.dart';
 import '../core/theme/theme_provider.dart';
@@ -88,10 +89,14 @@ class EditorToolbar extends ConsumerWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.movie_filter_outlined,
-                  size: 18,
-                  color: palette.accent,
+                SvgPicture.asset(
+                  'assets/Images/frame-sketch-icon-light.svg',
+                  width: 30,
+                  height: 30,
+                  colorFilter: ColorFilter.mode(
+                    palette.accent,
+                    BlendMode.srcIn,
+                  ),
                 ),
                 if (isDesktop) ...[
                   const SizedBox(width: 6),
