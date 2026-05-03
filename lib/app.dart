@@ -64,6 +64,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   bool _showToolsPanel = true;
   bool _showToolsStrip = false;
   bool _showCommandPalette = false;
+  bool _showCropExportPanel = false;
   bool _showExportHourglassBottom = false;
   int _loadingOverlayDepth = 0;
   String _loadingOverlayMessage = 'Loading...';
@@ -635,15 +636,15 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                   onOpenProjects: _openProjectsDialog,
                   onSaveAnnotations: _saveAnnotations,
                   onSaveAnnotationsAs: _saveAnnotationsAs,
-                  onExportVideo: _exportVideoFromTopBar,
                   onOpenSettings: () => _openSettings(context),
                   onOpenThemeManager: () => _openThemeManager(context),
                   onOpenCommandPalette: _openCommandPalette,
                   commandPaletteShortcutLabel: _formatShortcutLabel(
                     _shortcuts.openCommandPalette,
                   ),
-                  isExporting: isExporting,
-                  showExportHourglassBottom: _showExportHourglassBottom,
+                  onToggleCropExportPanel: _toggleCropExportPanel,
+                  isCropExportPanelOpen: _showCropExportPanel,
+                  onExportFrames: _exportFramesFromPanel,
                   onMenuAction: _handleMenuAction,
                 ),
                 if (_loadingOverlayDepth > 0)
@@ -772,7 +773,6 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     final playerNotifier = ref.read(playerProvider.notifier);
     final annotationNotifier = ref.read(annotationProvider.notifier);
     final loopNotifier = ref.read(loopProvider.notifier);
-    final cropNotifier = ref.read(cropProvider.notifier);
     final annotationState = ref.read(annotationProvider);
 
     // Only process app-wide shortcuts when the shell focus node itself owns
@@ -1043,31 +1043,21 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
     // Crop controls shortcuts
     if (_shortcuts.cropControlsShortcutsEnabled) {
-      // Toggle crop mode (no repeat)
       if (matchesShortcut(_shortcuts.toggleCropMode)) {
-        final cropStateBefore = ref.read(cropProvider);
-        cropNotifier.toggleCropMode();
-        if (!cropStateBefore.isCropModeActive) {
-          final loopState = ref.read(loopProvider);
-          cropNotifier.setExportRange(
-            start: loopState.loopStart,
-            end: loopState.loopEnd,
-          );
-        }
+        _toggleCropExportPanel();
         return KeyEventResult.handled;
       }
     }
 
-    // Escape key - exit crop mode
+    // Escape key - close crop/export panel or exit fullscreen
     if (event.logicalKey == LogicalKeyboardKey.escape) {
       if (_isFullscreen) {
         _setFullscreenMode(false);
         return KeyEventResult.handled;
       }
-
-      final cropState = ref.read(cropProvider);
-      if (cropState.isCropModeActive) {
-        cropNotifier.exitCropMode();
+      if (_showCropExportPanel) {
+        setState(() => _showCropExportPanel = false);
+        ref.read(cropProvider.notifier).exitCropMode();
         return KeyEventResult.handled;
       }
     }
@@ -1083,6 +1073,14 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   void _closeCommandPalette() {
     if (!_showCommandPalette) return;
     setState(() => _showCommandPalette = false);
+    _focusNode.requestFocus();
+  }
+
+  void _toggleCropExportPanel() {
+    setState(() => _showCropExportPanel = !_showCropExportPanel);
+    if (!_showCropExportPanel) {
+      ref.read(cropProvider.notifier).exitCropMode();
+    }
     _focusNode.requestFocus();
   }
 
@@ -2113,6 +2111,59 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     }
   }
 
+  Future<void> _exportFramesFromPanel({
+    required int startFrame,
+    required int endFrame,
+    required int step,
+    required bool isPng,
+  }) async {
+    final playerState = ref.read(playerProvider);
+    if (playerState.currentVideoPath == null || playerState.metadata == null) {
+      _showErrorDialog('No local video loaded');
+      return;
+    }
+    final annotationData = ref.read(annotationProvider).annotationData;
+    if (annotationData == null) {
+      _showErrorDialog('Open a video before exporting.');
+      return;
+    }
+    final suggestedBase = _buildSuggestedAnnotationFileBaseName(
+      annotationData: annotationData,
+      playerSourceLabel: playerState.currentSourceLabel,
+    );
+    final cropState = ref.read(cropProvider);
+    final meta = playerState.metadata!;
+    final cropPixels = cropState.isCropModeActive
+        ? cropState.cropRect.toPixels(meta.width, meta.height)
+        : null;
+
+    final request = _ExportRequest(
+      mode: startFrame == endFrame ? _ExportMode.frame : _ExportMode.frames,
+      suggestedBaseName: suggestedBase,
+      startFrame: startFrame,
+      endFrame: endFrame,
+      frameStep: step,
+      frameFormat: isPng ? _FrameExportFormat.png : _FrameExportFormat.jpg,
+      cropPixels: cropPixels,
+    );
+    try {
+      if (startFrame == endFrame) {
+        await _exportSingleFrame(request);
+      } else {
+        await _exportFrameRange(request);
+      }
+    } catch (e) {
+      if (e is _ExportCancelledException) {
+        _exportCancelRequested = false;
+        if (mounted) _showExportCancelledSnackBar();
+        return;
+      }
+      if (mounted) _showErrorDialog('Error exporting frames: $e');
+    } finally {
+      _focusNode.requestFocus();
+    }
+  }
+
   Future<void> _exportSingleFrame(_ExportRequest request) async {
     final playerState = ref.read(playerProvider);
     final metadata = playerState.metadata;
@@ -2152,6 +2203,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
           outputPath: normalizedOutputPath,
           metadata: metadata,
           annotationData: ref.read(annotationProvider).annotationData,
+          cropPixels: request.cropPixels,
         );
       },
     );
@@ -2221,6 +2273,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
             videoPath: videoPath,
             jobs: plannedJobs,
             frameExtension: request.frameExtension,
+            cropPixels: request.cropPixels,
           );
           return;
         }
@@ -2231,6 +2284,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
           jobs: plannedJobs,
           metadata: metadata,
           annotationData: annotationData,
+          cropPixels: request.cropPixels,
         );
       },
     );
@@ -2347,6 +2401,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     required String outputPath,
     required VideoMetadata metadata,
     required AnnotationData? annotationData,
+    ({int x, int y, int width, int height})? cropPixels,
   }) async {
     _throwIfExportCancelled();
     final visibleStrokes = ref
@@ -2357,6 +2412,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         videoPath,
         timestamp: timestamp,
         outputPath: outputPath,
+        cropPixels: cropPixels,
       );
       if (exported == null) {
         throw StateError('Failed to export frame.');
@@ -2389,6 +2445,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
       final seconds = (timestamp.inMicroseconds / 1000000.0).toStringAsFixed(6);
       _throwIfExportCancelled();
+      final filterComplex = cropPixels != null
+          ? '[0:v][1:v]overlay=0:0[overlaid];[overlaid]crop=${cropPixels.width}:${cropPixels.height}:${cropPixels.x}:${cropPixels.y}'
+          : '[0:v][1:v]overlay=0:0';
       final process = await Process.start(ffmpegPath, [
         '-hide_banner',
         '-ss',
@@ -2398,7 +2457,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         '-i',
         overlayPath,
         '-filter_complex',
-        '[0:v][1:v]overlay=0:0',
+        filterComplex,
         '-frames:v',
         '1',
         '-q:v',
@@ -2441,23 +2500,29 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     required Duration timestamp,
     required String outputPath,
     String? ffmpegPath,
+    ({int x, int y, int width, int height})? cropPixels,
   }) async {
     final resolvedFfmpegPath = ffmpegPath ?? await _findExportFfmpegPath();
 
     _throwIfExportCancelled();
     final seconds = (timestamp.inMicroseconds / 1000000.0).toStringAsFixed(6);
-    final process = await Process.start(resolvedFfmpegPath, [
+    final args = <String>[
       '-ss',
       seconds,
       '-i',
       videoPath,
+      if (cropPixels != null) ...[
+        '-vf',
+        'crop=${cropPixels.width}:${cropPixels.height}:${cropPixels.x}:${cropPixels.y}',
+      ],
       '-frames:v',
       '1',
       '-q:v',
       '2',
-      outputPath,
       '-y',
-    ]);
+      outputPath,
+    ];
+    final process = await Process.start(resolvedFfmpegPath, args);
     _activeFrameExportProcess = process;
 
     final stderrBuffer = StringBuffer();
@@ -2514,6 +2579,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     required String videoPath,
     required List<_PlannedFrameExportJob> jobs,
     required String frameExtension,
+    ({int x, int y, int width, int height})? cropPixels,
   }) async {
     if (jobs.isEmpty) return;
 
@@ -2525,6 +2591,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       final tempPattern =
           '${tempDir.path}${Platform.pathSeparator}frame_%06d.$frameExtension';
       final selectFilter = _buildFrameSelectExpression(jobs);
+      final vfFilter = cropPixels != null
+          ? 'select=$selectFilter,crop=${cropPixels.width}:${cropPixels.height}:${cropPixels.x}:${cropPixels.y}'
+          : 'select=$selectFilter';
 
       _throwIfExportCancelled();
       final process = await Process.start(ffmpegPath, [
@@ -2532,7 +2601,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         '-i',
         videoPath,
         '-vf',
-        'select=$selectFilter',
+        vfFilter,
         '-vsync',
         '0',
         '-q:v',
@@ -2623,6 +2692,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     required List<_PlannedFrameExportJob> jobs,
     required VideoMetadata metadata,
     required AnnotationData annotationData,
+    ({int x, int y, int width, int height})? cropPixels,
   }) async {
     Directory? tempDir;
     try {
@@ -2640,6 +2710,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
             timestamp: job.timestamp,
             outputPath: job.outputPath,
             ffmpegPath: ffmpegPath,
+            cropPixels: cropPixels,
           );
           if (exported == null) {
             throw StateError('Failed to export frame.');
@@ -2670,6 +2741,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
           timestamp: job.timestamp,
           outputPath: job.outputPath,
           overlayPath: overlayPath,
+          cropPixels: cropPixels,
         );
         _updateFrameRangeProgress(index + 1, jobs.length);
       }
@@ -2687,9 +2759,13 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     required Duration timestamp,
     required String outputPath,
     required String overlayPath,
+    ({int x, int y, int width, int height})? cropPixels,
   }) async {
     final seconds = (timestamp.inMicroseconds / 1000000.0).toStringAsFixed(6);
     _throwIfExportCancelled();
+    final filterComplex = cropPixels != null
+        ? '[0:v]crop=${cropPixels.width}:${cropPixels.height}:${cropPixels.x}:${cropPixels.y}[cropped];[cropped][1:v]overlay=0:0'
+        : '[0:v][1:v]overlay=0:0';
     final process = await Process.start(ffmpegPath, [
       '-hide_banner',
       '-ss',
@@ -2699,7 +2775,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       '-i',
       overlayPath,
       '-filter_complex',
-      '[0:v][1:v]overlay=0:0',
+      filterComplex,
       '-frames:v',
       '1',
       '-q:v',
@@ -3046,6 +3122,7 @@ class _ExportRequest {
   final _FrameExportFormat frameFormat;
   final _AnnotationExportFormat annotationFormat;
   final VideoExportPreset videoPreset;
+  final ({int x, int y, int width, int height})? cropPixels;
 
   const _ExportRequest({
     required this.mode,
@@ -3056,6 +3133,7 @@ class _ExportRequest {
     this.frameFormat = _FrameExportFormat.png,
     this.annotationFormat = _AnnotationExportFormat.framesketch,
     this.videoPreset = VideoExportPreset.compatible,
+    this.cropPixels,
   });
 
   String get frameExtension =>

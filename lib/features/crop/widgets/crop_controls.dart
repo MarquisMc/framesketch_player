@@ -10,272 +10,746 @@ import '../../player/providers/player_provider.dart';
 import '../../loop/providers/loop_provider.dart';
 import '../../annotations/providers/annotation_provider.dart';
 
-/// Crop controls panel widget
-/// Shows when crop mode is active, provides aspect ratio selection and export
-class CropControlsPanel extends ConsumerWidget {
-  const CropControlsPanel({super.key});
+enum _FrameExportScope { single, range }
+
+enum _FrameFormat { png, jpg }
+
+// ─── Floating crop/export panel ───────────────────────────────────────────────
+
+/// Floating panel that overlays the canvas, opened via the toolbar crop button.
+/// Two top-level tabs: Crop and Export.
+class CropExportPanel extends ConsumerStatefulWidget {
+  final VoidCallback onClose;
+  final void Function({
+    required int startFrame,
+    required int endFrame,
+    required int step,
+    required bool isPng,
+  })?
+  onExportFrames;
+
+  const CropExportPanel({
+    super.key,
+    required this.onClose,
+    this.onExportFrames,
+  });
+
+  @override
+  ConsumerState<CropExportPanel> createState() => _CropExportPanelState();
+}
+
+class _CropExportPanelState extends ConsumerState<CropExportPanel>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  late final ProviderSubscription<dynamic> _metadataSubscription;
+
+  _FrameExportScope _frameScope = _FrameExportScope.single;
+  _FrameFormat _frameFormat = _FrameFormat.png;
+  late final TextEditingController _frameCtrl;
+  late final TextEditingController _startFrameCtrl;
+  late final TextEditingController _endFrameCtrl;
+  late final TextEditingController _stepCtrl;
+  String? _frameValidation;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _frameCtrl = TextEditingController();
+    _startFrameCtrl = TextEditingController(text: '0');
+    _endFrameCtrl = TextEditingController(text: '0');
+    _stepCtrl = TextEditingController(text: '1');
+    _syncFrameDefaults();
+    _metadataSubscription = ref.listenManual(
+      playerProvider.select((state) => state.metadata),
+      (previous, next) {
+        if (previous == null && next != null) {
+          _syncFrameDefaults();
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _metadataSubscription.close();
+    _tabController.dispose();
+    _frameCtrl.dispose();
+    _startFrameCtrl.dispose();
+    _endFrameCtrl.dispose();
+    _stepCtrl.dispose();
+    super.dispose();
+  }
+
+  void _syncFrameDefaults() {
+    final playerState = ref.read(playerProvider);
+    final meta = playerState.metadata;
+    if (meta == null) return;
+    final currentFrame = ref.read(playerProvider.notifier).currentFrame;
+    final maxFrame = meta.frameCount > 0 ? meta.frameCount - 1 : 0;
+    _frameCtrl.text = currentFrame.toString();
+    _startFrameCtrl.text = '0';
+    _endFrameCtrl.text = maxFrame.toString();
+  }
+
+  void _submitFrameExport() {
+    final meta = ref.read(playerProvider).metadata;
+    if (meta == null) return;
+    final maxFrame = meta.frameCount > 0 ? meta.frameCount - 1 : 0;
+
+    if (_frameScope == _FrameExportScope.single) {
+      final frame = int.tryParse(_frameCtrl.text.trim());
+      if (frame == null || frame < 0 || frame > maxFrame) {
+        setState(
+          () => _frameValidation =
+              'Enter a frame number between 0 and $maxFrame.',
+        );
+        return;
+      }
+      setState(() => _frameValidation = null);
+      widget.onExportFrames?.call(
+        startFrame: frame,
+        endFrame: frame,
+        step: 1,
+        isPng: _frameFormat == _FrameFormat.png,
+      );
+    } else {
+      final start = int.tryParse(_startFrameCtrl.text.trim());
+      final end = int.tryParse(_endFrameCtrl.text.trim());
+      final step = int.tryParse(_stepCtrl.text.trim());
+      if (start == null ||
+          end == null ||
+          start < 0 ||
+          end > maxFrame ||
+          start > end) {
+        setState(
+          () =>
+              _frameValidation = 'Range must be 0–$maxFrame with start ≤ end.',
+        );
+        return;
+      }
+      if (step == null || step <= 0) {
+        setState(() => _frameValidation = 'Step must be 1 or greater.');
+        return;
+      }
+      setState(() => _frameValidation = null);
+      widget.onExportFrames?.call(
+        startFrame: start,
+        endFrame: end,
+        step: step,
+        isPng: _frameFormat == _FrameFormat.png,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
+
+    return ColoredBox(
+      color: palette.panel,
+      child: Column(
+        children: [
+          // ── Title bar with tabs ──────────────────────────────────
+          _PanelTitleBar(
+            tabController: _tabController,
+            onClose: widget.onClose,
+            palette: palette,
+          ),
+          Divider(height: 1, thickness: 1, color: palette.border),
+          // ── Tab content ─────────────────────────────────────────
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: AnimatedBuilder(
+                animation: _tabController,
+                builder: (context, _) {
+                  return switch (_tabController.index) {
+                    0 => _CropTabContent(palette: palette),
+                    1 => _FramesContent(
+                      scope: _frameScope,
+                      format: _frameFormat,
+                      frameCtrl: _frameCtrl,
+                      startFrameCtrl: _startFrameCtrl,
+                      endFrameCtrl: _endFrameCtrl,
+                      stepCtrl: _stepCtrl,
+                      validation: _frameValidation,
+                      onScopeChanged: (s) => setState(() {
+                        _frameScope = s;
+                        _frameValidation = null;
+                      }),
+                      onFormatChanged: (f) => setState(() => _frameFormat = f),
+                      onClearValidation: () =>
+                          setState(() => _frameValidation = null),
+                      onExport: _submitFrameExport,
+                      palette: palette,
+                    ),
+                    2 => const _VideoContent(),
+                    _ => const SizedBox.shrink(),
+                  };
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Title bar with tabs ──────────────────────────────────────────────────────
+
+class _PanelTitleBar extends StatelessWidget {
+  final TabController tabController;
+  final VoidCallback onClose;
+  final AppPalette palette;
+
+  const _PanelTitleBar({
+    required this.tabController,
+    required this.onClose,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 40,
+      color: palette.panelElevated,
+      child: Row(
+        children: [
+          const SizedBox(width: 8),
+          Expanded(
+            child: TabBar(
+              controller: tabController,
+              isScrollable: false,
+              indicatorColor: palette.accentBright,
+              indicatorWeight: 2,
+              labelColor: palette.accentBright,
+              unselectedLabelColor: palette.textSecondary,
+              labelStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w400,
+              ),
+              dividerColor: Colors.transparent,
+              tabs: const [
+                Tab(text: 'Crop'),
+                Tab(text: 'Frames'),
+                Tab(text: 'Video'),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.close, size: 16, color: palette.textMuted),
+            onPressed: onClose,
+            tooltip: 'Close (C)',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Crop tab ─────────────────────────────────────────────────────────────────
+
+class _CropTabContent extends ConsumerWidget {
+  final AppPalette palette;
+  const _CropTabContent({required this.palette});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cropState = ref.watch(cropProvider);
+    final cropNotifier = ref.read(cropProvider.notifier);
+    final playerState = ref.watch(playerProvider);
+    final hasVideo =
+        playerState.isLocalFileSource || playerState.hasLoadedSource;
+    final isCropActive = cropState.isCropModeActive;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Crop enable toggle
+        _CropEnableRow(
+          isCropActive: isCropActive,
+          hasVideo: hasVideo,
+          onToggle: () {
+            if (isCropActive) {
+              cropNotifier.exitCropMode();
+            } else {
+              cropNotifier.enterCropMode();
+              final loopState = ref.read(loopProvider);
+              cropNotifier.setExportRange(
+                start: loopState.loopStart,
+                end: loopState.loopEnd,
+              );
+            }
+          },
+          palette: palette,
+        ),
+
+        if (isCropActive) ...[
+          const SizedBox(height: 16),
+          _sectionLabel('ASPECT RATIO', palette),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: CropAspectRatio.values.map((ratio) {
+              final isSelected = cropState.aspectRatio == ratio;
+              return _RatioChip(
+                label: ratio.displayName,
+                isSelected: isSelected,
+                onTap: () => cropNotifier.setAspectRatio(ratio),
+                palette: palette,
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(height: 16),
+          _CropInfoBox(palette: palette),
+
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              icon: const Icon(Icons.refresh, size: 14),
+              label: const Text('Reset crop', style: TextStyle(fontSize: 12)),
+              onPressed: cropNotifier.resetCrop,
+              style: TextButton.styleFrom(
+                foregroundColor: palette.textSecondary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ),
+        ] else ...[
+          const SizedBox(height: 12),
+          Text(
+            'Enable crop to define the output region of your video.',
+            style: TextStyle(color: palette.textMuted, fontSize: 12),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _CropEnableRow extends StatelessWidget {
+  final bool isCropActive;
+  final bool hasVideo;
+  final VoidCallback onToggle;
+  final AppPalette palette;
+
+  const _CropEnableRow({
+    required this.isCropActive,
+    required this.hasVideo,
+    required this.onToggle,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: hasVideo ? onToggle : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isCropActive ? palette.accentSoft : palette.panelOverlay,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isCropActive ? palette.accentBright : palette.border,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.crop,
+              size: 16,
+              color: isCropActive
+                  ? palette.accentBright
+                  : (hasVideo ? palette.textSecondary : palette.textDisabled),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                isCropActive ? 'Crop enabled' : 'Crop disabled',
+                style: TextStyle(
+                  color: isCropActive
+                      ? palette.accentBright
+                      : palette.textSecondary,
+                  fontSize: 13,
+                  fontWeight: isCropActive ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ),
+            Switch(
+              value: isCropActive,
+              onChanged: hasVideo ? (_) => onToggle() : null,
+              activeThumbColor: palette.accentBright,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CropInfoBox extends ConsumerWidget {
+  final AppPalette palette;
+  const _CropInfoBox({required this.palette});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cropState = ref.watch(cropProvider);
+    final meta = ref.watch(playerProvider).metadata;
+    if (meta == null) return const SizedBox.shrink();
+
+    final pixels = cropState.cropRect.toPixels(meta.width, meta.height);
+    final isFull = pixels.width == meta.width && pixels.height == meta.height;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: palette.panelOverlay,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _sectionLabel('OUTPUT', palette),
+                const SizedBox(height: 4),
+                Text(
+                  '${pixels.width} × ${pixels.height}',
+                  style: TextStyle(
+                    color: isFull
+                        ? palette.textSecondary
+                        : palette.accentBright,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _sectionLabel('SOURCE', palette),
+              const SizedBox(height: 4),
+              Text(
+                '${meta.width} × ${meta.height}',
+                style: TextStyle(
+                  color: palette.textMuted,
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Frames export content ────────────────────────────────────────────────────
+
+class _FramesContent extends ConsumerWidget {
+  final _FrameExportScope scope;
+  final _FrameFormat format;
+  final TextEditingController frameCtrl;
+  final TextEditingController startFrameCtrl;
+  final TextEditingController endFrameCtrl;
+  final TextEditingController stepCtrl;
+  final String? validation;
+  final void Function(_FrameExportScope) onScopeChanged;
+  final void Function(_FrameFormat) onFormatChanged;
+  final VoidCallback onClearValidation;
+  final VoidCallback onExport;
+  final AppPalette palette;
+
+  const _FramesContent({
+    required this.scope,
+    required this.format,
+    required this.frameCtrl,
+    required this.startFrameCtrl,
+    required this.endFrameCtrl,
+    required this.stepCtrl,
+    required this.validation,
+    required this.onScopeChanged,
+    required this.onFormatChanged,
+    required this.onClearValidation,
+    required this.onExport,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hasLocal = ref.watch(
+      playerProvider.select((s) => s.isLocalFileSource),
+    );
+    if (!hasLocal) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: palette.panelOverlay,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          'Export requires a local video file. Open a local video to enable export.',
+          style: TextStyle(color: palette.textMuted, fontSize: 12),
+        ),
+      );
+    }
+
+    final meta = ref.watch(playerProvider).metadata;
+    final maxFrame = meta != null && meta.frameCount > 0
+        ? meta.frameCount - 1
+        : 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Scope + format row
+        Row(
+          children: [
+            Expanded(
+              child: _ScopeToggle(
+                current: scope,
+                onChanged: onScopeChanged,
+                palette: palette,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _FormatToggle(
+              current: format,
+              onChanged: onFormatChanged,
+              palette: palette,
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 12),
+
+        if (scope == _FrameExportScope.single)
+          _FrameField(
+            controller: frameCtrl,
+            label: 'Frame number',
+            hint: '0–$maxFrame',
+            palette: palette,
+            onChanged: (_) => onClearValidation(),
+            suffix: _UseCurrentBtn(
+              onTap: () {
+                final cur = ref.read(playerProvider.notifier).currentFrame;
+                frameCtrl.text = cur.toString();
+                onClearValidation();
+              },
+              palette: palette,
+            ),
+          )
+        else ...[
+          Row(
+            children: [
+              Expanded(
+                child: _FrameField(
+                  controller: startFrameCtrl,
+                  label: 'Start',
+                  hint: '0',
+                  palette: palette,
+                  onChanged: (_) => onClearValidation(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _FrameField(
+                  controller: endFrameCtrl,
+                  label: 'End',
+                  hint: '$maxFrame',
+                  palette: palette,
+                  onChanged: (_) => onClearValidation(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 64,
+                child: _FrameField(
+                  controller: stepCtrl,
+                  label: 'Step',
+                  hint: '1',
+                  palette: palette,
+                  onChanged: (_) => onClearValidation(),
+                ),
+              ),
+            ],
+          ),
+        ],
+
+        if (validation != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            validation!,
+            style: TextStyle(color: palette.error, fontSize: 11),
+          ),
+        ],
+
+        const SizedBox(height: 12),
+
+        _ExportButton(
+          label: scope == _FrameExportScope.single
+              ? 'Export Frame'
+              : 'Export Frames',
+          icon: Icons.download_outlined,
+          onPressed: onExport,
+          palette: palette,
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Video export content ─────────────────────────────────────────────────────
+
+class _VideoContent extends ConsumerWidget {
+  const _VideoContent();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppPalette.of(context);
     final cropState = ref.watch(cropProvider);
     final cropNotifier = ref.read(cropProvider.notifier);
-    final playerState = ref.watch(playerProvider);
+    final hasVideo = ref.watch(
+      playerProvider.select((s) => s.isLocalFileSource),
+    );
+    final isExportingOrPreparing =
+        cropState.exportStatus == ExportStatus.exporting ||
+        cropState.exportStatus == ExportStatus.preparing;
 
-    if (!cropState.isCropModeActive) {
-      return const SizedBox.shrink();
-    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _ExportRangeControls(),
+        const SizedBox(height: 14),
 
-    final hasVideo = playerState.isLocalFileSource;
-    final maxPanelHeight = MediaQuery.sizeOf(context).height * 0.38;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: palette.panel,
-        border: Border(top: BorderSide(color: palette.border)),
-      ),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: maxPanelHeight),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Icon(Icons.crop, color: palette.textSecondary, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Crop Mode',
-                    style: TextStyle(
-                      color: palette.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Spacer(),
-                  // Exit crop mode button
-                  IconButton(
-                    icon: Icon(Icons.close),
-                    tooltip: 'Exit crop mode (Esc)',
-                    onPressed: cropNotifier.exitCropMode,
-                    color: palette.textSecondary,
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Aspect ratio selection
-              Text(
-                'Aspect Ratio',
-                style: TextStyle(
-                  color: palette.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: CropAspectRatio.values.map((ratio) {
-                  final isSelected = cropState.aspectRatio == ratio;
-                  return ChoiceChip(
-                    label: Text(ratio.displayName),
-                    selected: isSelected,
-                    onSelected: hasVideo
-                        ? (selected) {
-                            if (selected) {
-                              cropNotifier.setAspectRatio(ratio);
-                            }
-                          }
-                        : null,
-                    selectedColor: palette.accent,
-                    backgroundColor: palette.panelElevated,
-                    labelStyle: TextStyle(
-                      color: isSelected
-                          ? palette.textPrimary
-                          : palette.textSecondary,
-                      fontSize: 12,
-                    ),
-                  );
-                }).toList(),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Export range controls
-              const _ExportRangeControls(),
-
-              const SizedBox(height: 16),
-
-              // Crop info
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: palette.panelOverlay,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: _CropInfo(),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Action buttons
-              Row(
-                children: [
-                  // Reset button
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: Icon(Icons.refresh, size: 18),
-                      label: Text('Reset'),
-                      onPressed: hasVideo ? cropNotifier.resetCrop : null,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: palette.textSecondary,
-                        side: BorderSide(color: palette.border),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Export button
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton.icon(
-                      icon: Icon(Icons.file_download, size: 18),
-                      label: Text('Export Cropped Video'),
-                      onPressed:
-                          hasVideo &&
-                              cropState.exportStatus !=
-                                  ExportStatus.exporting &&
-                              cropState.exportStatus != ExportStatus.preparing
-                          ? () => _showExportDialog(context, ref)
-                          : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: palette.accent,
-                        foregroundColor: palette.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              // Export/provisioning progress
-              if (cropState.exportStatus == ExportStatus.preparing)
-                _ExportProgress(
-                  title: 'Preparing export...',
-                  progress: cropState.preparationProgress,
-                  detail:
-                      cropState.preparationMessage ??
-                      'Locating FFmpeg tools...',
-                ),
-
-              if (cropState.exportStatus == ExportStatus.exporting)
-                _ExportProgress(
-                  title: 'Exporting...',
-                  progress: cropState.exportProgress,
-                  onCancel: cropNotifier.cancelExport,
-                ),
-
-              if (cropState.exportStatus != ExportStatus.idle &&
-                  cropState.exportStatus != ExportStatus.exporting &&
-                  cropState.exportStatus != ExportStatus.preparing)
-                _ExportStatusMessage(
-                  status: cropState.exportStatus,
-                  error: cropState.exportError,
-                  exportedPath: cropState.exportedFilePath,
-                  onDismiss: cropNotifier.resetExportState,
-                ),
-            ],
-          ),
+        _ExportButton(
+          label: isExportingOrPreparing ? 'Exporting…' : 'Export Video',
+          icon: isExportingOrPreparing
+              ? Icons.hourglass_top
+              : Icons.download_outlined,
+          onPressed: hasVideo && !isExportingOrPreparing
+              ? () => _showPresetDialog(context, ref)
+              : null,
+          palette: palette,
         ),
-      ),
+
+        if (cropState.exportStatus == ExportStatus.preparing)
+          _ExportProgress(
+            title: 'Preparing…',
+            progress: cropState.preparationProgress,
+            detail: cropState.preparationMessage ?? 'Locating FFmpeg…',
+          ),
+
+        if (cropState.exportStatus == ExportStatus.exporting)
+          _ExportProgress(
+            title: 'Exporting…',
+            progress: cropState.exportProgress,
+            onCancel: cropNotifier.cancelExport,
+          ),
+
+        if (cropState.exportStatus != ExportStatus.idle &&
+            !isExportingOrPreparing)
+          _ExportStatusMessage(
+            status: cropState.exportStatus,
+            error: cropState.exportError,
+            exportedPath: cropState.exportedFilePath,
+            onDismiss: cropNotifier.resetExportState,
+          ),
+      ],
     );
   }
 
-  /// Show export dialog to choose output file
-  Future<void> _showExportDialog(BuildContext context, WidgetRef ref) async {
+  Future<void> _showPresetDialog(BuildContext context, WidgetRef ref) async {
     final playerState = ref.read(playerProvider);
-    final cropNotifier = ref.read(cropProvider.notifier);
+    if (playerState.currentVideoPath == null) return;
 
-    if (playerState.currentVideoPath == null ||
-        !playerState.isLocalFileSource) {
-      return;
-    }
-
-    // Suggest output filename
     final inputFile = File(playerState.currentVideoPath!);
     final inputName = inputFile.uri.pathSegments.last;
-    final nameWithoutExt = inputName.substring(0, inputName.lastIndexOf('.'));
-    final safeBaseName = _buildSafeOutputBaseName(nameWithoutExt);
+    final dotIndex = inputName.lastIndexOf('.');
+    final nameWithoutExt = dotIndex > 0
+        ? inputName.substring(0, dotIndex)
+        : inputName;
+    final safeBase = _safeName(nameWithoutExt);
 
     final preset = await showDialog<VideoExportPreset>(
       context: context,
-      builder: (dialogContext) => const _CropExportPresetDialog(),
+      builder: (_) => const _VideoExportPresetDialog(),
     );
+    if (preset == null) return;
+    if (!context.mounted) return;
 
-    if (preset == null) {
-      return;
-    }
-
-    // Ask user for save location
     final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'Export Cropped Video',
-      fileName: '${safeBaseName}_cropped.mp4',
+      dialogTitle: 'Export Video',
+      fileName: '${safeBase}_export.mp4',
       type: FileType.custom,
       allowedExtensions: const ['mp4'],
     );
-
     if (result != null) {
       await ref.read(annotationProvider.notifier).saveAnnotations();
-      final currentAnnotationData = ref.read(annotationProvider).annotationData;
-      // Start export
-      cropNotifier.exportCroppedVideo(
-        result,
-        annotationData: currentAnnotationData,
-        preset: preset,
-      );
+      final annotationData = ref.read(annotationProvider).annotationData;
+      ref
+          .read(cropProvider.notifier)
+          .exportCroppedVideo(
+            result,
+            annotationData: annotationData,
+            preset: preset,
+          );
     }
   }
 
-  String _buildSafeOutputBaseName(String input) {
-    final sanitized = input
+  static String _safeName(String input) {
+    final s = input
         .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-
-    if (sanitized.isEmpty) {
-      return 'export';
-    }
-
-    const maxLen = 64;
-    if (sanitized.length <= maxLen) {
-      return sanitized;
-    }
-
-    return sanitized.substring(0, maxLen).trimRight();
+    if (s.isEmpty) return 'export';
+    return s.length <= 64 ? s : s.substring(0, 64).trimRight();
   }
 }
 
-class _CropExportPresetDialog extends StatefulWidget {
-  const _CropExportPresetDialog();
+// ─── Video export preset dialog ───────────────────────────────────────────────
+
+class _VideoExportPresetDialog extends StatefulWidget {
+  const _VideoExportPresetDialog();
 
   @override
-  State<_CropExportPresetDialog> createState() =>
-      _CropExportPresetDialogState();
+  State<_VideoExportPresetDialog> createState() =>
+      _VideoExportPresetDialogState();
 }
 
-class _CropExportPresetDialogState extends State<_CropExportPresetDialog> {
+class _VideoExportPresetDialogState extends State<_VideoExportPresetDialog> {
   VideoExportPreset _preset = VideoExportPreset.compatible;
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Export Cropped Video'),
+      title: const Text('Export Video'),
       content: SizedBox(
-        width: 360,
+        width: 340,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -285,15 +759,12 @@ class _CropExportPresetDialogState extends State<_CropExportPresetDialog> {
               decoration: const InputDecoration(labelText: 'Speed / Quality'),
               items: VideoExportPreset.values
                   .map(
-                    (preset) => DropdownMenuItem(
-                      value: preset,
-                      child: Text(preset.displayName),
-                    ),
+                    (p) =>
+                        DropdownMenuItem(value: p, child: Text(p.displayName)),
                   )
                   .toList(),
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => _preset = value);
+              onChanged: (v) {
+                if (v != null) setState(() => _preset = v);
               },
             ),
             const SizedBox(height: 8),
@@ -311,16 +782,17 @@ class _CropExportPresetDialogState extends State<_CropExportPresetDialog> {
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(_preset),
-          child: const Text('Continue'),
+          child: const Text('Export'),
         ),
       ],
     );
   }
 }
 
+// ─── Export range slider ──────────────────────────────────────────────────────
+
 enum _RangeHandle { start, end }
 
-/// Controls for selecting exported video segment.
 class _ExportRangeControls extends ConsumerStatefulWidget {
   const _ExportRangeControls();
 
@@ -346,22 +818,18 @@ class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
         (ms - _previewedMs!).abs() < 120) {
       return;
     }
-
     _previewedMs = ms;
     _lastPreviewAt = now;
     ref.read(playerProvider.notifier).seek(Duration(milliseconds: ms));
   }
 
   void _handleRangeChangeStart(RangeValues values) {
-    final playerState = ref.read(playerProvider);
-    _wasPlayingBeforePreview = playerState.isPlaying;
+    _wasPlayingBeforePreview = ref.read(playerProvider).isPlaying;
     _didPauseForPreview = false;
-
     if (_wasPlayingBeforePreview) {
       _didPauseForPreview = true;
       ref.read(playerProvider.notifier).pause();
     }
-
     _lastStartMs = values.start;
     _lastEndMs = values.end;
   }
@@ -369,34 +837,25 @@ class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
   void _handleRangeChanged(RangeValues values, int totalMs) {
     var startMs = values.start.round().clamp(0, totalMs);
     var endMs = values.end.round().clamp(0, totalMs);
-
     if (endMs - startMs < 100) {
       endMs = (startMs + 100).clamp(0, totalMs);
-      if (endMs - startMs < 100) {
-        startMs = (endMs - 100).clamp(0, totalMs);
-      }
+      if (endMs - startMs < 100) startMs = (endMs - 100).clamp(0, totalMs);
     }
-
     if (_lastStartMs != null && _lastEndMs != null) {
-      final startDelta = (values.start - _lastStartMs!).abs();
-      final endDelta = (values.end - _lastEndMs!).abs();
-      _activeHandle = startDelta >= endDelta
-          ? _RangeHandle.start
-          : _RangeHandle.end;
+      final sd = (values.start - _lastStartMs!).abs();
+      final ed = (values.end - _lastEndMs!).abs();
+      _activeHandle = sd >= ed ? _RangeHandle.start : _RangeHandle.end;
     } else {
       _activeHandle = _RangeHandle.end;
     }
-
     _lastStartMs = values.start;
     _lastEndMs = values.end;
-
     ref
         .read(cropProvider.notifier)
         .setExportRange(
           start: Duration(milliseconds: startMs),
           end: Duration(milliseconds: endMs),
         );
-
     final previewMs = _activeHandle == _RangeHandle.start ? startMs : endMs;
     _previewAt(previewMs);
   }
@@ -413,74 +872,76 @@ class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
     final cropState = ref.watch(cropProvider);
-    final playerState = ref.watch(playerProvider);
-
-    final totalDuration = playerState.duration;
+    final totalDuration = ref.watch(playerProvider.select((s) => s.duration));
     final totalMs = totalDuration.inMilliseconds;
-
-    if (totalMs <= 0) {
-      return const SizedBox.shrink();
-    }
+    if (totalMs <= 0) return const SizedBox.shrink();
 
     final start = cropState.exportStart ?? Duration.zero;
     final end = cropState.exportEnd ?? totalDuration;
     final isFullRange =
         cropState.exportStart == null && cropState.exportEnd == null;
     final selectedDuration = end - start;
-
-    final clampedStartMs = start.inMilliseconds.clamp(0, totalMs).toDouble();
-    final clampedEndMs = end.inMilliseconds.clamp(0, totalMs).toDouble();
+    final clampedStart = start.inMilliseconds.clamp(0, totalMs).toDouble();
+    final clampedEnd = end.inMilliseconds.clamp(0, totalMs).toDouble();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Export Segment',
-          style: TextStyle(
-            color: palette.textSecondary,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
+        Row(
+          children: [
+            _sectionLabel('EXPORT RANGE', palette),
+            const Spacer(),
+            if (!isFullRange)
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: () =>
+                    ref.read(cropProvider.notifier).resetExportRange(),
+                child: Text(
+                  'Full range',
+                  style: TextStyle(fontSize: 11, color: palette.accentBright),
+                ),
+              ),
+          ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Row(
           children: [
             Text(
-              '${TimecodeFormatter.formatShort(start)} - '
-              '${TimecodeFormatter.formatShort(end)}',
+              TimecodeFormatter.formatShort(start),
               style: TextStyle(
-                color: isFullRange ? palette.textPrimary : palette.accentBright,
+                color: palette.textPrimary,
                 fontSize: 12,
                 fontFamily: 'monospace',
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const Spacer(),
-            TextButton(
-              onPressed: isFullRange
-                  ? null
-                  : () => ref.read(cropProvider.notifier).resetExportRange(),
-              child: Text('Use Full Range'),
+            Text(
+              '  –  ',
+              style: TextStyle(color: palette.textMuted, fontSize: 12),
+            ),
+            Text(
+              TimecodeFormatter.formatShort(end),
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontSize: 12,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '(${TimecodeFormatter.formatShort(selectedDuration)})',
+              style: TextStyle(
+                color: palette.textMuted,
+                fontSize: 11,
+                fontFamily: 'monospace',
+              ),
             ),
           ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          'Duration: ${TimecodeFormatter.formatShort(selectedDuration)}',
-          style: TextStyle(
-            color: palette.textMuted,
-            fontSize: 11,
-            fontFamily: 'monospace',
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          _activeHandle == null
-              ? 'Drag either handle to preview exact start/end frames.'
-              : (_activeHandle == _RangeHandle.start
-                    ? 'Previewing START frame in video.'
-                    : 'Previewing END frame in video.'),
-          style: TextStyle(color: palette.textMuted, fontSize: 11),
         ),
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
@@ -488,104 +949,43 @@ class _ExportRangeControlsState extends ConsumerState<_ExportRangeControls> {
             inactiveTrackColor: palette.border,
             thumbColor: palette.accentBright,
             rangeThumbShape: const RoundRangeSliderThumbShape(
-              enabledThumbRadius: 8,
+              enabledThumbRadius: 7,
             ),
           ),
           child: RangeSlider(
             min: 0,
             max: totalMs.toDouble(),
-            values: RangeValues(clampedStartMs, clampedEndMs),
+            values: RangeValues(clampedStart, clampedEnd),
             labels: RangeLabels(
               TimecodeFormatter.formatShort(
-                Duration(milliseconds: clampedStartMs.round()),
+                Duration(milliseconds: clampedStart.round()),
               ),
               TimecodeFormatter.formatShort(
-                Duration(milliseconds: clampedEndMs.round()),
+                Duration(milliseconds: clampedEnd.round()),
               ),
             ),
             onChangeStart: _handleRangeChangeStart,
             onChanged: totalMs <= 100
                 ? null
-                : (values) => _handleRangeChanged(values, totalMs),
+                : (v) => _handleRangeChanged(v, totalMs),
             onChangeEnd: _handleRangeChangeEnd,
           ),
         ),
-      ],
-    );
-  }
-}
-
-/// Displays crop information
-class _CropInfo extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final palette = AppPalette.of(context);
-    final cropState = ref.watch(cropProvider);
-    final playerState = ref.watch(playerProvider);
-    final metadata = playerState.metadata;
-
-    if (metadata == null) {
-      return Text(
-        'No video loaded',
-        style: TextStyle(color: palette.textMuted, fontSize: 12),
-      );
-    }
-
-    final pixels = cropState.cropRect.toPixels(metadata.width, metadata.height);
-    final aspectRatio = pixels.width / pixels.height;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _InfoRow(
-          label: 'Original',
-          value: '${metadata.width} × ${metadata.height}',
-        ),
-        const SizedBox(height: 4),
-        _InfoRow(
-          label: 'Cropped',
-          value: '${pixels.width} × ${pixels.height}',
-          valueColor: palette.accentBright,
-        ),
-        const SizedBox(height: 4),
-        _InfoRow(label: 'Ratio', value: aspectRatio.toStringAsFixed(2)),
-        const SizedBox(height: 4),
-        _InfoRow(label: 'Position', value: '(${pixels.x}, ${pixels.y})'),
-      ],
-    );
-  }
-}
-
-/// Info row widget
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  const _InfoRow({required this.label, required this.value, this.valueColor});
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = AppPalette.of(context);
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: TextStyle(color: palette.textMuted, fontSize: 12)),
         Text(
-          value,
-          style: TextStyle(
-            color: valueColor ?? palette.textPrimary,
-            fontSize: 12,
-            fontFamily: 'monospace',
-            fontWeight: FontWeight.w500,
-          ),
+          _activeHandle == null
+              ? 'Drag handles to preview start/end frames.'
+              : (_activeHandle == _RangeHandle.start
+                    ? 'Previewing START frame.'
+                    : 'Previewing END frame.'),
+          style: TextStyle(color: palette.textMuted, fontSize: 11),
         ),
       ],
     );
   }
 }
 
-/// Export progress indicator
+// ─── Progress / status ────────────────────────────────────────────────────────
+
 class _ExportProgress extends StatelessWidget {
   final String title;
   final double? progress;
@@ -602,9 +1002,9 @@ class _ExportProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
-    final progressValue = progress?.clamp(0.0, 1.0).toDouble();
+    final pv = progress?.clamp(0.0, 1.0);
     return Container(
-      margin: const EdgeInsets.only(top: 16),
+      margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: palette.panelOverlay,
@@ -619,24 +1019,24 @@ class _ExportProgress extends StatelessWidget {
                 title,
                 style: TextStyle(
                   color: palette.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const Spacer(),
-              if (progressValue != null)
+              if (pv != null)
                 Text(
-                  '${(progressValue * 100).toStringAsFixed(1)}%',
+                  '${(pv * 100).toStringAsFixed(1)}%',
                   style: TextStyle(
                     color: palette.textSecondary,
-                    fontSize: 14,
+                    fontSize: 12,
                     fontFamily: 'monospace',
                   ),
                 ),
             ],
           ),
           if (detail != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(
               detail!,
               style: TextStyle(color: palette.textMuted, fontSize: 11),
@@ -646,19 +1046,27 @@ class _ExportProgress extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value: progressValue,
+              value: pv,
               backgroundColor: palette.border,
               valueColor: AlwaysStoppedAnimation(palette.accent),
-              minHeight: 8,
+              minHeight: 5,
             ),
           ),
           if (onCancel != null) ...[
-            const SizedBox(height: 8),
-            TextButton.icon(
-              icon: Icon(Icons.cancel, size: 16),
-              label: Text('Cancel Export'),
-              onPressed: onCancel,
-              style: TextButton.styleFrom(foregroundColor: palette.error),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                icon: const Icon(Icons.cancel_outlined, size: 13),
+                label: const Text('Cancel'),
+                onPressed: onCancel,
+                style: TextButton.styleFrom(
+                  foregroundColor: palette.error,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
             ),
           ],
         ],
@@ -683,10 +1091,10 @@ class _ExportStatusMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
-    Color borderColor;
-    Color titleColor;
-    String title;
-    String message;
+    late Color borderColor;
+    late Color titleColor;
+    late String title;
+    late String message;
 
     switch (status) {
       case ExportStatus.success:
@@ -694,19 +1102,16 @@ class _ExportStatusMessage extends StatelessWidget {
         titleColor = palette.success;
         title = 'Export complete';
         message = exportedPath ?? 'Video exported successfully.';
-        break;
       case ExportStatus.cancelled:
         borderColor = palette.warning;
         titleColor = palette.warning;
-        title = 'Export cancelled';
-        message = 'The export was cancelled before completion.';
-        break;
+        title = 'Cancelled';
+        message = 'Export was cancelled.';
       case ExportStatus.error:
         borderColor = palette.error;
         titleColor = palette.error;
         title = 'Export failed';
-        message = error ?? 'Unknown export error.';
-        break;
+        message = error ?? 'Unknown error.';
       case ExportStatus.preparing:
       case ExportStatus.exporting:
       case ExportStatus.idle:
@@ -714,42 +1119,46 @@ class _ExportStatusMessage extends StatelessWidget {
     }
 
     return Container(
-      margin: const EdgeInsets.only(top: 16),
+      margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: palette.panelOverlay,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: borderColor.withValues(alpha: 0.8)),
+        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  color: titleColor,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: titleColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: onDismiss,
-                tooltip: 'Dismiss',
-                icon: Icon(Icons.close, size: 18),
-                color: palette.textSecondary,
-              ),
-            ],
-          ),
-          SelectableText(
-            message,
-            style: TextStyle(
-              color: palette.textSecondary,
-              fontSize: 12,
-              fontFamily: 'monospace',
+                const SizedBox(height: 3),
+                SelectableText(
+                  message,
+                  style: TextStyle(
+                    color: palette.textSecondary,
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
             ),
+          ),
+          IconButton(
+            onPressed: onDismiss,
+            icon: const Icon(Icons.close, size: 15),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+            color: palette.textSecondary,
           ),
         ],
       ),
@@ -757,41 +1166,355 @@ class _ExportStatusMessage extends StatelessWidget {
   }
 }
 
-/// Floating crop mode toggle button (shows when not in crop mode)
+// ─── Small shared widgets ─────────────────────────────────────────────────────
+
+class _RatioChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final AppPalette palette;
+
+  const _RatioChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 100),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? palette.accent : palette.panelElevated,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? palette.accentBright : palette.border,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? palette.textPrimary : palette.textSecondary,
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScopeToggle extends StatelessWidget {
+  final _FrameExportScope current;
+  final void Function(_FrameExportScope) onChanged;
+  final AppPalette palette;
+
+  const _ScopeToggle({
+    required this.current,
+    required this.onChanged,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 30,
+      decoration: BoxDecoration(
+        color: palette.panelOverlay,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          _ScopeOption(
+            label: 'Single',
+            isSelected: current == _FrameExportScope.single,
+            onTap: () => onChanged(_FrameExportScope.single),
+            palette: palette,
+          ),
+          _ScopeOption(
+            label: 'Range',
+            isSelected: current == _FrameExportScope.range,
+            onTap: () => onChanged(_FrameExportScope.range),
+            palette: palette,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScopeOption extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final AppPalette palette;
+
+  const _ScopeOption({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 100),
+          margin: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: isSelected ? palette.panel : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? palette.accentBright : palette.textSecondary,
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FormatToggle extends StatelessWidget {
+  final _FrameFormat current;
+  final void Function(_FrameFormat) onChanged;
+  final AppPalette palette;
+
+  const _FormatToggle({
+    required this.current,
+    required this.onChanged,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 30,
+      decoration: BoxDecoration(
+        color: palette.panelOverlay,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _FmtOption(
+            label: 'PNG',
+            isSelected: current == _FrameFormat.png,
+            onTap: () => onChanged(_FrameFormat.png),
+            palette: palette,
+          ),
+          Container(width: 1, height: 20, color: palette.border),
+          _FmtOption(
+            label: 'JPG',
+            isSelected: current == _FrameFormat.jpg,
+            onTap: () => onChanged(_FrameFormat.jpg),
+            palette: palette,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FmtOption extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final AppPalette palette;
+
+  const _FmtOption({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 100),
+        padding: const EdgeInsets.symmetric(horizontal: 9),
+        height: double.infinity,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isSelected ? palette.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? palette.textPrimary : palette.textSecondary,
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FrameField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final AppPalette palette;
+  final void Function(String)? onChanged;
+  final Widget? suffix;
+
+  const _FrameField({
+    required this.controller,
+    required this.label,
+    required this.hint,
+    required this.palette,
+    this.onChanged,
+    this.suffix,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      onChanged: onChanged,
+      style: TextStyle(
+        color: palette.textPrimary,
+        fontSize: 13,
+        fontFamily: 'monospace',
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: palette.textMuted, fontSize: 12),
+        hintText: hint,
+        hintStyle: TextStyle(color: palette.textDisabled, fontSize: 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        filled: true,
+        fillColor: palette.panelElevated,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: BorderSide(color: palette.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: BorderSide(color: palette.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: BorderSide(color: palette.accentBright),
+        ),
+        suffixIcon: suffix,
+        isDense: true,
+      ),
+    );
+  }
+}
+
+class _UseCurrentBtn extends StatelessWidget {
+  final VoidCallback onTap;
+  final AppPalette palette;
+
+  const _UseCurrentBtn({required this.onTap, required this.palette});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Use current frame',
+      child: IconButton(
+        icon: Icon(Icons.my_location, size: 15, color: palette.textMuted),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+        onPressed: onTap,
+      ),
+    );
+  }
+}
+
+class _ExportButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final AppPalette palette;
+
+  const _ExportButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 34,
+      child: ElevatedButton.icon(
+        icon: Icon(icon, size: 15),
+        label: Text(label, style: const TextStyle(fontSize: 13)),
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: palette.accent,
+          foregroundColor: palette.textPrimary,
+          disabledBackgroundColor: palette.panelElevated,
+          disabledForegroundColor: palette.textDisabled,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        ),
+      ),
+    );
+  }
+}
+
+Widget _sectionLabel(String text, AppPalette palette) {
+  return Text(
+    text,
+    style: TextStyle(
+      color: palette.textMuted,
+      fontSize: 10,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.7,
+    ),
+  );
+}
+
+// ─── Toolbar crop button ──────────────────────────────────────────────────────
+
+/// Toolbar button that opens/closes the crop & export panel.
 class CropModeToggleButton extends ConsumerWidget {
-  const CropModeToggleButton({super.key});
+  final VoidCallback? onTogglePanel;
+  final bool isPanelOpen;
+
+  const CropModeToggleButton({
+    super.key,
+    this.onTogglePanel,
+    this.isPanelOpen = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppPalette.of(context);
     final cropState = ref.watch(cropProvider);
-    final playerState = ref.watch(playerProvider);
-    final cropNotifier = ref.read(cropProvider.notifier);
-
-    final hasVideo = playerState.player != null;
+    final hasVideo = ref.watch(playerProvider.select((s) => s.player != null));
+    final isActive = isPanelOpen || cropState.isCropModeActive;
 
     return Tooltip(
-      message: 'Toggle crop mode (C)',
+      message: isPanelOpen ? 'Close crop & export (C)' : 'Crop & Export (C)',
       child: Material(
-        color: cropState.isCropModeActive
-            ? palette.accent
-            : palette.panelElevated,
+        color: isActive ? palette.accent : palette.panelElevated,
         borderRadius: BorderRadius.circular(4),
         child: InkWell(
-          onTap: hasVideo
-              ? () {
-                  final wasCropModeActive = cropState.isCropModeActive;
-                  cropNotifier.toggleCropMode();
-
-                  if (!wasCropModeActive) {
-                    final loopState = ref.read(loopProvider);
-                    cropNotifier.setExportRange(
-                      start: loopState.loopStart,
-                      end: loopState.loopEnd,
-                    );
-                  }
-                }
-              : null,
+          onTap: hasVideo ? onTogglePanel : null,
           borderRadius: BorderRadius.circular(4),
           child: Container(
             width: 40,
@@ -800,7 +1523,7 @@ class CropModeToggleButton extends ConsumerWidget {
             child: Icon(
               Icons.crop,
               size: 24,
-              color: cropState.isCropModeActive
+              color: isActive
                   ? palette.textPrimary
                   : (hasVideo ? palette.textSecondary : palette.textDisabled),
             ),

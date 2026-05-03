@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_palette.dart';
 import '../features/player/providers/player_provider.dart';
@@ -35,14 +35,20 @@ class EditorScaffold extends ConsumerWidget {
   final VoidCallback onOpenProjects;
   final VoidCallback onSaveAnnotations;
   final VoidCallback onSaveAnnotationsAs;
-  final VoidCallback onExportVideo;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenThemeManager;
   final VoidCallback onOpenCommandPalette;
   final String commandPaletteShortcutLabel;
-  final bool isExporting;
-  final bool showExportHourglassBottom;
   final void Function(String, BuildContext)? onMenuAction;
+  final VoidCallback? onToggleCropExportPanel;
+  final bool isCropExportPanelOpen;
+  final void Function({
+    required int startFrame,
+    required int endFrame,
+    required int step,
+    required bool isPng,
+  })?
+  onExportFrames;
 
   const EditorScaffold({
     super.key,
@@ -61,14 +67,14 @@ class EditorScaffold extends ConsumerWidget {
     required this.onOpenProjects,
     required this.onSaveAnnotations,
     required this.onSaveAnnotationsAs,
-    required this.onExportVideo,
     required this.onOpenSettings,
     required this.onOpenThemeManager,
     required this.onOpenCommandPalette,
     required this.commandPaletteShortcutLabel,
-    required this.isExporting,
-    required this.showExportHourglassBottom,
     this.onMenuAction,
+    this.onToggleCropExportPanel,
+    this.isCropExportPanelOpen = false,
+    this.onExportFrames,
   });
 
   @override
@@ -130,8 +136,6 @@ class EditorScaffold extends ConsumerWidget {
           isToolsStripVisible: showToolsStrip,
           onToggleToolsPanel: onToggleToolsPanel,
           onToggleToolsStrip: onToggleToolsStrip,
-          isExporting: isExporting,
-          showExportHourglassBottom: showExportHourglassBottom,
           onToggleInspector: onToggleInspector,
           onOpenFile: onOpenFile,
           onOpenYouTube: onOpenYouTube,
@@ -139,11 +143,12 @@ class EditorScaffold extends ConsumerWidget {
           onOpenProjects: onOpenProjects,
           onSaveAnnotations: onSaveAnnotations,
           onSaveAnnotationsAs: onSaveAnnotationsAs,
-          onExportVideo: onExportVideo,
           onOpenSettings: onOpenSettings,
           onOpenThemeManager: onOpenThemeManager,
           onOpenCommandPalette: onOpenCommandPalette,
           commandPaletteShortcutLabel: commandPaletteShortcutLabel,
+          onToggleCropExportPanel: isDesktop ? onToggleCropExportPanel : null,
+          isCropExportPanelOpen: isDesktop && isCropExportPanelOpen,
           onMenuAction: onMenuAction,
         ),
         Divider(height: 1, thickness: 1, color: palette.border),
@@ -177,8 +182,6 @@ class EditorScaffold extends ConsumerWidget {
           isToolsStripVisible: showToolsStrip,
           onToggleToolsPanel: onToggleToolsPanel,
           onToggleToolsStrip: onToggleToolsStrip,
-          isExporting: isExporting,
-          showExportHourglassBottom: showExportHourglassBottom,
           onToggleInspector: onToggleInspector,
           onOpenFile: onOpenFile,
           onOpenYouTube: onOpenYouTube,
@@ -186,11 +189,12 @@ class EditorScaffold extends ConsumerWidget {
           onOpenProjects: onOpenProjects,
           onSaveAnnotations: onSaveAnnotations,
           onSaveAnnotationsAs: onSaveAnnotationsAs,
-          onExportVideo: onExportVideo,
           onOpenSettings: onOpenSettings,
           onOpenThemeManager: onOpenThemeManager,
           onOpenCommandPalette: onOpenCommandPalette,
           commandPaletteShortcutLabel: commandPaletteShortcutLabel,
+          onToggleCropExportPanel: onToggleCropExportPanel,
+          isCropExportPanelOpen: isCropExportPanelOpen,
           onMenuAction: onMenuAction,
         ),
         Divider(height: 1, thickness: 1, color: palette.border),
@@ -219,6 +223,17 @@ class EditorScaffold extends ConsumerWidget {
 
                 // Right: inspector panel
                 const SizedBox(width: 220, child: InspectorPanel()),
+              ],
+
+              if (isCropExportPanelOpen) ...[
+                VerticalDivider(width: 1, thickness: 1, color: palette.border),
+                SizedBox(
+                  width: 280,
+                  child: CropExportPanel(
+                    onClose: onToggleCropExportPanel!,
+                    onExportFrames: onExportFrames,
+                  ),
+                ),
               ],
             ],
           ),
@@ -254,8 +269,6 @@ class EditorScaffold extends ConsumerWidget {
           isToolsStripVisible: showToolsStrip,
           onToggleToolsPanel: onToggleToolsPanel,
           onToggleToolsStrip: onToggleToolsStrip,
-          isExporting: isExporting,
-          showExportHourglassBottom: showExportHourglassBottom,
           onToggleInspector: onToggleInspector,
           onOpenFile: onOpenFile,
           onOpenYouTube: onOpenYouTube,
@@ -263,11 +276,12 @@ class EditorScaffold extends ConsumerWidget {
           onOpenProjects: onOpenProjects,
           onSaveAnnotations: onSaveAnnotations,
           onSaveAnnotationsAs: onSaveAnnotationsAs,
-          onExportVideo: onExportVideo,
           onOpenSettings: onOpenSettings,
           onOpenThemeManager: onOpenThemeManager,
           onOpenCommandPalette: onOpenCommandPalette,
           commandPaletteShortcutLabel: commandPaletteShortcutLabel,
+          onToggleCropExportPanel: null,
+          isCropExportPanelOpen: false,
           onMenuAction: onMenuAction,
         ),
         Divider(height: 1, thickness: 1, color: palette.border),
@@ -316,8 +330,6 @@ class EditorScaffold extends ConsumerWidget {
           isToolsStripVisible: showToolsStrip,
           onToggleToolsPanel: onToggleToolsPanel,
           onToggleToolsStrip: onToggleToolsStrip,
-          isExporting: isExporting,
-          showExportHourglassBottom: showExportHourglassBottom,
           onToggleInspector: onToggleInspector,
           onOpenFile: onOpenFile,
           onOpenYouTube: onOpenYouTube,
@@ -325,11 +337,12 @@ class EditorScaffold extends ConsumerWidget {
           onOpenProjects: onOpenProjects,
           onSaveAnnotations: onSaveAnnotations,
           onSaveAnnotationsAs: onSaveAnnotationsAs,
-          onExportVideo: onExportVideo,
           onOpenSettings: onOpenSettings,
           onOpenThemeManager: onOpenThemeManager,
           onOpenCommandPalette: onOpenCommandPalette,
           commandPaletteShortcutLabel: commandPaletteShortcutLabel,
+          onToggleCropExportPanel: null,
+          isCropExportPanelOpen: false,
           onMenuAction: onMenuAction,
         ),
         Divider(height: 1, thickness: 1, color: palette.border),
@@ -352,7 +365,6 @@ class EditorScaffold extends ConsumerWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const CropControlsPanel(),
         if (showAnnotationTimeline) const AnnotationKeyframeTimeline(),
         TimelineScrubber(showAnnotationTimelineToggle: true),
         Divider(height: 1, thickness: 1, color: palette.border),

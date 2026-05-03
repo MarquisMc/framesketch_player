@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:io' show Platform;
@@ -13,8 +13,6 @@ class EditorToolbar extends ConsumerWidget {
   final bool isInspectorVisible;
   final bool isToolsPanelVisible;
   final bool isToolsStripVisible;
-  final bool isExporting;
-  final bool showExportHourglassBottom;
   final VoidCallback onToggleInspector;
   final VoidCallback onToggleToolsPanel;
   final VoidCallback onToggleToolsStrip;
@@ -24,11 +22,13 @@ class EditorToolbar extends ConsumerWidget {
   final VoidCallback onOpenProjects;
   final VoidCallback onSaveAnnotations;
   final VoidCallback onSaveAnnotationsAs;
-  final VoidCallback onExportVideo;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenThemeManager;
   final VoidCallback onOpenCommandPalette;
   final String commandPaletteShortcutLabel;
+
+  final VoidCallback? onToggleCropExportPanel;
+  final bool isCropExportPanelOpen;
 
   /// Called with the action string 'register' | 'unregister' | 'check'
   final void Function(String, BuildContext)? onMenuAction;
@@ -39,8 +39,6 @@ class EditorToolbar extends ConsumerWidget {
     required this.isInspectorVisible,
     required this.isToolsPanelVisible,
     required this.isToolsStripVisible,
-    required this.isExporting,
-    required this.showExportHourglassBottom,
     required this.onToggleInspector,
     required this.onToggleToolsPanel,
     required this.onToggleToolsStrip,
@@ -50,11 +48,12 @@ class EditorToolbar extends ConsumerWidget {
     required this.onOpenProjects,
     required this.onSaveAnnotations,
     required this.onSaveAnnotationsAs,
-    required this.onExportVideo,
     required this.onOpenSettings,
     required this.onOpenThemeManager,
     required this.onOpenCommandPalette,
     required this.commandPaletteShortcutLabel,
+    this.onToggleCropExportPanel,
+    this.isCropExportPanelOpen = false,
     this.onMenuAction,
   });
 
@@ -65,9 +64,6 @@ class EditorToolbar extends ConsumerWidget {
     final themeController = ref.read(themeControllerProvider.notifier);
     final hasVideoLoaded = ref.watch(
       playerProvider.select((s) => s.hasLoadedSource),
-    );
-    final hasLocalVideoLoaded = ref.watch(
-      playerProvider.select((s) => s.isLocalFileSource),
     );
     final sourceLabel = ref.watch(
       playerProvider.select(
@@ -118,17 +114,13 @@ class EditorToolbar extends ConsumerWidget {
 
           // ── File dropdown menu ─────────────────────────────────────
           _FileMenuButton(
-            isExporting: isExporting,
-            showExportHourglassBottom: showExportHourglassBottom,
             hasVideoLoaded: hasVideoLoaded,
-            hasLocalVideoLoaded: hasLocalVideoLoaded,
             onOpenFile: onOpenFile,
             onOpenYouTube: onOpenYouTube,
             onOpenAnnotation: onOpenAnnotation,
             onOpenProjects: onOpenProjects,
             onSaveAnnotations: onSaveAnnotations,
             onSaveAnnotationsAs: onSaveAnnotationsAs,
-            onExportVideo: onExportVideo,
           ),
 
           _Sep(),
@@ -168,15 +160,20 @@ class EditorToolbar extends ConsumerWidget {
           ),
 
           // ── Right: crop, command palette, view toggles ────────────
-          _Sep(),
+          if (onToggleCropExportPanel != null) ...[
+            _Sep(),
 
-          // Crop toggle
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 2),
-            child: CropModeToggleButton(),
-          ),
+            // Crop & export panel toggle
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: CropModeToggleButton(
+                onTogglePanel: onToggleCropExportPanel,
+                isPanelOpen: isCropExportPanelOpen,
+              ),
+            ),
 
-          _Sep(),
+            _Sep(),
+          ],
 
           _Btn(
             icon: themeState.mode == ThemeMode.dark
@@ -348,30 +345,22 @@ class _ToolsStripToggle extends StatelessWidget {
 }
 
 class _FileMenuButton extends StatefulWidget {
-  final bool isExporting;
-  final bool showExportHourglassBottom;
   final bool hasVideoLoaded;
-  final bool hasLocalVideoLoaded;
   final VoidCallback onOpenFile;
   final VoidCallback onOpenYouTube;
   final VoidCallback onOpenAnnotation;
   final VoidCallback onOpenProjects;
   final VoidCallback onSaveAnnotations;
   final VoidCallback onSaveAnnotationsAs;
-  final VoidCallback onExportVideo;
 
   const _FileMenuButton({
-    required this.isExporting,
-    required this.showExportHourglassBottom,
     required this.hasVideoLoaded,
-    required this.hasLocalVideoLoaded,
     required this.onOpenFile,
     required this.onOpenYouTube,
     required this.onOpenAnnotation,
     required this.onOpenProjects,
     required this.onSaveAnnotations,
     required this.onSaveAnnotationsAs,
-    required this.onExportVideo,
   });
 
   @override
@@ -391,11 +380,6 @@ class _FileMenuButtonState extends State<_FileMenuButton> {
     final menuLeft = offset.dx;
 
     setState(() => _isOpen = true);
-
-    final canExport =
-        widget.hasVideoLoaded &&
-        !widget.isExporting &&
-        widget.hasLocalVideoLoaded;
 
     await showMenu<_FileAction>(
       context: context,
@@ -456,20 +440,6 @@ class _FileMenuButtonState extends State<_FileMenuButton> {
           enabled: widget.hasVideoLoaded,
           palette: palette,
         ),
-        // ── Export section ────────────────────────────
-        _menuDivider(),
-        _menuHeader('Export', palette),
-        _menuItem(
-          action: _FileAction.exportVideo,
-          icon: widget.isExporting
-              ? (widget.showExportHourglassBottom
-                    ? Icons.hourglass_bottom
-                    : Icons.hourglass_top)
-              : Icons.movie_creation_outlined,
-          label: widget.isExporting ? 'Exporting\u2026' : 'Export\u2026',
-          enabled: canExport,
-          palette: palette,
-        ),
       ],
     ).then((action) {
       if (!mounted) return;
@@ -488,8 +458,6 @@ class _FileMenuButtonState extends State<_FileMenuButton> {
           widget.onSaveAnnotations();
         case _FileAction.saveAnnotationsAs:
           widget.onSaveAnnotationsAs();
-        case _FileAction.exportVideo:
-          widget.onExportVideo();
       }
     });
   }
@@ -559,7 +527,6 @@ enum _FileAction {
   browseProjects,
   saveAnnotations,
   saveAnnotationsAs,
-  exportVideo,
 }
 
 PopupMenuEntry<_FileAction> _menuHeader(String title, AppPalette palette) {

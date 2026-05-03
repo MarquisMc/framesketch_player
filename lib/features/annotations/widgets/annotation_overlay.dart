@@ -108,11 +108,7 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
               _currentCursorPosition = null;
             });
           },
-          cursor: annotationState.currentTool == DrawingTool.eraser
-              ? SystemMouseCursors.precise
-              : annotationState.currentTool == DrawingTool.text
-              ? SystemMouseCursors.text
-              : MouseCursor.defer,
+          cursor: _cursorForAnnotationState(annotationState),
           child: Stack(
             children: [
               Listener(
@@ -345,6 +341,25 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
     }
 
     return true;
+  }
+
+  MouseCursor _cursorForAnnotationState(AnnotationState annotationState) {
+    if (annotationState.isScaling) {
+      return SystemMouseCursors.move;
+    }
+
+    return switch (annotationState.currentTool) {
+      DrawingTool.text => SystemMouseCursors.text,
+      DrawingTool.select => MouseCursor.defer,
+      DrawingTool.pen => SystemMouseCursors.precise,
+      DrawingTool.eraser ||
+      DrawingTool.rectangle ||
+      DrawingTool.filledSquare ||
+      DrawingTool.circle ||
+      DrawingTool.filledCircle ||
+      DrawingTool.line ||
+      DrawingTool.arrow => SystemMouseCursors.precise,
+    };
   }
 
   void _handleStrokeStart(Offset position, Size viewportSize) {

@@ -1586,8 +1586,19 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     if (state.selectedStrokeIds.isEmpty || state.dragStartPoint == null) return;
 
     final selectedSet = state.selectedStrokeIds.toSet();
-    final dx = currentPoint.x - state.dragStartPoint!.x;
-    final dy = currentPoint.y - state.dragStartPoint!.y;
+    final requestedDx = currentPoint.x - state.dragStartPoint!.x;
+    final requestedDy = currentPoint.y - state.dragStartPoint!.y;
+    final clampedDelta = _clampedDragDeltaForSelectedStrokes(
+      selectedSet,
+      requestedDx,
+      requestedDy,
+    );
+    final dx = clampedDelta.dx;
+    final dy = clampedDelta.dy;
+    if (dx == 0 && dy == 0) {
+      return;
+    }
+
     final updatedStrokes = List<Stroke>.from(state.allStrokes);
 
     for (int i = 0; i < updatedStrokes.length; i++) {
@@ -1612,9 +1623,61 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     state = state.copyWith(
       annotationData: updatedData,
-      dragStartPoint: currentPoint, // Update drag start for next move
+      dragStartPoint: StrokePoint(
+        x: state.dragStartPoint!.x + dx,
+        y: state.dragStartPoint!.y + dy,
+        timestampMs: currentPoint.timestampMs,
+      ),
       hasUnsavedChanges: true,
     );
+  }
+
+  Offset _clampedDragDeltaForSelectedStrokes(
+    Set<String> selectedSet,
+    double requestedDx,
+    double requestedDy,
+  ) {
+    final selectedBounds = _selectedStrokeBounds(selectedSet);
+    if (selectedBounds == null) {
+      return Offset(requestedDx, requestedDy);
+    }
+
+    final minDx = -selectedBounds.left;
+    final maxDx = 1.0 - selectedBounds.right;
+    final minDy = -selectedBounds.top;
+    final maxDy = 1.0 - selectedBounds.bottom;
+
+    return Offset(
+      _clampDragAxis(requestedDx, minDx, maxDx),
+      _clampDragAxis(requestedDy, minDy, maxDy),
+    );
+  }
+
+  double _clampDragAxis(
+    double requestedDelta,
+    double minDelta,
+    double maxDelta,
+  ) {
+    if (minDelta > maxDelta) {
+      return 0.0;
+    }
+    return requestedDelta.clamp(minDelta, maxDelta).toDouble();
+  }
+
+  Rect? _selectedStrokeBounds(Set<String> selectedSet) {
+    Rect? selectedBounds;
+    for (final stroke in state.allStrokes) {
+      if (!selectedSet.contains(stroke.id)) continue;
+
+      final bounds = _strokeBounds(stroke);
+      if (bounds == null) continue;
+
+      selectedBounds = selectedBounds == null
+          ? bounds
+          : selectedBounds.expandToInclude(bounds);
+    }
+
+    return selectedBounds;
   }
 
   void _updateBoxSelection(StrokePoint currentPoint) {
