@@ -1,11 +1,20 @@
+import 'package:path/path.dart' as path;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../player/providers/player_provider.dart';
 import '../../../core/models/annotation_data.dart';
+import '../../../core/services/annotation_storage_service.dart';
 import '../../../core/services/video_export_models.dart';
 import '../../../core/services/video_export_service.dart';
 
 final videoExportServiceProvider = Provider<VideoExportService>((ref) {
   return VideoExportService();
+});
+
+final annotationStorageServiceProvider = Provider<AnnotationStorageService>((
+  ref,
+) {
+  return AnnotationStorageService();
 });
 
 /// Available aspect ratio presets for cropping
@@ -289,11 +298,18 @@ enum CropHandle {
 class CropNotifier extends StateNotifier<CropState> {
   final Ref _ref;
   final VideoExportService _videoExportService;
+  final AnnotationStorageService _annotationStorageService;
 
-  CropNotifier(this._ref, {VideoExportService? videoExportService})
-    : _videoExportService =
-          videoExportService ?? _ref.read(videoExportServiceProvider),
-      super(const CropState());
+  CropNotifier(
+    this._ref, {
+    VideoExportService? videoExportService,
+    AnnotationStorageService? annotationStorageService,
+  }) : _videoExportService =
+           videoExportService ?? _ref.read(videoExportServiceProvider),
+       _annotationStorageService =
+           annotationStorageService ??
+           _ref.read(annotationStorageServiceProvider),
+       super(const CropState());
 
   /// Toggle crop mode on/off
   void toggleCropMode() {
@@ -680,6 +696,7 @@ class CropNotifier extends StateNotifier<CropState> {
     String outputPath, {
     AnnotationData? annotationData,
     VideoExportPreset preset = VideoExportPreset.compatible,
+    String annotationSidecarExtension = 'json',
   }) async {
     final playerState = _ref.read(playerProvider);
     if (playerState.currentVideoPath == null ||
@@ -746,6 +763,47 @@ class CropNotifier extends StateNotifier<CropState> {
 
     switch (result.status) {
       case VideoExportResultStatus.success:
+        if (annotationData != null) {
+          final sidecarPath = _annotationSidecarPathFor(
+            result.outputPath,
+            extension: annotationSidecarExtension,
+          );
+          try {
+            final sidecarSaved = await _annotationStorageService
+                .saveAnnotationsToFile(annotationData, sidecarPath);
+            if (!sidecarSaved) {
+              state = state.copyWith(
+                exportStatus: ExportStatus.error,
+                exportProgress: 1.0,
+                clearPreparationMessage: true,
+                clearPreparationProgress: true,
+                exportedFilePath: result.outputPath,
+                exportError:
+                    'Video exported successfully to ${result.outputPath}, '
+                    'but the annotation sidecar could not be saved to '
+                    '$sidecarPath.',
+              );
+              break;
+            }
+          } catch (error, stackTrace) {
+            debugPrint(
+              'Failed to save annotation sidecar for ${result.outputPath}: '
+              '$error\n$stackTrace',
+            );
+            state = state.copyWith(
+              exportStatus: ExportStatus.error,
+              exportProgress: 1.0,
+              clearPreparationMessage: true,
+              clearPreparationProgress: true,
+              exportedFilePath: result.outputPath,
+              exportError:
+                  'Video exported successfully to ${result.outputPath}, '
+                  'but the annotation sidecar could not be saved to '
+                  '$sidecarPath.',
+            );
+            break;
+          }
+        }
         state = state.copyWith(
           exportStatus: ExportStatus.success,
           exportProgress: 1.0,
@@ -771,6 +829,16 @@ class CropNotifier extends StateNotifier<CropState> {
         );
         break;
     }
+  }
+
+  String _annotationSidecarPathFor(
+    String exportedVideoPath, {
+    required String extension,
+  }) {
+    final normalizedExtension = extension.startsWith('.')
+        ? extension
+        : '.$extension';
+    return path.setExtension(exportedVideoPath, normalizedExtension);
   }
 
   /// Cancel ongoing export
@@ -808,5 +876,6 @@ final cropProvider = StateNotifierProvider<CropNotifier, CropState>((ref) {
   return CropNotifier(
     ref,
     videoExportService: ref.read(videoExportServiceProvider),
+    annotationStorageService: ref.read(annotationStorageServiceProvider),
   );
 });

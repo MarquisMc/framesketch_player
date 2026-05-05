@@ -312,7 +312,7 @@ class _ExportOptionsDialogState extends State<ExportOptionsDialog> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Exports the current annotation project file for this local video.',
+                  'Exports the current annotation project file for this video.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -361,16 +361,15 @@ class _ExportOptionsDialogState extends State<ExportOptionsDialog> {
         value: ExportMode.frames,
         child: Text('Multiple Frames'),
       ),
-      if (widget.isLocalSource) ...const [
-        DropdownMenuItem(
+      if (widget.isLocalSource)
+        const DropdownMenuItem(
           value: ExportMode.video,
           child: Text('Annotated Video'),
         ),
-        DropdownMenuItem(
-          value: ExportMode.annotationFile,
-          child: Text('Annotation File'),
-        ),
-      ],
+      const DropdownMenuItem(
+        value: ExportMode.annotationFile,
+        child: Text('Annotation File'),
+      ),
     ];
   }
 }

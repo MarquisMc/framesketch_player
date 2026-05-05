@@ -155,7 +155,7 @@ class ExportActions {
   }) async {
     final playerState = ref.read(playerProvider);
     if (playerState.currentVideoPath == null || playerState.metadata == null) {
-      showErrorDialog('No local video loaded');
+      showErrorDialog('No video loaded');
       return;
     }
     final annotationData = ref.read(annotationProvider).annotationData;
@@ -205,7 +205,7 @@ class ExportActions {
     final metadata = playerState.metadata;
     final videoPath = playerState.currentVideoPath;
     if (metadata == null || videoPath == null) {
-      showErrorDialog('No local video loaded');
+      showErrorDialog('No video loaded');
       return;
     }
 
@@ -263,7 +263,7 @@ class ExportActions {
     final metadata = playerState.metadata;
     final videoPath = playerState.currentVideoPath;
     if (metadata == null || videoPath == null) {
-      showErrorDialog('No local video loaded');
+      showErrorDialog('No video loaded');
       return;
     }
 
@@ -364,7 +364,7 @@ class ExportActions {
     final normalizedOutputPath = _ensureFileExtension(outputPath, 'mp4');
     final metadata = playerState.metadata;
     if (metadata == null) {
-      showErrorDialog('No local video loaded');
+      showErrorDialog('Video metadata not available');
       return;
     }
 
@@ -819,14 +819,6 @@ class ExportActions {
     ExportRequest request,
     AnnotationData annotationData,
   ) async {
-    final playerState = ref.read(playerProvider);
-    if (!playerState.isLocalFileSource) {
-      showErrorDialog(
-        'Annotation file export is only available for local video files.',
-      );
-      return;
-    }
-
     final extension = request.annotationExtension;
     final selectedPath = await FilePicker.platform.saveFile(
       dialogTitle: 'Export Annotation File',

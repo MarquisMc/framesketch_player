@@ -14,6 +14,8 @@ enum _FrameExportScope { single, range }
 
 enum _FrameFormat { png, jpg }
 
+enum _AnnotationExportFormat { framesketch, json }
+
 // ─── Floating crop/export panel ───────────────────────────────────────────────
 
 /// Floating panel that overlays the canvas, opened via the toolbar crop button.
@@ -501,10 +503,10 @@ class _FramesContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final hasLocal = ref.watch(
-      playerProvider.select((s) => s.isLocalFileSource),
+    final hasVideo = ref.watch(
+      playerProvider.select((s) => s.hasLoadedSource && s.metadata != null),
     );
-    if (!hasLocal) {
+    if (!hasVideo) {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -512,7 +514,7 @@ class _FramesContent extends ConsumerWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
-          'Export requires a local video file. Open a local video to enable export.',
+          'Open a video to enable frame export.',
           style: TextStyle(color: palette.textMuted, fontSize: 12),
         ),
       );
@@ -625,34 +627,77 @@ class _FramesContent extends ConsumerWidget {
 
 // ─── Video export content ─────────────────────────────────────────────────────
 
-class _VideoContent extends ConsumerWidget {
+class _VideoContent extends ConsumerStatefulWidget {
   const _VideoContent();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_VideoContent> createState() => _VideoContentState();
+}
+
+class _VideoContentState extends ConsumerState<_VideoContent> {
+  _AnnotationExportFormat _localAnnotationFormat = _AnnotationExportFormat.json;
+  _AnnotationExportFormat _youtubeAnnotationFormat =
+      _AnnotationExportFormat.framesketch;
+
+  @override
+  Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
     final cropState = ref.watch(cropProvider);
     final cropNotifier = ref.read(cropProvider.notifier);
-    final hasVideo = ref.watch(
-      playerProvider.select((s) => s.isLocalFileSource),
-    );
+    final playerState = ref.watch(playerProvider);
+    final annotationData = ref.watch(annotationProvider).annotationData;
+    final isLocalVideo = playerState.isLocalFileSource;
+    final youtubeUrl = annotationData?.youtubeUrl;
+    final isYouTubeSource =
+        !isLocalVideo && (youtubeUrl?.trim().isNotEmpty ?? false);
+    final canUseExportButton = isLocalVideo || isYouTubeSource;
     final isExportingOrPreparing =
         cropState.exportStatus == ExportStatus.exporting ||
         cropState.exportStatus == ExportStatus.preparing;
+    final exportButtonLabel = isYouTubeSource
+        ? 'Export Annotation'
+        : 'Export Video';
+    final annotationFormat = isLocalVideo
+        ? _localAnnotationFormat
+        : _youtubeAnnotationFormat;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _ExportRangeControls(),
-        const SizedBox(height: 14),
+        if (isLocalVideo) ...[
+          const _ExportRangeControls(),
+          const SizedBox(height: 14),
+        ],
+        if (isLocalVideo || isYouTubeSource) ...[
+          DropdownButtonFormField<_AnnotationExportFormat>(
+            initialValue: annotationFormat,
+            decoration: const InputDecoration(
+              labelText: 'Annotation File Format',
+            ),
+            items: _annotationFormatItems(recommendJson: isLocalVideo),
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() {
+                if (isLocalVideo) {
+                  _localAnnotationFormat = value;
+                } else {
+                  _youtubeAnnotationFormat = value;
+                }
+              });
+            },
+          ),
+          const SizedBox(height: 14),
+        ],
 
         _ExportButton(
-          label: isExportingOrPreparing ? 'Exporting…' : 'Export Video',
+          label: isExportingOrPreparing ? 'Exporting…' : exportButtonLabel,
           icon: isExportingOrPreparing
               ? Icons.hourglass_top
               : Icons.download_outlined,
-          onPressed: hasVideo && !isExportingOrPreparing
-              ? () => _showPresetDialog(context, ref)
+          onPressed: canUseExportButton && !isExportingOrPreparing
+              ? () => isYouTubeSource
+                    ? _exportYouTubeAnnotationFile(context, ref)
+                    : _showPresetDialog(context, ref)
               : null,
           palette: palette,
         ),
@@ -681,6 +726,93 @@ class _VideoContent extends ConsumerWidget {
           ),
       ],
     );
+  }
+
+  List<DropdownMenuItem<_AnnotationExportFormat>> _annotationFormatItems({
+    required bool recommendJson,
+  }) {
+    return recommendJson
+        ? const [
+            DropdownMenuItem(
+              value: _AnnotationExportFormat.json,
+              child: Text('.json (recommended)'),
+            ),
+            DropdownMenuItem(
+              value: _AnnotationExportFormat.framesketch,
+              child: Text('.framesketch'),
+            ),
+          ]
+        : const [
+            DropdownMenuItem(
+              value: _AnnotationExportFormat.framesketch,
+              child: Text('.framesketch (recommended)'),
+            ),
+            DropdownMenuItem(
+              value: _AnnotationExportFormat.json,
+              child: Text('.json'),
+            ),
+          ];
+  }
+
+  Future<void> _exportYouTubeAnnotationFile(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final annotationData = ref.read(annotationProvider).annotationData;
+    if (annotationData == null ||
+        annotationData.youtubeUrl == null ||
+        annotationData.youtubeUrl!.trim().isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('No YouTube video data available to export'),
+            backgroundColor: AppPalette.of(context).error,
+          ),
+        );
+      }
+      return;
+    }
+
+    final playerState = ref.read(playerProvider);
+    final sourceLabel =
+        playerState.currentDisplayLabel?.trim().isNotEmpty == true
+        ? playerState.currentDisplayLabel!
+        : playerState.currentSourceLabel ?? annotationData.videoPath;
+    final safeBase = _safeName(sourceLabel);
+    final extension = _annotationExtension(_youtubeAnnotationFormat);
+    final selectedPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Export Annotation File',
+      fileName: '$safeBase.$extension',
+      type: FileType.custom,
+      allowedExtensions: const ['framesketch', 'json'],
+    );
+    if (selectedPath == null) return;
+
+    final outputPath = _ensureAnnotationExtension(
+      selectedPath,
+      _youtubeAnnotationFormat,
+    );
+    final success = await ref
+        .read(annotationProvider.notifier)
+        .saveAnnotationsToFile(outputPath);
+    if (!context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    if (success) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Annotation file exported: $outputPath'),
+          backgroundColor: AppPalette.of(context).success,
+        ),
+      );
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: const Text('Failed to export annotation file'),
+          backgroundColor: AppPalette.of(context).error,
+        ),
+      );
+    }
   }
 
   Future<void> _showPresetDialog(BuildContext context, WidgetRef ref) async {
@@ -717,6 +849,9 @@ class _VideoContent extends ConsumerWidget {
             result,
             annotationData: annotationData,
             preset: preset,
+            annotationSidecarExtension: _annotationExtension(
+              _localAnnotationFormat,
+            ),
           );
     }
   }
@@ -728,6 +863,31 @@ class _VideoContent extends ConsumerWidget {
         .trim();
     if (s.isEmpty) return 'export';
     return s.length <= 64 ? s : s.substring(0, 64).trimRight();
+  }
+
+  static String _annotationExtension(_AnnotationExportFormat format) {
+    return switch (format) {
+      _AnnotationExportFormat.framesketch => 'framesketch',
+      _AnnotationExportFormat.json => 'json',
+    };
+  }
+
+  static String _ensureAnnotationExtension(
+    String input,
+    _AnnotationExportFormat format,
+  ) {
+    final extension = _annotationExtension(format);
+    final lower = input.toLowerCase();
+    if (lower.endsWith('.$extension')) {
+      return input;
+    }
+    if (lower.endsWith('.framesketch')) {
+      return '${input.substring(0, input.length - '.framesketch'.length)}.$extension';
+    }
+    if (lower.endsWith('.json')) {
+      return '${input.substring(0, input.length - '.json'.length)}.$extension';
+    }
+    return '$input.$extension';
   }
 }
 

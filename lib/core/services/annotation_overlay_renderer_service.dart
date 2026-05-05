@@ -348,10 +348,30 @@ class AnnotationOverlayRendererService {
     final anchor = _toOffset(stroke.points.first, transform);
     final span = TextSpan(
       text: stroke.text!,
-      style: TextStyle(color: stroke.color, fontSize: fontSize),
+      style: TextStyle(color: stroke.color, fontSize: fontSize, height: 1.2),
     );
-    final painter = TextPainter(text: span, textDirection: TextDirection.ltr)
-      ..layout();
+    final painter = TextPainter(
+      text: span,
+      textDirection: TextDirection.ltr,
+      maxLines: null,
+    );
+
+    if (stroke.points.length >= 2) {
+      final textRect = Rect.fromPoints(
+        anchor,
+        _toOffset(stroke.points.last, transform),
+      );
+      final maxWidth = textRect.width <= 1 ? 1.0 : textRect.width;
+      painter.layout(maxWidth: maxWidth);
+
+      canvas.save();
+      canvas.clipRect(textRect);
+      painter.paint(canvas, textRect.topLeft);
+      canvas.restore();
+      return;
+    }
+
+    painter.layout();
     painter.paint(canvas, anchor);
   }
 }
