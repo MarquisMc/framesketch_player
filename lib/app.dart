@@ -1,35 +1,33 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io' show Directory, File, Platform, Process, SystemEncoding;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'core/models/project_library_entry.dart';
 import 'features/player/providers/player_provider.dart';
 import 'features/annotations/providers/annotation_provider.dart';
 import 'features/annotations/models/stroke.dart';
-import 'core/services/annotation_storage_service.dart';
 import 'core/services/annotation_overlay_renderer_service.dart';
 import 'core/services/ffprobe_service.dart';
-import 'core/services/project_library_service.dart';
-import 'core/services/youtube_video_source_service.dart';
 import 'core/models/annotation_data.dart';
 import 'core/models/keyboard_shortcuts.dart';
 import 'core/models/video_metadata.dart';
+import 'features/projects/providers/project_library_provider.dart';
+import 'features/projects/widgets/project_library_actions.dart';
 import 'features/projects/widgets/project_browser.dart';
-import 'features/settings/widgets/settings_dialog.dart';
-import 'features/settings/widgets/theme_dialog.dart';
+import 'features/settings/providers/auto_save_provider.dart';
+import 'features/settings/providers/keyboard_shortcuts_provider.dart';
+import 'features/settings/widgets/settings_actions.dart';
 import 'features/loop/providers/loop_provider.dart';
 import 'features/crop/providers/crop_provider.dart';
+import 'features/player/widgets/source_open_actions.dart';
 import 'core/services/video_export_models.dart';
-import 'core/services/file_association_service.dart';
 import 'core/theme/app_palette.dart';
 import 'core/theme/theme_provider.dart';
 import 'ui/editor_scaffold.dart';
 import 'ui/command_palette/command_palette.dart';
-import 'ui/command_palette/command_palette_model.dart';
+import 'ui/command_palette/editor_command_factory.dart';
 
 /// Main application widget
 class FrameSketchPlayerApp extends ConsumerStatefulWidget {
@@ -43,17 +41,16 @@ class FrameSketchPlayerApp extends ConsumerStatefulWidget {
 }
 
 class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
-  static const String _autoSaveEnabledKey = 'auto_save_enabled';
   final FocusNode _focusNode = FocusNode();
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
-  final ProjectLibraryService _projectLibraryService = ProjectLibraryService();
   final FFprobeService _ffprobeService = FFprobeService();
   final AnnotationOverlayRendererService _overlayRenderer =
       AnnotationOverlayRendererService();
-  late KeyboardShortcuts _shortcuts;
   late final ProviderSubscription<(bool, DateTime?)> _autoSaveSubscription;
+  late final ProviderSubscription<({bool isEditingText, bool isInteracting})>
+  _annotationFocusSubscription;
   Timer? _keyRepeatTimer;
   Timer? _exportIconTimer;
   Timer? _autoSaveTimer;
@@ -72,20 +69,15 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   VoidCallback? _loadingOverlayCancelAction;
   bool _exportCancelRequested = false;
   Process? _activeFrameExportProcess;
-  bool _autoSaveEnabled = true;
   bool _isAutoSaving = false;
-  bool _projectsLoading = false;
-  List<ProjectLibraryEntry> _projects = const [];
   AppPalette get _activePalette =>
       ref.read(themeControllerProvider).activePalette;
+  KeyboardShortcuts get _shortcuts => ref.read(keyboardShortcutsProvider);
+  bool get _autoSaveEnabled => ref.read(autoSaveProvider);
 
   @override
   void initState() {
     super.initState();
-    _shortcuts = defaultKeyboardShortcuts;
-    _loadShortcuts();
-    _loadAutoSavePreference();
-    _loadProjects();
     _autoSaveSubscription = ref.listenManual<(bool, DateTime?)>(
       annotationProvider.select(
         (state) => (state.hasUnsavedChanges, state.annotationData?.updatedAt),
@@ -94,6 +86,31 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         _handleAutoSaveStateChanged(hasUnsavedChanges: next.$1);
       },
     );
+    _annotationFocusSubscription = ref
+        .listenManual<({bool isEditingText, bool isInteracting})>(
+          annotationProvider.select(
+            (state) => (
+              isEditingText: state.pendingTextStrokeId != null,
+              isInteracting:
+                  state.isDrawing ||
+                  state.isBoxSelecting ||
+                  state.isScaling ||
+                  state.currentStroke != null,
+            ),
+          ),
+          (previous, next) {
+            if (next.isEditingText || next.isInteracting) {
+              return;
+            }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted ||
+                  ref.read(annotationProvider).pendingTextStrokeId != null) {
+                return;
+              }
+              _focusNode.requestFocus();
+            });
+          },
+        );
     // Request focus on startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
@@ -104,98 +121,20 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     });
   }
 
-  Future<void> _loadShortcuts() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final json = prefs.getString('keyboard_shortcuts');
-      if (json != null) {
-        _shortcuts = KeyboardShortcuts.fromJson(
-          jsonDecode(json) as Map<String, dynamic>,
-        );
-        setState(() {});
-      }
-    } catch (e) {
-      _shortcuts = defaultKeyboardShortcuts;
-    }
-  }
-
-  Future<void> _saveShortcuts(KeyboardShortcuts shortcuts) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        'keyboard_shortcuts',
-        jsonEncode(shortcuts.toJson()),
-      );
-      setState(() {
-        _shortcuts = shortcuts;
-      });
-    } catch (e) {
-      debugPrint('Error saving shortcuts: $e');
-    }
-  }
-
-  Future<void> _loadAutoSavePreference() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final storedValue = prefs.getBool(_autoSaveEnabledKey);
-      if (storedValue == null || !mounted) {
-        return;
-      }
-
-      setState(() {
-        _autoSaveEnabled = storedValue;
-      });
-    } catch (e) {
-      debugPrint('Error loading auto save preference: $e');
-    }
-  }
-
   Future<void> _setAutoSaveEnabled(bool enabled) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_autoSaveEnabledKey, enabled);
-      if (!mounted) return;
+    await ref.read(autoSaveProvider.notifier).setEnabled(enabled);
 
-      setState(() {
-        _autoSaveEnabled = enabled;
-      });
-
-      if (enabled) {
-        _handleAutoSaveStateChanged(
-          hasUnsavedChanges: ref.read(annotationProvider).hasUnsavedChanges,
-        );
-      } else {
-        _autoSaveTimer?.cancel();
-      }
-    } catch (e) {
-      debugPrint('Error saving auto save preference: $e');
+    if (enabled) {
+      _handleAutoSaveStateChanged(
+        hasUnsavedChanges: ref.read(annotationProvider).hasUnsavedChanges,
+      );
+    } else {
+      _autoSaveTimer?.cancel();
     }
   }
 
-  Future<void> _loadProjects() async {
-    if (mounted) {
-      setState(() {
-        _projectsLoading = true;
-      });
-    }
-
-    try {
-      final projects = await _projectLibraryService.getProjects();
-      if (!mounted) return;
-
-      setState(() {
-        _projects = projects;
-        _projectsLoading = false;
-      });
-    } catch (e) {
-      debugPrint('Error loading projects: $e');
-      if (!mounted) return;
-
-      setState(() {
-        _projectsLoading = false;
-      });
-    }
-  }
+  Future<void> _loadProjects() =>
+      ref.read(projectLibraryProvider.notifier).loadProjects();
 
   void _handleAutoSaveStateChanged({required bool hasUnsavedChanges}) {
     _autoSaveTimer?.cancel();
@@ -251,313 +190,78 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       return;
     }
 
-    await _projectLibraryService.upsertProject(
-      annotationData: annotationData,
-      sourceLabel: playerState.currentSourceLabel!,
-      projectTitle: projectTitle,
-      duration: playerState.duration,
-    );
-    await _loadProjects();
-  }
-
-  Future<void> _openProject(ProjectLibraryEntry project) async {
-    if (project.isYouTubeProject) {
-      final youtubeUrl = project.youtubeUrl;
-      if (youtubeUrl == null || youtubeUrl.trim().isEmpty) {
-        _showErrorDialog('This YouTube project is missing its source URL.');
-        return;
-      }
-      await _loadYouTubeUrl(youtubeUrl);
-      return;
-    }
-
-    final sourcePath = project.sourcePath;
-    if (sourcePath.trim().isEmpty || !await File(sourcePath).exists()) {
-      _showErrorDialog(
-        'The video file for this project could not be found:\n$sourcePath',
-      );
-      return;
-    }
-
-    await _loadInitialVideo(sourcePath);
-  }
-
-  Future<void> _openProjectsDialog() async {
-    final dialogHostContext = _navigatorKey.currentContext;
-    if (dialogHostContext == null || !mounted) {
-      return;
-    }
-
-    final selectedProject = await showDialog<ProjectLibraryEntry>(
-      context: dialogHostContext,
-      builder: (dialogContext) {
-        return Dialog(
-          insetPadding: const EdgeInsets.all(24),
-          child: SizedBox(
-            width: 1040,
-            height: 720,
-            child: ProjectBrowser(
-              projects: _projects,
-              isLoading: _projectsLoading,
-              onOpenProject: (project) {
-                Navigator.of(dialogContext).pop(project);
-              },
-              onRenameProject: _renameProjectFromBrowser,
-              onRevertProjectName: _revertProjectNameFromBrowser,
-              onDeleteProject: _deleteProjectFromBrowser,
-              onPinProject: _pinProjectFromBrowser,
-              onDuplicateProject: _duplicateProjectFromBrowser,
-              onRefresh: _loadProjects,
-            ),
-          ),
+    await ref
+        .read(projectLibraryProvider.notifier)
+        .upsertProject(
+          annotationData: annotationData,
+          sourceLabel: playerState.currentSourceLabel!,
+          projectTitle: projectTitle,
+          duration: playerState.duration,
         );
-      },
-    );
-
-    if (selectedProject != null) {
-      await _openProject(selectedProject);
-    }
-
-    _focusNode.requestFocus();
   }
 
-  Future<void> _renameProjectFromBrowser(ProjectLibraryEntry project) async {
-    final dialogHostContext = _navigatorKey.currentContext;
-    if (dialogHostContext == null || !mounted) {
-      return;
-    }
+  SourceOpenActions get _sourceOpenActions => SourceOpenActions(
+    ref: ref,
+    navigatorKey: _navigatorKey,
+    scaffoldMessengerKey: _scaffoldMessengerKey,
+    focusNode: _focusNode,
+    isMounted: () => mounted,
+    activePalette: () => _activePalette,
+    runWithLoadingOverlay: _runWithLoadingOverlay,
+    registerCurrentProject: _registerCurrentProject,
+    showErrorDialog: _showErrorDialog,
+  );
 
-    var pendingTitle = project.title;
-    final renamedTitle = await showDialog<String>(
-      context: dialogHostContext,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Rename Project'),
-          content: TextFormField(
-            initialValue: project.title,
-            autofocus: true,
-            decoration: const InputDecoration(labelText: 'Project name'),
-            onChanged: (value) => pendingTitle = value,
-            onFieldSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(pendingTitle),
-              child: const Text('Rename'),
-            ),
-          ],
-        );
-      },
-    );
+  SettingsActions get _settingsActions => SettingsActions(
+    ref: ref,
+    navigatorKey: _navigatorKey,
+    scaffoldMessengerKey: _scaffoldMessengerKey,
+    focusNode: _focusNode,
+    isMounted: () => mounted,
+    activePalette: () => _activePalette,
+    onAutoSaveChanged: _setAutoSaveEnabled,
+    showInfoDialog: _showInfoDialog,
+    showErrorDialog: _showErrorDialog,
+  );
 
-    if (renamedTitle == null) {
-      return;
-    }
-
-    final trimmedTitle = renamedTitle.trim();
-    if (trimmedTitle.isEmpty || trimmedTitle == project.title) {
-      return;
-    }
-
-    try {
-      await _runWithLoadingOverlay(
-        message: 'Renaming project...',
-        action: () async {
-          await _projectLibraryService.renameProject(
-            project: project,
-            newTitle: trimmedTitle,
-          );
-          await _loadProjects();
-        },
-      );
-
-      if (!mounted) return;
-      _scaffoldMessengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text('Renamed project to $trimmedTitle'),
-          backgroundColor: _activePalette.success,
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        _showErrorDialog('Error renaming project: $e');
-      }
-    } finally {
-      _focusNode.requestFocus();
-    }
+  Future<void> _openProject(ProjectLibraryEntry project) {
+    return _sourceOpenActions.openProject(project);
   }
 
-  Future<void> _deleteProjectFromBrowser(ProjectLibraryEntry project) async {
-    final dialogHostContext = _navigatorKey.currentContext;
-    if (dialogHostContext == null || !mounted) {
-      return;
-    }
+  ProjectLibraryActions get _projectLibraryActions => ProjectLibraryActions(
+    ref: ref,
+    navigatorKey: _navigatorKey,
+    scaffoldMessengerKey: _scaffoldMessengerKey,
+    focusNode: _focusNode,
+    isMounted: () => mounted,
+    activePalette: () => _activePalette,
+    runWithLoadingOverlay: _runWithLoadingOverlay,
+    openProject: _openProject,
+    showErrorDialog: _showErrorDialog,
+  );
 
-    final confirmed = await showDialog<bool>(
-      context: dialogHostContext,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Delete Project'),
-          content: Text(
-            project.isYouTubeProject
-                ? 'Delete "${project.title}" from the library and remove its saved annotation data?'
-                : 'Delete "${project.title}" from the library and permanently remove its video file and annotation file from this machine?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    try {
-      await _runWithLoadingOverlay(
-        message: 'Deleting project...',
-        action: () async {
-          await _projectLibraryService.deleteProject(project);
-          await _loadProjects();
-        },
-      );
-
-      if (!mounted) return;
-      _scaffoldMessengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text('Deleted project ${project.title}'),
-          backgroundColor: _activePalette.success,
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        _showErrorDialog('Error deleting project: $e');
-      }
-    } finally {
-      _focusNode.requestFocus();
-    }
+  Future<void> _openProjectsDialog() {
+    return _projectLibraryActions.openProjectsDialog();
   }
 
-  Future<void> _revertProjectNameFromBrowser(
-    ProjectLibraryEntry project,
-  ) async {
-    if (!project.canRevertToOriginalName) {
-      return;
-    }
-
-    final dialogHostContext = _navigatorKey.currentContext;
-    if (dialogHostContext == null || !mounted) {
-      return;
-    }
-
-    final originalTitle = project.originalTitle ?? project.title;
-    final confirmed = await showDialog<bool>(
-      context: dialogHostContext,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Revert Project Name'),
-          content: Text(
-            'Rename "${project.title}" back to "$originalTitle" and restore the original filename on disk?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Revert'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    try {
-      await _runWithLoadingOverlay(
-        message: 'Reverting project name...',
-        action: () async {
-          await _projectLibraryService.revertProjectToOriginalName(project);
-          await _loadProjects();
-        },
-      );
-
-      if (!mounted) return;
-      _scaffoldMessengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text('Reverted project name to $originalTitle'),
-          backgroundColor: _activePalette.success,
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        _showErrorDialog('Error reverting project name: $e');
-      }
-    } finally {
-      _focusNode.requestFocus();
-    }
+  Future<void> _renameProjectFromBrowser(ProjectLibraryEntry project) {
+    return _projectLibraryActions.renameProjectFromBrowser(project);
   }
 
-  Future<void> _pinProjectFromBrowser(ProjectLibraryEntry project) async {
-    try {
-      await _runWithLoadingOverlay(
-        message: 'Updating pin...',
-        action: () async {
-          await _projectLibraryService.togglePin(project);
-          await _loadProjects();
-        },
-      );
-    } catch (e) {
-      if (mounted) {
-        _showErrorDialog('Error updating pin: $e');
-      }
-    } finally {
-      _focusNode.requestFocus();
-    }
+  Future<void> _deleteProjectFromBrowser(ProjectLibraryEntry project) {
+    return _projectLibraryActions.deleteProjectFromBrowser(project);
   }
 
-  Future<void> _duplicateProjectFromBrowser(ProjectLibraryEntry project) async {
-    try {
-      await _runWithLoadingOverlay(
-        message: 'Duplicating project...',
-        action: () async {
-          await _projectLibraryService.duplicateProject(project);
-          await _loadProjects();
-        },
-      );
+  Future<void> _revertProjectNameFromBrowser(ProjectLibraryEntry project) {
+    return _projectLibraryActions.revertProjectNameFromBrowser(project);
+  }
 
-      if (!mounted) return;
-      _scaffoldMessengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Duplicated \u201c${project.title}\u201d as a new revision',
-          ),
-          backgroundColor: _activePalette.success,
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        _showErrorDialog('Error duplicating project: $e');
-      }
-    } finally {
-      _focusNode.requestFocus();
-    }
+  Future<void> _pinProjectFromBrowser(ProjectLibraryEntry project) {
+    return _projectLibraryActions.pinProjectFromBrowser(project);
+  }
+
+  Future<void> _duplicateProjectFromBrowser(ProjectLibraryEntry project) {
+    return _projectLibraryActions.duplicateProjectFromBrowser(project);
   }
 
   @override
@@ -566,6 +270,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     _activeFrameExportProcess?.kill();
     _activeFrameExportProcess = null;
     _autoSaveSubscription.close();
+    _annotationFocusSubscription.close();
     _keyRepeatTimer?.cancel();
     _exportIconTimer?.cancel();
     _autoSaveTimer?.cancel();
@@ -576,6 +281,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   @override
   Widget build(BuildContext context) {
     final themeState = ref.watch(themeControllerProvider);
+    final shortcuts = ref.watch(keyboardShortcutsProvider);
+    ref.watch(autoSaveProvider);
+    final projectLibraryState = ref.watch(projectLibraryProvider);
     final selectedTheme = themeState.selectedTheme;
     final isExporting = ref.watch(
       cropProvider.select(
@@ -612,8 +320,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                   showToolsPanel: _showToolsPanel,
                   showToolsStrip: _showToolsStrip,
                   projectBrowser: ProjectBrowser(
-                    projects: _projects,
-                    isLoading: _projectsLoading,
+                    projects: projectLibraryState.projects,
+                    isLoading: projectLibraryState.isLoading,
                     onOpenProject: (project) {
                       unawaited(_openProject(project));
                     },
@@ -639,8 +347,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                   onOpenSettings: () => _openSettings(context),
                   onOpenThemeManager: () => _openThemeManager(context),
                   onOpenCommandPalette: _openCommandPalette,
-                  commandPaletteShortcutLabel: _formatShortcutLabel(
-                    _shortcuts.openCommandPalette,
+                  commandPaletteShortcutLabel: formatShortcutLabel(
+                    shortcuts.openCommandPalette,
                   ),
                   onToggleCropExportPanel: _toggleCropExportPanel,
                   isCropExportPanelOpen: _showCropExportPanel,
@@ -651,7 +359,21 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                   _buildGlobalLoadingOverlay(context),
                 if (_showCommandPalette)
                   CommandPalette(
-                    commands: _buildPaletteCommands(),
+                    commands: EditorCommandFactory(
+                      ref: ref,
+                      shortcuts: _shortcuts,
+                      markerColor: _activePalette.accent,
+                      isFullscreen: _isFullscreen,
+                      onOpenFile: _openFile,
+                      onOpenRecent: _openRecentFromPalette,
+                      onSaveAnnotations: _saveAnnotations,
+                      onExportVideoFromTopBar: _exportVideoFromTopBar,
+                      onOpenThemeManager: () {
+                        final ctx = _navigatorKey.currentContext;
+                        if (ctx != null) _openThemeManager(ctx);
+                      },
+                      onToggleFullscreen: _toggleFullscreenMode,
+                    ).build(),
                     onClose: _closeCommandPalette,
                   ),
               ],
@@ -775,10 +497,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     final loopNotifier = ref.read(loopProvider.notifier);
     final annotationState = ref.read(annotationProvider);
 
-    // Only process app-wide shortcuts when the shell focus node itself owns
-    // primary focus. If a child control is focused, let that control handle
-    // the key event without global shortcut interference.
-    if (!_focusNode.hasPrimaryFocus) {
+    // Only process app-wide shortcuts while keyboard focus is in the editor
+    // shell. Editable text descendants keep their normal text behavior.
+    if (!_focusNode.hasFocus || _isEditableTextFocused()) {
       _keyRepeatGeneration++;
       _keyRepeatTimer?.cancel();
       _keyRepeatTimer = null;
@@ -1065,6 +786,24 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     return KeyEventResult.ignored;
   }
 
+  bool _isEditableTextFocused() {
+    final context = FocusManager.instance.primaryFocus?.context;
+    if (context == null) {
+      return false;
+    }
+
+    var hasEditableText = false;
+    context.visitAncestorElements((element) {
+      if (element.widget is EditableText) {
+        hasEditableText = true;
+        return false;
+      }
+      return true;
+    });
+
+    return hasEditableText || context.widget is EditableText;
+  }
+
   void _openCommandPalette() {
     if (_showCommandPalette) return;
     setState(() => _showCommandPalette = true);
@@ -1082,436 +821,6 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       ref.read(cropProvider.notifier).exitCropMode();
     }
     _focusNode.requestFocus();
-  }
-
-  Future<void> _openRecentFromPalette() async {
-    final recent = await AnnotationStorageService().getRecentFiles();
-    if (!mounted) return;
-    if (recent.isEmpty) {
-      _scaffoldMessengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: const Text('No recent files'),
-          backgroundColor: _activePalette.warning,
-        ),
-      );
-      return;
-    }
-
-    final dialogHostContext = _navigatorKey.currentContext;
-    if (dialogHostContext == null) return;
-
-    final chosen = await showDialog<String>(
-      // ignore: use_build_context_synchronously
-      context: dialogHostContext,
-      builder: (dialogContext) {
-        final palette = AppPalette.of(dialogContext);
-        return Dialog(
-          child: SizedBox(
-            width: 560,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Open Recent',
-                      style: TextStyle(
-                        color: palette.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                Divider(height: 1, color: palette.border),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: recent.length,
-                    itemBuilder: (_, i) {
-                      final path = recent[i];
-                      final name = path.replaceAll('\\', '/').split('/').last;
-                      return ListTile(
-                        leading: Icon(
-                          Icons.movie_outlined,
-                          size: 18,
-                          color: palette.textSecondary,
-                        ),
-                        title: Text(name),
-                        subtitle: Text(
-                          path,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        onTap: () => Navigator.of(dialogContext).pop(path),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-
-    if (chosen != null) {
-      await _loadInitialVideo(chosen);
-    }
-  }
-
-  PaletteStep _goToFrameStep() {
-    return PaletteStep(
-      title: 'Go to frame',
-      hint: 'Frame number (e.g. 120)',
-      helper: 'Jumps the player to the given frame.',
-      confirmLabel: 'Go',
-      onSubmit: (value) {
-        final frame = int.tryParse(value.trim());
-        if (frame == null || frame < 0) {
-          return 'Enter a valid frame number.';
-        }
-        final metadata = ref.read(playerProvider).metadata;
-        if (metadata == null) return 'Open a video before jumping to a frame.';
-        final targetMs = ((frame * 1000) / metadata.fps).round();
-        unawaited(
-          ref
-              .read(playerProvider.notifier)
-              .seek(Duration(milliseconds: targetMs)),
-        );
-        return null;
-      },
-    );
-  }
-
-  PaletteStep _setLoopPointStep({required bool isA}) {
-    return PaletteStep(
-      title: isA ? 'Set loop A (start)' : 'Set loop B (end)',
-      hint: 'Time in ms, or s:ms (blank = current position)',
-      helper: isA
-          ? 'Leave blank to use the current playhead position.'
-          : 'Must be after the A point.',
-      confirmLabel: 'Set',
-      onSubmit: (value) {
-        final trimmed = value.trim();
-        final loopNotifier = ref.read(loopProvider.notifier);
-
-        if (trimmed.isEmpty) {
-          if (isA) {
-            loopNotifier.setAPoint();
-          } else {
-            loopNotifier.setBPoint();
-          }
-          return null;
-        }
-
-        final ms = _parsePaletteDurationMs(trimmed);
-        if (ms == null) {
-          return 'Enter milliseconds or a value like 1:23.456.';
-        }
-        final position = Duration(milliseconds: ms);
-        if (isA) {
-          loopNotifier.setAPointAt(position);
-        } else {
-          loopNotifier.setBPointAt(position);
-        }
-        return null;
-      },
-    );
-  }
-
-  int? _parsePaletteDurationMs(String input) {
-    final direct = int.tryParse(input);
-    if (direct != null) return direct < 0 ? null : direct;
-    final parts = input.split(':');
-    if (parts.length == 2) {
-      final sec = int.tryParse(parts[0]);
-      final ms = int.tryParse(parts[1]);
-      if (sec != null && ms != null && sec >= 0 && ms >= 0) {
-        return sec * 1000 + ms;
-      }
-    }
-    return null;
-  }
-
-  String _formatShortcutLabel(KeyboardShortcut shortcut) {
-    final parts = <String>[];
-    if (shortcut.ctrlPressed) parts.add('Ctrl');
-    if (shortcut.shiftPressed) parts.add('Shift');
-    if (shortcut.altPressed) parts.add('Alt');
-    parts.add(
-      shortcut.key.keyLabel.isNotEmpty
-          ? shortcut.key.keyLabel
-          : shortcut.key.debugName ?? '',
-    );
-    return parts.join('+');
-  }
-
-  List<PaletteCommand> _buildPaletteCommands() {
-    final playerState = ref.read(playerProvider);
-    final loopState = ref.read(loopProvider);
-    final cropState = ref.read(cropProvider);
-    final annotationState = ref.read(annotationProvider);
-    final themeState = ref.read(themeControllerProvider);
-    final themeController = ref.read(themeControllerProvider.notifier);
-    final hasVideo = playerState.hasLoadedSource;
-    final hasLocal = playerState.isLocalFileSource;
-    final hasAnnotations = annotationState.annotationData != null;
-
-    return <PaletteCommand>[
-      // ─── File ────────────────────────────────────────────────────
-      PaletteCommand(
-        id: 'open-video',
-        label: 'Open Video\u2026',
-        category: 'File',
-        icon: Icons.folder_open_outlined,
-        shortcut: _formatShortcutLabel(_shortcuts.openFile),
-        run: () {
-          unawaited(_openFile());
-          return null;
-        },
-      ),
-      PaletteCommand(
-        id: 'open-recent',
-        label: 'Open Recent\u2026',
-        category: 'File',
-        icon: Icons.history,
-        run: () {
-          unawaited(_openRecentFromPalette());
-          return null;
-        },
-      ),
-      PaletteCommand(
-        id: 'save-project',
-        label: 'Save Project',
-        category: 'File',
-        icon: Icons.save_outlined,
-        shortcut: _formatShortcutLabel(_shortcuts.saveAnnotations),
-        enabled: hasAnnotations,
-        run: () {
-          unawaited(_saveAnnotations());
-          return null;
-        },
-      ),
-      PaletteCommand(
-        id: 'export-loop',
-        label: 'Export Loop',
-        category: 'File',
-        icon: Icons.movie_creation_outlined,
-        enabled: hasLocal && loopState.isSectionLoopValid,
-        subtitle: loopState.isSectionLoopValid
-            ? null
-            : 'Requires a valid A/B loop section',
-        run: () {
-          final cropNotifier = ref.read(cropProvider.notifier);
-          if (!cropState.isCropModeActive) {
-            cropNotifier.toggleCropMode();
-          }
-          cropNotifier.setExportRange(
-            start: loopState.loopStart,
-            end: loopState.loopEnd,
-          );
-          unawaited(_exportVideoFromTopBar());
-          return null;
-        },
-      ),
-
-      // ─── Playback ────────────────────────────────────────────────
-      PaletteCommand(
-        id: 'go-to-frame',
-        label: 'Go to Frame\u2026',
-        category: 'Playback',
-        icon: Icons.skip_next_outlined,
-        enabled: hasVideo,
-        run: () => _goToFrameStep(),
-      ),
-
-      // ─── Loop ────────────────────────────────────────────────────
-      PaletteCommand(
-        id: 'set-a',
-        label: 'Set Loop A (start)\u2026',
-        category: 'Loop',
-        icon: Icons.flag_outlined,
-        shortcut: _formatShortcutLabel(_shortcuts.setLoopStart),
-        enabled: hasVideo,
-        run: () => _setLoopPointStep(isA: true),
-      ),
-      PaletteCommand(
-        id: 'set-b',
-        label: 'Set Loop B (end)\u2026',
-        category: 'Loop',
-        icon: Icons.outlined_flag,
-        shortcut: _formatShortcutLabel(_shortcuts.setLoopEnd),
-        enabled: hasVideo,
-        run: () => _setLoopPointStep(isA: false),
-      ),
-      PaletteCommand(
-        id: 'toggle-loop',
-        label: loopState.isSectionLoopActive
-            ? 'Disable Section Loop'
-            : 'Toggle Section Loop (A-B)',
-        category: 'Loop',
-        icon: Icons.loop,
-        shortcut: _formatShortcutLabel(_shortcuts.toggleSectionLoop),
-        enabled: loopState.isSectionLoopValid,
-        run: () {
-          ref.read(loopProvider.notifier).toggleSectionLoop();
-          return null;
-        },
-      ),
-      PaletteCommand(
-        id: 'toggle-full-loop',
-        label: loopState.isFullVideoLoopActive
-            ? 'Disable Full Video Loop'
-            : 'Toggle Full Video Loop',
-        category: 'Loop',
-        icon: Icons.repeat,
-        shortcut: _formatShortcutLabel(_shortcuts.toggleFullLoop),
-        enabled: hasVideo,
-        run: () {
-          ref.read(loopProvider.notifier).toggleFullVideoLoop();
-          return null;
-        },
-      ),
-
-      // ─── Crop ────────────────────────────────────────────────────
-      PaletteCommand(
-        id: 'toggle-crop',
-        label: cropState.isCropModeActive
-            ? 'Exit Crop Mode'
-            : 'Enter Crop Mode',
-        category: 'Crop',
-        icon: Icons.crop,
-        shortcut: _formatShortcutLabel(_shortcuts.toggleCropMode),
-        enabled: hasVideo,
-        run: () {
-          final cropNotifier = ref.read(cropProvider.notifier);
-          final wasActive = cropState.isCropModeActive;
-          cropNotifier.toggleCropMode();
-          if (!wasActive) {
-            cropNotifier.setExportRange(
-              start: loopState.loopStart,
-              end: loopState.loopEnd,
-            );
-          }
-          return null;
-        },
-      ),
-
-      // ─── Markers ─────────────────────────────────────────────────
-      PaletteCommand(
-        id: 'add-marker',
-        label: 'Add Marker at Current Frame',
-        category: 'Markers',
-        icon: Icons.bookmark_add_outlined,
-        enabled: hasAnnotations,
-        run: () {
-          final frame = playerState.metadata == null
-              ? 0
-              : ((playerState.position.inMilliseconds *
-                            playerState.metadata!.fps) /
-                        1000)
-                    .round();
-          ref
-              .read(annotationProvider.notifier)
-              .upsertMarker(
-                label: 'Marker $frame',
-                color: _activePalette.accent,
-              );
-          return null;
-        },
-      ),
-
-      // ─── View ────────────────────────────────────────────────────
-      PaletteCommand(
-        id: 'switch-theme',
-        label: themeState.mode == ThemeMode.dark
-            ? 'Switch to Light Mode'
-            : 'Switch to Dark Mode',
-        category: 'View',
-        icon: themeState.mode == ThemeMode.dark
-            ? Icons.light_mode_outlined
-            : Icons.dark_mode_outlined,
-        run: () {
-          themeController.toggleThemeMode();
-          return null;
-        },
-      ),
-      PaletteCommand(
-        id: 'open-theme-manager',
-        label: 'Open Theme Manager\u2026',
-        category: 'View',
-        icon: Icons.palette_outlined,
-        run: () {
-          final ctx = _navigatorKey.currentContext;
-          if (ctx != null) _openThemeManager(ctx);
-          return null;
-        },
-      ),
-      PaletteCommand(
-        id: 'toggle-fullscreen',
-        label: _isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen',
-        category: 'View',
-        icon: Icons.fullscreen,
-        shortcut: _formatShortcutLabel(_shortcuts.toggleFullscreen),
-        run: () {
-          _toggleFullscreenMode();
-          return null;
-        },
-      ),
-
-      // ─── Help ────────────────────────────────────────────────────
-      ..._buildShortcutDiscoveryCommands(),
-    ];
-  }
-
-  List<PaletteCommand> _buildShortcutDiscoveryCommands() {
-    final entries = <(String, KeyboardShortcut)>[
-      ('Open Command Palette', _shortcuts.openCommandPalette),
-      ('Play / Pause', _shortcuts.playPause),
-      ('Next Frame', _shortcuts.nextFrame),
-      ('Previous Frame', _shortcuts.previousFrame),
-      ('Jump Forward 1s', _shortcuts.jumpForward),
-      ('Jump Backward 1s', _shortcuts.jumpBackward),
-      ('Next Marker', _shortcuts.nextMarker),
-      ('Previous Marker', _shortcuts.previousMarker),
-      ('Undo', _shortcuts.undo),
-      ('Redo', _shortcuts.redo),
-      ('Open File', _shortcuts.openFile),
-      ('Save Annotations', _shortcuts.saveAnnotations),
-      ('Toggle Fullscreen', _shortcuts.toggleFullscreen),
-      ('Pen Tool', _shortcuts.selectPenTool),
-      ('Eraser', _shortcuts.selectEraserTool),
-      ('Select Tool', _shortcuts.selectSelectionTool),
-      ('Rectangle', _shortcuts.selectRectangleTool),
-      ('Circle', _shortcuts.selectCircleTool),
-      ('Line', _shortcuts.selectLineTool),
-      ('Arrow', _shortcuts.selectArrowTool),
-      ('Text', _shortcuts.selectTextTool),
-      ('Toggle Keyframe Mode', _shortcuts.toggleKeyframeMode),
-      ('Create Manual Keyframe', _shortcuts.createManualKeyframe),
-      ('Set Loop A', _shortcuts.setLoopStart),
-      ('Set Loop B', _shortcuts.setLoopEnd),
-      ('Toggle Section Loop', _shortcuts.toggleSectionLoop),
-      ('Toggle Full Video Loop', _shortcuts.toggleFullLoop),
-      ('Toggle Crop Mode', _shortcuts.toggleCropMode),
-    ];
-
-    return entries
-        .map(
-          (e) => PaletteCommand(
-            id: 'shortcut-${e.$1}',
-            label: e.$1,
-            category: 'Keyboard Shortcuts',
-            icon: Icons.keyboard_outlined,
-            shortcut: _formatShortcutLabel(e.$2),
-            subtitle: 'Shortcut reference (read-only)',
-            enabled: false,
-          ),
-        )
-        .toList();
   }
 
   void _toggleFullscreenMode() {
@@ -1549,365 +858,24 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     _focusNode.requestFocus();
   }
 
-  Future<void> _loadInitialVideo(String filePath) async {
-    if (_isAnnotationJsonPath(filePath)) {
-      await _openAnnotationJsonPath(filePath);
-      return;
-    }
-
-    final uri = Uri.tryParse(filePath);
-    if (uri != null &&
-        (uri.scheme == 'http' || uri.scheme == 'https') &&
-        _looksLikeYouTubeUrl(filePath)) {
-      await _loadYouTubeUrl(filePath);
-      return;
-    }
-
-    try {
-      await _runWithLoadingOverlay(
-        message: 'Loading video...',
-        action: () async {
-          // Load video
-          final playerNotifier = ref.read(playerProvider.notifier);
-          await playerNotifier.loadVideo(filePath);
-
-          // Check if video loaded successfully
-          final playerState = ref.read(playerProvider);
-          if (playerState.metadata == null) {
-            if (mounted) {
-              _showErrorDialog(
-                'Failed to load video. The video file may be corrupted or in an unsupported format.',
-              );
-            }
-            return;
-          }
-
-          // Initialize annotations
-          final annotationNotifier = ref.read(annotationProvider.notifier);
-          await annotationNotifier.initializeForVideo(
-            filePath,
-            playerState.metadata!.fps,
-          );
-
-          // Add to recent files
-          final storageService = AnnotationStorageService();
-          await storageService.addToRecentFiles(filePath);
-          await _registerCurrentProject();
-
-          // Refocus
-          _focusNode.requestFocus();
-        },
-      );
-    } catch (e) {
-      if (mounted) {
-        _showErrorDialog('Error opening file: $e');
-      }
-    }
+  Future<void> _openRecentFromPalette() {
+    return _sourceOpenActions.openRecentFromPalette();
   }
 
-  Future<void> _openFile() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'flv', 'm4v'],
-        dialogTitle: 'Select Video File',
-      );
-
-      if (result == null || result.files.isEmpty) return;
-
-      final filePath = result.files.first.path;
-      if (filePath == null) return;
-
-      await _runWithLoadingOverlay(
-        message: 'Loading video...',
-        action: () async {
-          // Load video
-          final playerNotifier = ref.read(playerProvider.notifier);
-          await playerNotifier.loadVideo(filePath);
-
-          // Check if video loaded successfully
-          final playerState = ref.read(playerProvider);
-          if (playerState.metadata == null) {
-            if (mounted) {
-              _showErrorDialog(
-                'Failed to load video. The video file may be corrupted or in an unsupported format.',
-              );
-            }
-            return;
-          }
-
-          // Initialize annotations
-          final annotationNotifier = ref.read(annotationProvider.notifier);
-          await annotationNotifier.initializeForVideo(
-            filePath,
-            playerState.metadata!.fps,
-          );
-
-          // Add to recent files
-          final storageService = AnnotationStorageService();
-          await storageService.addToRecentFiles(filePath);
-          await _registerCurrentProject();
-
-          // Refocus
-          _focusNode.requestFocus();
-        },
-      );
-    } catch (e) {
-      if (mounted) {
-        _showErrorDialog('Error opening file: $e');
-      }
-    }
+  Future<void> _loadInitialVideo(String filePath) {
+    return _sourceOpenActions.loadInitialVideo(filePath);
   }
 
-  Future<void> _openYouTubeUrl() async {
-    final dialogHostContext = _navigatorKey.currentContext;
-    if (dialogHostContext == null || !mounted) {
-      return;
-    }
-
-    String enteredUrl = '';
-    final url = await showDialog<String>(
-      context: dialogHostContext,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Open YouTube URL'),
-          content: TextField(
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'https://www.youtube.com/watch?v=...',
-            ),
-            onChanged: (value) => enteredUrl = value,
-            onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(enteredUrl),
-              child: const Text('Open'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (url == null || url.trim().isEmpty) {
-      _focusNode.requestFocus();
-      return;
-    }
-
-    await _loadYouTubeUrl(url);
+  Future<void> _openFile() {
+    return _sourceOpenActions.openFile();
   }
 
-  Future<void> _loadYouTubeUrl(String url) async {
-    try {
-      if (!_looksLikeYouTubeUrl(url)) {
-        _showErrorDialog('Please enter a valid YouTube URL.');
-        return;
-      }
-
-      await _runWithLoadingOverlay(
-        message: 'Loading YouTube video...',
-        action: () async {
-          final youtubeService = YouTubeVideoSourceService();
-          final resolved = await youtubeService.resolve(url);
-
-          final playerNotifier = ref.read(playerProvider.notifier);
-          await playerNotifier.loadNetworkVideo(
-            mediaUrl: resolved.streamUri.toString(),
-            sourceLabel: resolved.canonicalUrl,
-            displayLabel: resolved.title,
-            externalAudioUrl: resolved.externalAudioUri?.toString(),
-          );
-
-          final playerState = ref.read(playerProvider);
-          if (playerState.metadata == null) {
-            if (mounted) {
-              _showErrorDialog('Failed to load YouTube video stream.');
-            }
-            return;
-          }
-
-          final annotationNotifier = ref.read(annotationProvider.notifier);
-          await annotationNotifier.initializeForYouTubeVideo(
-            youtubeVideoId: resolved.videoId,
-            youtubeUrl: resolved.canonicalUrl,
-            fps: playerState.metadata!.fps,
-          );
-          await _registerCurrentProject(projectTitle: resolved.title);
-
-          if (mounted) {
-            final qualityParts = <String>[];
-            final selectedLabel = resolved.selectedQualityLabel?.trim();
-            final selectedWidth = resolved.selectedWidth;
-            final selectedHeight = resolved.selectedHeight;
-
-            if (selectedLabel != null && selectedLabel.isNotEmpty) {
-              qualityParts.add(selectedLabel);
-            }
-
-            if (selectedWidth != null &&
-                selectedWidth > 0 &&
-                selectedHeight != null &&
-                selectedHeight > 0) {
-              qualityParts.add('${selectedWidth}x$selectedHeight');
-            }
-
-            if (resolved.usesHls) {
-              qualityParts.add('HLS');
-            }
-            if (resolved.externalAudioUri != null) {
-              qualityParts.add('split A/V');
-            }
-
-            if (qualityParts.isEmpty) {
-              qualityParts.add(
-                '${playerState.metadata!.width}x${playerState.metadata!.height}',
-              );
-            }
-
-            _scaffoldMessengerKey.currentState?.showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Loaded YouTube video: ${resolved.title} (${qualityParts.join(' | ')})',
-                ),
-                backgroundColor: _activePalette.success,
-              ),
-            );
-          }
-
-          _focusNode.requestFocus();
-        },
-      );
-    } catch (e) {
-      if (mounted) {
-        if (e is YouTubeSourceLoadException) {
-          _showErrorDialog(e.userMessage);
-        } else {
-          _showErrorDialog('Error loading YouTube URL: $e');
-        }
-      }
-    }
+  Future<void> _openYouTubeUrl() {
+    return _sourceOpenActions.openYouTubeUrl();
   }
 
-  Future<void> _openAnnotationJson() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['framesketch', 'json'],
-        dialogTitle: 'Select Annotation File',
-      );
-
-      if (result == null || result.files.isEmpty) return;
-      final filePath = result.files.first.path;
-      if (filePath == null) return;
-
-      await _openAnnotationJsonPath(filePath);
-    } catch (e) {
-      if (mounted) {
-        if (e is YouTubeSourceLoadException) {
-          _showErrorDialog(
-            'The annotation file was loaded, but the linked YouTube video could not be opened.\n\n${e.userMessage}',
-          );
-        } else {
-          _showErrorDialog('Error opening annotation file: $e');
-        }
-      }
-    }
-  }
-
-  Future<void> _openAnnotationJsonPath(String annotationPath) async {
-    try {
-      await _runWithLoadingOverlay(
-        message: 'Loading annotations...',
-        action: () async {
-          final storageService = AnnotationStorageService();
-          final data = await storageService.loadAnnotationsFromFile(
-            annotationPath,
-          );
-          if (data == null) {
-            _showErrorDialog('Unable to read annotation file.');
-            return;
-          }
-
-          await _loadSourceForAnnotationData(data);
-          await _registerCurrentProject();
-
-          if (mounted) {
-            _scaffoldMessengerKey.currentState?.showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Loaded annotations from ${File(annotationPath).path}',
-                ),
-                backgroundColor: _activePalette.success,
-              ),
-            );
-          }
-
-          _focusNode.requestFocus();
-        },
-      );
-    } catch (e) {
-      if (mounted) {
-        _showErrorDialog('Error opening annotation file: $e');
-      }
-    }
-  }
-
-  Future<void> _loadSourceForAnnotationData(AnnotationData data) async {
-    final playerNotifier = ref.read(playerProvider.notifier);
-    final annotationNotifier = ref.read(annotationProvider.notifier);
-
-    if (data.youtubeUrl != null && data.youtubeUrl!.trim().isNotEmpty) {
-      final youtubeService = YouTubeVideoSourceService();
-      final storageService = AnnotationStorageService();
-      final resolved = await youtubeService.resolve(data.youtubeUrl!);
-      await playerNotifier.loadNetworkVideo(
-        mediaUrl: resolved.streamUri.toString(),
-        sourceLabel: resolved.canonicalUrl,
-        displayLabel: resolved.title,
-        externalAudioUrl: resolved.externalAudioUri?.toString(),
-      );
-      if (ref.read(playerProvider).metadata == null) {
-        throw StateError('Failed to load YouTube source from annotation JSON');
-      }
-      annotationNotifier.initializeFromAnnotationData(
-        data.copyWith(
-          videoPath: storageService.buildYouTubeAnnotationKey(resolved.videoId),
-          youtubeUrl: resolved.canonicalUrl,
-        ),
-      );
-      return;
-    }
-
-    final localPath = data.videoPath;
-    if (localPath.isEmpty || !await File(localPath).exists()) {
-      throw StateError(
-        'Annotation JSON references a local video that was not found:\n$localPath',
-      );
-    }
-
-    await playerNotifier.loadVideo(localPath);
-    if (ref.read(playerProvider).metadata == null) {
-      throw StateError('Failed to load local video from annotation JSON');
-    }
-    annotationNotifier.initializeFromAnnotationData(data);
-  }
-
-  bool _looksLikeYouTubeUrl(String value) {
-    final uri = Uri.tryParse(value.trim());
-    if (uri == null) return false;
-    final host = uri.host.toLowerCase();
-    return host.contains('youtube.com') || host.contains('youtu.be');
-  }
-
-  bool _isAnnotationJsonPath(String value) {
-    final lower = value.toLowerCase();
-    return lower.endsWith('.framesketch') ||
-        lower.endsWith('.annotations.json') ||
-        lower.endsWith('.json');
+  Future<void> _openAnnotationJson() {
+    return _sourceOpenActions.openAnnotationJson();
   }
 
   Future<void> _saveAnnotations() async {
@@ -2915,112 +1883,15 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   }
 
   void _openSettings(BuildContext context) {
-    debugPrint('Opening settings dialog...');
-    debugPrint('Current shortcuts: $_shortcuts');
-    try {
-      showDialog(
-        context: context,
-        builder: (dialogContext) {
-          debugPrint('Building dialog...');
-          return SettingsDialog(
-            shortcuts: _shortcuts,
-            autoSaveEnabled: _autoSaveEnabled,
-            onSave: (shortcuts, autoSaveEnabled) {
-              _saveShortcuts(shortcuts);
-              _setAutoSaveEnabled(autoSaveEnabled);
-              _focusNode.requestFocus();
-            },
-          );
-        },
-      );
-    } catch (e) {
-      debugPrint('Error opening settings dialog: $e');
-      _showErrorDialog('Error opening settings: $e');
-    }
+    _settingsActions.openSettings(context);
   }
 
   void _openThemeManager(BuildContext context) {
-    try {
-      showDialog(context: context, builder: (_) => const ThemeManagerDialog());
-    } catch (e) {
-      _showErrorDialog('Error opening theme manager: $e');
-    }
+    _settingsActions.openThemeManager(context);
   }
 
-  Future<void> _handleMenuAction(String action, BuildContext context) async {
-    final service = FileAssociationService();
-
-    switch (action) {
-      case 'register':
-        try {
-          final success = await service.registerFileAssociations();
-          if (mounted) {
-            if (success) {
-              _showInfoDialog(
-                'File Associations Registered',
-                'FrameSketch Player has been registered for video files and .framesketch files.\n\n'
-                    'To set it as default for video files:\n'
-                    '1. Right-click any video file\n'
-                    '2. Select "Open with" → "Choose another app"\n'
-                    '3. Select "FrameSketch Player"\n'
-                    '4. Check "Always use this app"\n\n'
-                    '.framesketch files should now open directly with FrameSketch Player.',
-              );
-            } else {
-              _showErrorDialog(
-                'Failed to register file associations. Please try running as administrator.',
-              );
-            }
-          }
-        } catch (e) {
-          if (mounted) {
-            _showErrorDialog('Error registering file associations: $e');
-          }
-        }
-        break;
-
-      case 'unregister':
-        try {
-          final success = await service.unregisterFileAssociations();
-          if (mounted) {
-            if (success) {
-              _scaffoldMessengerKey.currentState?.showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Video and annotation file associations removed successfully',
-                  ),
-                  backgroundColor: _activePalette.success,
-                ),
-              );
-            } else {
-              _showErrorDialog('Failed to remove file associations.');
-            }
-          }
-        } catch (e) {
-          if (mounted) {
-            _showErrorDialog('Error removing file associations: $e');
-          }
-        }
-        break;
-
-      case 'check':
-        try {
-          final isRegistered = await service.isRegistered();
-          if (mounted) {
-            _showInfoDialog(
-              'Registration Status',
-              isRegistered
-                  ? 'FrameSketch Player is currently registered for video files and .framesketch files.'
-                  : 'FrameSketch Player is not registered.\n\nUse "Register Video + Annotation Files" to register it.',
-            );
-          }
-        } catch (e) {
-          if (mounted) {
-            _showErrorDialog('Error checking registration status: $e');
-          }
-        }
-        break;
-    }
+  Future<void> _handleMenuAction(String action, BuildContext context) {
+    return _settingsActions.handleMenuAction(action);
   }
 
   void _showInfoDialog(String title, String message) {

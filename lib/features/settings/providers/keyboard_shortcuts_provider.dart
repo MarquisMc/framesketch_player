@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,16 +8,16 @@ import '../../../core/models/keyboard_shortcuts.dart';
 /// Manages keyboard shortcuts preferences
 class KeyboardShortcutsNotifier extends StateNotifier<KeyboardShortcuts> {
   static const String _storageKey = 'keyboard_shortcuts';
-  final SharedPreferences _prefs;
 
-  KeyboardShortcutsNotifier(this._prefs) : super(defaultKeyboardShortcuts) {
-    _loadShortcuts();
+  KeyboardShortcutsNotifier() : super(defaultKeyboardShortcuts) {
+    unawaited(_loadShortcuts());
   }
 
   /// Load shortcuts from storage
   Future<void> _loadShortcuts() async {
     try {
-      final json = _prefs.getString(_storageKey);
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_storageKey);
       if (json != null) {
         final shortcuts = KeyboardShortcuts.fromJson(
           jsonDecode(json) as Map<String, dynamic>,
@@ -32,10 +33,17 @@ class KeyboardShortcutsNotifier extends StateNotifier<KeyboardShortcuts> {
   /// Save shortcuts to storage
   Future<void> _saveShortcuts(KeyboardShortcuts shortcuts) async {
     try {
-      await _prefs.setString(_storageKey, jsonEncode(shortcuts.toJson()));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_storageKey, jsonEncode(shortcuts.toJson()));
     } catch (e) {
       debugPrint('Error saving keyboard shortcuts: $e');
     }
+  }
+
+  /// Replace all shortcuts at once.
+  Future<void> setShortcuts(KeyboardShortcuts shortcuts) async {
+    state = shortcuts;
+    await _saveShortcuts(shortcuts);
   }
 
   /// Update next frame shortcut
@@ -75,25 +83,12 @@ class KeyboardShortcutsNotifier extends StateNotifier<KeyboardShortcuts> {
 
   /// Reset all shortcuts to defaults
   Future<void> resetToDefaults() async {
-    state = defaultKeyboardShortcuts;
-    await _saveShortcuts(defaultKeyboardShortcuts);
+    await setShortcuts(defaultKeyboardShortcuts);
   }
 }
 
 /// Keyboard shortcuts provider
 final keyboardShortcutsProvider =
     StateNotifierProvider<KeyboardShortcutsNotifier, KeyboardShortcuts>((ref) {
-      throw UnimplementedError(
-        'keyboardShortcutsProvider must be initialized with SharedPreferences',
-      );
+      return KeyboardShortcutsNotifier();
     });
-
-/// Provider for initializing keyboard shortcuts with SharedPreferences
-final keyboardShortcutsInitProvider = FutureProvider<KeyboardShortcuts>((
-  ref,
-) async {
-  final prefs = await SharedPreferences.getInstance();
-  final notifier = KeyboardShortcutsNotifier(prefs);
-  await notifier._loadShortcuts();
-  return defaultKeyboardShortcuts;
-});
