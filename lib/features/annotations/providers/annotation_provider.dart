@@ -161,6 +161,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   final AnnotationStorageService _storageService;
   final Ref ref;
   final _uuid = const Uuid();
+  bool _isHistoryOperationInProgress = false;
 
   AnnotationNotifier(this._storageService, this.ref)
     : super(const AnnotationState());
@@ -536,6 +537,15 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     final frameIndex = ((positionMs / 1000.0) * fps).round();
     final targetMicros = ((frameIndex * 1000000.0) / fps).round();
     return Duration(microseconds: targetMicros);
+  }
+
+  bool _isStrokeVisibleAtCurrentPosition(Stroke stroke) {
+    final currentPositionMs = ref.read(playerProvider).position.inMilliseconds;
+    final activeKeyframeMs = _activeKeyframeTimeMsAt(currentPositionMs);
+    if (activeKeyframeMs == null) return false;
+
+    return activeKeyframeMs ==
+        _snapToFrameTimeMs(stroke.startTimeMs, _effectiveFps);
   }
 
   void _updateMarkers(List<FrameMarker> markers) {
@@ -1219,42 +1229,64 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   }
 
   /// Undo last stroke
-  void undo() {
-    if (state.allStrokes.isEmpty) return;
+  Future<void> undo() async {
+    if (_isHistoryOperationInProgress || state.allStrokes.isEmpty) return;
 
-    final strokes = List<Stroke>.from(state.allStrokes);
-    final lastStroke = strokes.removeLast();
+    _isHistoryOperationInProgress = true;
+    try {
+      final strokes = List<Stroke>.from(state.allStrokes);
+      final lastStroke = strokes.removeLast();
+      if (!_isStrokeVisibleAtCurrentPosition(lastStroke)) {
+        await ref
+            .read(playerProvider.notifier)
+            .seek(_toExactFramePosition(lastStroke.startTimeMs));
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      }
 
-    final updatedData = state.annotationData!.copyWith(
-      strokes: strokes,
-      updatedAt: DateTime.now(),
-    );
+      final updatedData = state.annotationData!.copyWith(
+        strokes: strokes,
+        updatedAt: DateTime.now(),
+      );
 
-    state = state.copyWith(
-      annotationData: updatedData,
-      undoStack: [...state.undoStack, lastStroke],
-      hasUnsavedChanges: true,
-    );
+      state = state.copyWith(
+        annotationData: updatedData,
+        undoStack: [...state.undoStack, lastStroke],
+        hasUnsavedChanges: true,
+      );
+    } finally {
+      _isHistoryOperationInProgress = false;
+    }
   }
 
   /// Redo last undone stroke
-  void redo() {
-    if (state.undoStack.isEmpty) return;
+  Future<void> redo() async {
+    if (_isHistoryOperationInProgress || state.undoStack.isEmpty) return;
 
-    final undoStack = List<Stroke>.from(state.undoStack);
-    final strokeToRedo = undoStack.removeLast();
+    _isHistoryOperationInProgress = true;
+    try {
+      final undoStack = List<Stroke>.from(state.undoStack);
+      final strokeToRedo = undoStack.removeLast();
+      if (!_isStrokeVisibleAtCurrentPosition(strokeToRedo)) {
+        await ref
+            .read(playerProvider.notifier)
+            .seek(_toExactFramePosition(strokeToRedo.startTimeMs));
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      }
 
-    final updatedStrokes = [...state.allStrokes, strokeToRedo];
-    final updatedData = state.annotationData!.copyWith(
-      strokes: updatedStrokes,
-      updatedAt: DateTime.now(),
-    );
+      final updatedStrokes = [...state.allStrokes, strokeToRedo];
+      final updatedData = state.annotationData!.copyWith(
+        strokes: updatedStrokes,
+        updatedAt: DateTime.now(),
+      );
 
-    state = state.copyWith(
-      annotationData: updatedData,
-      undoStack: undoStack,
-      hasUnsavedChanges: true,
-    );
+      state = state.copyWith(
+        annotationData: updatedData,
+        undoStack: undoStack,
+        hasUnsavedChanges: true,
+      );
+    } finally {
+      _isHistoryOperationInProgress = false;
+    }
   }
 
   /// Clear all annotations

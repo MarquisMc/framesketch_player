@@ -44,11 +44,15 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       GlobalKey<ScaffoldMessengerState>();
   late final ExportActions _exportActions;
   late final ProviderSubscription<(bool, DateTime?)> _autoSaveSubscription;
+  late final ProviderSubscription<({int strokeCount, int undoCount})>
+  _historyFeedbackSubscription;
   late final ProviderSubscription<({bool isEditingText, bool isInteracting})>
   _annotationFocusSubscription;
   Timer? _keyRepeatTimer;
   Timer? _exportIconTimer;
   Timer? _autoSaveTimer;
+  Timer? _historyFeedbackTimer;
+  Timer? _autoSaveIndicatorTimer;
   LogicalKeyboardKey? _lastPressedKey;
   int _keyRepeatGeneration = 0;
   bool _isFullscreen = false;
@@ -58,6 +62,10 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   bool _showCommandPalette = false;
   bool _showCropExportPanel = false;
   bool _showExportHourglassBottom = false;
+  bool _showAutoSaveIndicator = false;
+  bool _isHistoryFeedbackVisible = false;
+  String? _historyFeedbackLabel;
+  IconData? _historyFeedbackIcon;
   int _loadingOverlayDepth = 0;
   String _loadingOverlayMessage = 'Loading...';
   String? _loadingOverlayCancelLabel;
@@ -92,6 +100,31 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         _handleAutoSaveStateChanged(hasUnsavedChanges: next.$1);
       },
     );
+    _historyFeedbackSubscription = ref
+        .listenManual<({int strokeCount, int undoCount})>(
+          annotationProvider.select(
+            (state) => (
+              strokeCount: state.allStrokes.length,
+              undoCount: state.undoStack.length,
+            ),
+          ),
+          (previous, next) {
+            if (previous == null) return;
+
+            final didUndo =
+                next.strokeCount == previous.strokeCount - 1 &&
+                next.undoCount == previous.undoCount + 1;
+            final didRedo =
+                next.strokeCount == previous.strokeCount + 1 &&
+                next.undoCount == previous.undoCount - 1;
+
+            if (didUndo) {
+              _showHistoryFeedback('Undo', Icons.undo);
+            } else if (didRedo) {
+              _showHistoryFeedback('Redo', Icons.redo);
+            }
+          },
+        );
     _annotationFocusSubscription = ref
         .listenManual<({bool isEditingText, bool isInteracting})>(
           annotationProvider.select(
@@ -146,9 +179,11 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     _autoSaveTimer?.cancel();
 
     if (!_autoSaveEnabled || !hasUnsavedChanges) {
+      _hideAutoSaveIndicator();
       return;
     }
 
+    _showAutoSaveIndicatorNow();
     _autoSaveTimer = Timer(
       const Duration(seconds: 2),
       () => unawaited(_performAutoSave()),
@@ -166,7 +201,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       return;
     }
 
-    _isAutoSaving = true;
+    _setAutoSaving(true);
     try {
       final success = await ref
           .read(annotationProvider.notifier)
@@ -181,12 +216,45 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         _showErrorDialog('Auto-save failed. Please try again.');
       }
     } finally {
-      _isAutoSaving = false;
+      _setAutoSaving(false);
       final latestState = ref.read(annotationProvider);
       if (_autoSaveEnabled && latestState.hasUnsavedChanges) {
         _handleAutoSaveStateChanged(hasUnsavedChanges: true);
       }
     }
+  }
+
+  void _setAutoSaving(bool value) {
+    _isAutoSaving = value;
+    _autoSaveIndicatorTimer?.cancel();
+
+    if (value) {
+      _showAutoSaveIndicatorNow();
+      return;
+    }
+
+    _autoSaveIndicatorTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (!mounted) return;
+      setState(() {
+        _showAutoSaveIndicator = false;
+      });
+    });
+  }
+
+  void _showAutoSaveIndicatorNow() {
+    _autoSaveIndicatorTimer?.cancel();
+    if (!mounted || _showAutoSaveIndicator) return;
+    setState(() {
+      _showAutoSaveIndicator = true;
+    });
+  }
+
+  void _hideAutoSaveIndicator() {
+    _autoSaveIndicatorTimer?.cancel();
+    if (!mounted || !_showAutoSaveIndicator) return;
+    setState(() {
+      _showAutoSaveIndicator = false;
+    });
   }
 
   Future<void> _registerCurrentProject({String? projectTitle}) async {
@@ -274,10 +342,13 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   void dispose() {
     _exportActions.dispose();
     _autoSaveSubscription.close();
+    _historyFeedbackSubscription.close();
     _annotationFocusSubscription.close();
     _keyRepeatTimer?.cancel();
     _exportIconTimer?.cancel();
     _autoSaveTimer?.cancel();
+    _historyFeedbackTimer?.cancel();
+    _autoSaveIndicatorTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -361,6 +432,16 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                 ),
                 if (_loadingOverlayDepth > 0)
                   _buildGlobalLoadingOverlay(context),
+                _HistoryFeedbackOverlay(
+                  label: _historyFeedbackLabel,
+                  icon: _historyFeedbackIcon,
+                  isVisible: _isHistoryFeedbackVisible,
+                  palette: _activePalette,
+                ),
+                _AutoSaveIndicator(
+                  isVisible: _showAutoSaveIndicator,
+                  palette: _activePalette,
+                ),
                 if (_showCommandPalette)
                   CommandPalette(
                     commands: EditorCommandFactory(
@@ -404,6 +485,30 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     _exportIconTimer?.cancel();
     _exportIconTimer = null;
     _showExportHourglassBottom = false;
+  }
+
+  void _showHistoryFeedback(String label, IconData icon) {
+    if (!mounted) return;
+
+    _historyFeedbackTimer?.cancel();
+    setState(() {
+      _isHistoryFeedbackVisible = true;
+      _historyFeedbackLabel = label;
+      _historyFeedbackIcon = icon;
+    });
+    _historyFeedbackTimer = Timer(const Duration(milliseconds: 850), () {
+      if (!mounted) return;
+      setState(() {
+        _isHistoryFeedbackVisible = false;
+      });
+      _historyFeedbackTimer = Timer(const Duration(milliseconds: 120), () {
+        if (!mounted || _isHistoryFeedbackVisible) return;
+        setState(() {
+          _historyFeedbackLabel = null;
+          _historyFeedbackIcon = null;
+        });
+      });
+    });
   }
 
   void _setLoadingOverlayMessage(String message) {
@@ -1105,6 +1210,142 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
             child: const Text('OK'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HistoryFeedbackOverlay extends StatelessWidget {
+  final String? label;
+  final IconData? icon;
+  final bool isVisible;
+  final AppPalette palette;
+
+  const _HistoryFeedbackOverlay({
+    required this.label,
+    required this.icon,
+    required this.isVisible,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: 72,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          opacity: isVisible ? 1 : 0,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          child: AnimatedScale(
+            scale: isVisible ? 1 : 0.92,
+            duration: const Duration(milliseconds: 120),
+            curve: Curves.easeOut,
+            child: Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: palette.panelElevated.withValues(alpha: 0.94),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: palette.accentBright),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.22),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 9,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon ?? Icons.undo,
+                        size: 18,
+                        color: palette.accentBright,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        label ?? '',
+                        style: TextStyle(
+                          color: palette.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AutoSaveIndicator extends StatelessWidget {
+  final bool isVisible;
+  final AppPalette palette;
+
+  const _AutoSaveIndicator({required this.isVisible, required this.palette});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isVisible) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned(
+      top: 14,
+      right: 14,
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: palette.panelElevated.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: palette.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: palette.accentBright,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Auto saving',
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
