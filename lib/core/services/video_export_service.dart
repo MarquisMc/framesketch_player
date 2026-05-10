@@ -190,6 +190,12 @@ class VideoExportService {
       final stderrDone = _ffmpegProcess!.stderr
           .transform(const SystemEncoding().decoder)
           .forEach((data) {
+            stderrLines.addAll(
+              data
+                  .split('\n')
+                  .map((line) => line.trimRight())
+                  .where((line) => line.trim().isNotEmpty),
+            );
             final progress = _parseProgress(data, durationSeconds);
             if (progress != null) {
               onProgress?.call(progress);
