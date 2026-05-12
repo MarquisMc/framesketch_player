@@ -1,7 +1,8 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
-#include <windows.h>
 
+#include <windows.h>
+#include <shobjidl.h>
 #include "flutter_window.h"
 #include "utils.h"
 
@@ -16,6 +17,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // Initialize COM, so that it is available for use in the library and/or
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  SetCurrentProcessExplicitAppUserModelID(L"MarquisMc.FrameSketchPlayer");
 
   flutter::DartProject project(L"data");
 
@@ -27,7 +29,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"framesketch_player", origin, size)) {
+  if (!window.Create(L"FrameSketch Player", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

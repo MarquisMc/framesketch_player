@@ -58,19 +58,19 @@ void EnableFullDpiSupportIfAvailable(HWND hwnd) {
 // Manages the Win32Window's window class registration.
 class WindowClassRegistrar {
  public:
-  ~WindowClassRegistrar() = default;
+  ~WindowClassRegistrar();
 
   // Returns the singleton registrar instance.
   static WindowClassRegistrar* GetInstance() {
-    if (!instance_) {
-      instance_ = new WindowClassRegistrar();
-    }
-    return instance_;
+    static WindowClassRegistrar instance;
+    return &instance;
   }
 
   // Returns the name of the window class, registering the class if it hasn't
   // previously been registered.
   const wchar_t* GetWindowClass();
+
+  void ApplyWindowIcons(HWND window);
 
   // Unregisters the window class. Should only be called if there are no
   // instances of the window.
@@ -79,15 +79,49 @@ class WindowClassRegistrar {
  private:
   WindowClassRegistrar() = default;
 
-  static WindowClassRegistrar* instance_;
+  void EnsureIconsLoaded();
+  void ReleaseIcons();
 
   bool class_registered_ = false;
+  HICON large_icon_ = nullptr;
+  HICON small_icon_ = nullptr;
 };
 
-WindowClassRegistrar* WindowClassRegistrar::instance_ = nullptr;
+WindowClassRegistrar::~WindowClassRegistrar() {
+  ReleaseIcons();
+}
+
+void WindowClassRegistrar::EnsureIconsLoaded() {
+  if (large_icon_ != nullptr || small_icon_ != nullptr) {
+    return;
+  }
+
+  HINSTANCE instance = GetModuleHandle(nullptr);
+  large_icon_ = reinterpret_cast<HICON>(LoadImage(
+      instance, MAKEINTRESOURCE(IDI_APP_ICON), IMAGE_ICON,
+      GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON),
+      LR_DEFAULTCOLOR));
+  small_icon_ = reinterpret_cast<HICON>(LoadImage(
+      instance, MAKEINTRESOURCE(IDI_APP_ICON), IMAGE_ICON,
+      GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON),
+      LR_DEFAULTCOLOR));
+}
+
+void WindowClassRegistrar::ReleaseIcons() {
+  if (large_icon_ != nullptr) {
+    DestroyIcon(large_icon_);
+    large_icon_ = nullptr;
+  }
+  if (small_icon_ != nullptr) {
+    DestroyIcon(small_icon_);
+    small_icon_ = nullptr;
+  }
+}
 
 const wchar_t* WindowClassRegistrar::GetWindowClass() {
   if (!class_registered_) {
+    EnsureIconsLoaded();
+
     WNDCLASS window_class{};
     window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
     window_class.lpszClassName = kWindowClassName;
@@ -95,8 +129,7 @@ const wchar_t* WindowClassRegistrar::GetWindowClass() {
     window_class.cbClsExtra = 0;
     window_class.cbWndExtra = 0;
     window_class.hInstance = GetModuleHandle(nullptr);
-    window_class.hIcon =
-        LoadIcon(window_class.hInstance, MAKEINTRESOURCE(IDI_APP_ICON));
+    window_class.hIcon = large_icon_;
     window_class.hbrBackground = 0;
     window_class.lpszMenuName = nullptr;
     window_class.lpfnWndProc = Win32Window::WndProc;
@@ -106,9 +139,23 @@ const wchar_t* WindowClassRegistrar::GetWindowClass() {
   return kWindowClassName;
 }
 
+void WindowClassRegistrar::ApplyWindowIcons(HWND window) {
+  EnsureIconsLoaded();
+
+  if (large_icon_ != nullptr) {
+    SendMessage(window, WM_SETICON, ICON_BIG,
+                reinterpret_cast<LPARAM>(large_icon_));
+  }
+  if (small_icon_ != nullptr) {
+    SendMessage(window, WM_SETICON, ICON_SMALL,
+                reinterpret_cast<LPARAM>(small_icon_));
+  }
+}
+
 void WindowClassRegistrar::UnregisterWindowClass() {
   UnregisterClass(kWindowClassName, nullptr);
   class_registered_ = false;
+  ReleaseIcons();
 }
 
 Win32Window::Win32Window() {
@@ -125,8 +172,8 @@ bool Win32Window::Create(const std::wstring& title,
                          const Size& size) {
   Destroy();
 
-  const wchar_t* window_class =
-      WindowClassRegistrar::GetInstance()->GetWindowClass();
+  WindowClassRegistrar* registrar = WindowClassRegistrar::GetInstance();
+  const wchar_t* window_class = registrar->GetWindowClass();
 
   const POINT target_point = {static_cast<LONG>(origin.x),
                               static_cast<LONG>(origin.y)};
@@ -143,6 +190,8 @@ bool Win32Window::Create(const std::wstring& title,
   if (!window) {
     return false;
   }
+
+  registrar->ApplyWindowIcons(window);
 
   UpdateTheme(window);
 
@@ -241,6 +290,9 @@ Win32Window* Win32Window::GetThisFromHandle(HWND const window) noexcept {
 void Win32Window::SetChildContent(HWND content) {
   child_content_ = content;
   SetParent(content, window_handle_);
+  WindowClassRegistrar* registrar = WindowClassRegistrar::GetInstance();
+  registrar->ApplyWindowIcons(window_handle_);
+  registrar->ApplyWindowIcons(content);
   RECT frame = GetClientArea();
 
   MoveWindow(content, frame.left, frame.top, frame.right - frame.left,

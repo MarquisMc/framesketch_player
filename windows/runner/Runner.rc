@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "Marquis McCann" "\0"
-            VALUE "FileDescription", "framesketch_player" "\0"
+            VALUE "FileDescription", "FrameSketch Player" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "framesketch_player" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 Marquis McCann. All rights reserved." "\0"
             VALUE "OriginalFilename", "framesketch_player.exe" "\0"
-            VALUE "ProductName", "framesketch_player" "\0"
+            VALUE "ProductName", "FrameSketch Player" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
