@@ -162,6 +162,9 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   final Ref ref;
   final _uuid = const Uuid();
   bool _isHistoryOperationInProgress = false;
+  final List<List<Stroke>> _undoSnapshots = [];
+  final List<List<Stroke>> _redoSnapshots = [];
+  List<Stroke>? _dragStartSnapshot;
 
   AnnotationNotifier(this._storageService, this.ref)
     : super(const AnnotationState());
@@ -548,6 +551,42 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
         _snapToFrameTimeMs(stroke.startTimeMs, _effectiveFps);
   }
 
+  bool _areStrokeListsEqual(List<Stroke> a, List<Stroke> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  void _clearHistorySnapshots() {
+    _undoSnapshots.clear();
+    _redoSnapshots.clear();
+    _dragStartSnapshot = null;
+  }
+
+  void _recordUndoSnapshot(List<Stroke> strokesBeforeChange) {
+    _undoSnapshots.add(List<Stroke>.from(strokesBeforeChange));
+    _redoSnapshots.clear();
+  }
+
+  void _clearRedoSnapshots() {
+    _redoSnapshots.clear();
+  }
+
+  void _restoreStrokeSnapshot(List<Stroke> strokes) {
+    final annotationData = state.annotationData;
+    if (annotationData == null) return;
+
+    state = state.copyWith(
+      annotationData: annotationData.copyWith(
+        strokes: List<Stroke>.from(strokes),
+        updatedAt: DateTime.now(),
+      ),
+      hasUnsavedChanges: true,
+    );
+  }
+
   void _updateMarkers(List<FrameMarker> markers) {
     final annotationData = state.annotationData;
     if (annotationData == null) return;
@@ -606,6 +645,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Initialize annotations for a video
   Future<void> initializeForVideo(String videoPath, double fps) async {
+    _clearHistorySnapshots();
+
     // Try to load existing annotations
     final existingData = await _storageService.loadAnnotations(videoPath);
 
@@ -653,6 +694,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     required String youtubeUrl,
     required double fps,
   }) async {
+    _clearHistorySnapshots();
+
     final sourceKey = _storageService.buildYouTubeAnnotationKey(youtubeVideoId);
     final existingData = await _storageService.loadAnnotations(sourceKey);
 
@@ -689,6 +732,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Initialize annotation state from an imported/shared annotation JSON.
   void initializeFromAnnotationData(AnnotationData data) {
+    _clearHistorySnapshots();
+
     state = state.copyWith(
       annotationData: data,
       undoStack: const [],
@@ -1043,6 +1088,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
         final nextSelected = selectedIds.contains(selectedStroke.id)
             ? selectedIds
             : <String>[selectedStroke.id];
+        _dragStartSnapshot = List<Stroke>.from(state.allStrokes);
         state = state.copyWith(
           selectedStrokeId: selectedStroke.id,
           selectedStrokeIds: nextSelected,
@@ -1100,6 +1146,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
         strokes: updatedStrokes,
         updatedAt: DateTime.now(),
       );
+
+      _clearRedoSnapshots();
 
       state = state.copyWith(
         annotationData: updatedData,
@@ -1191,9 +1239,18 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     // If select tool, just stop dragging (keep selection)
     if (state.currentTool == DrawingTool.select) {
+      final dragStartSnapshot = _dragStartSnapshot;
+      if (dragStartSnapshot != null &&
+          !_areStrokeListsEqual(dragStartSnapshot, state.allStrokes)) {
+        _recordUndoSnapshot(dragStartSnapshot);
+      }
+      _dragStartSnapshot = null;
+
       state = state.copyWith(
         isDrawing: false,
         isBoxSelecting: false,
+        undoStack: const [],
+        redoStack: const [],
         clearDragStartPoint: true,
         clearSelectionBox: true,
       );
@@ -1208,6 +1265,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       strokes: updatedStrokes,
       updatedAt: DateTime.now(),
     );
+
+    _clearRedoSnapshots();
 
     state = state.copyWith(
       annotationData: updatedData,
@@ -1230,10 +1289,25 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Undo last stroke
   Future<void> undo() async {
-    if (_isHistoryOperationInProgress || state.allStrokes.isEmpty) return;
+    if (_isHistoryOperationInProgress ||
+        (state.allStrokes.isEmpty && _undoSnapshots.isEmpty)) {
+      return;
+    }
 
     _isHistoryOperationInProgress = true;
     try {
+      if (_undoSnapshots.isNotEmpty) {
+        final strokesToRedo = List<Stroke>.from(state.allStrokes);
+        final strokesToRestore = _undoSnapshots.removeLast();
+        _redoSnapshots.add(strokesToRedo);
+        _restoreStrokeSnapshot(strokesToRestore);
+        state = state.copyWith(
+          undoStack: strokesToRedo.isEmpty ? const [] : [strokesToRedo.last],
+          redoStack: const [],
+        );
+        return;
+      }
+
       final strokes = List<Stroke>.from(state.allStrokes);
       final lastStroke = strokes.removeLast();
       if (!_isStrokeVisibleAtCurrentPosition(lastStroke)) {
@@ -1260,10 +1334,22 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Redo last undone stroke
   Future<void> redo() async {
-    if (_isHistoryOperationInProgress || state.undoStack.isEmpty) return;
+    if (_isHistoryOperationInProgress ||
+        (state.undoStack.isEmpty && _redoSnapshots.isEmpty)) {
+      return;
+    }
 
     _isHistoryOperationInProgress = true;
     try {
+      if (_redoSnapshots.isNotEmpty) {
+        final strokesToUndo = List<Stroke>.from(state.allStrokes);
+        final strokesToRestore = _redoSnapshots.removeLast();
+        _undoSnapshots.add(strokesToUndo);
+        _restoreStrokeSnapshot(strokesToRestore);
+        state = state.copyWith(undoStack: const [], redoStack: const []);
+        return;
+      }
+
       final undoStack = List<Stroke>.from(state.undoStack);
       final strokeToRedo = undoStack.removeLast();
       if (!_isStrokeVisibleAtCurrentPosition(strokeToRedo)) {
@@ -1291,6 +1377,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Clear all annotations
   void clearAll() {
+    _clearHistorySnapshots();
+
     final updatedData = state.annotationData!.copyWith(
       strokes: [],
       updatedAt: DateTime.now(),
@@ -1337,10 +1425,10 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   }
 
   /// Check if can undo
-  bool get canUndo => state.allStrokes.isNotEmpty;
+  bool get canUndo => _undoSnapshots.isNotEmpty || state.allStrokes.isNotEmpty;
 
   /// Check if can redo
-  bool get canRedo => state.undoStack.isNotEmpty;
+  bool get canRedo => _redoSnapshots.isNotEmpty || state.undoStack.isNotEmpty;
 
   /// Erase parts of strokes at a given point (for eraser tool)
   void _eraseStrokesAtPoint(StrokePoint point) {
@@ -1792,6 +1880,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       strokes: updatedStrokes,
       updatedAt: DateTime.now(),
     );
+
+    _clearRedoSnapshots();
 
     state = state.copyWith(
       annotationData: updatedData,
