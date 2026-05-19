@@ -906,7 +906,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       }
       if (_showCropExportPanel) {
         setState(() => _showCropExportPanel = false);
-        ref.read(cropProvider.notifier).exitCropMode();
+        ref.read(cropProvider.notifier).exitCropExportMode();
         return KeyEventResult.handled;
       }
     }
@@ -944,9 +944,13 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   }
 
   void _toggleCropExportPanel() {
-    setState(() => _showCropExportPanel = !_showCropExportPanel);
-    if (!_showCropExportPanel) {
-      ref.read(cropProvider.notifier).exitCropMode();
+    final willOpen = !_showCropExportPanel;
+    setState(() => _showCropExportPanel = willOpen);
+    final cropNotifier = ref.read(cropProvider.notifier);
+    if (willOpen) {
+      cropNotifier.enterCropExportMode();
+    } else {
+      cropNotifier.exitCropExportMode();
     }
     _focusNode.requestFocus();
   }

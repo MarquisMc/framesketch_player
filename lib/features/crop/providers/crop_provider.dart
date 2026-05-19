@@ -179,6 +179,9 @@ enum ExportStatus { idle, preparing, exporting, success, cancelled, error }
 
 /// State for crop functionality
 class CropState {
+  /// Whether the editor is focused on crop/export controls.
+  final bool isCropExportModeActive;
+
   /// Whether crop mode is active
   final bool isCropModeActive;
 
@@ -215,7 +218,11 @@ class CropState {
   /// Optional export segment end time. Null means end of video.
   final Duration? exportEnd;
 
+  /// Optional single-frame export preview selection.
+  final Duration? exportFrameSelection;
+
   const CropState({
+    this.isCropExportModeActive = false,
     this.isCropModeActive = false,
     this.cropRect = const CropRect.full(),
     this.aspectRatio = CropAspectRatio.free,
@@ -228,9 +235,11 @@ class CropState {
     this.exportedFilePath,
     this.exportStart,
     this.exportEnd,
+    this.exportFrameSelection,
   });
 
   CropState copyWith({
+    bool? isCropExportModeActive,
     bool? isCropModeActive,
     CropRect? cropRect,
     CropAspectRatio? aspectRatio,
@@ -250,8 +259,12 @@ class CropState {
     bool clearExportStart = false,
     Duration? exportEnd,
     bool clearExportEnd = false,
+    Duration? exportFrameSelection,
+    bool clearExportFrameSelection = false,
   }) {
     return CropState(
+      isCropExportModeActive:
+          isCropExportModeActive ?? this.isCropExportModeActive,
       isCropModeActive: isCropModeActive ?? this.isCropModeActive,
       cropRect: cropRect ?? this.cropRect,
       aspectRatio: aspectRatio ?? this.aspectRatio,
@@ -272,6 +285,9 @@ class CropState {
           : (exportedFilePath ?? this.exportedFilePath),
       exportStart: clearExportStart ? null : (exportStart ?? this.exportStart),
       exportEnd: clearExportEnd ? null : (exportEnd ?? this.exportEnd),
+      exportFrameSelection: clearExportFrameSelection
+          ? null
+          : (exportFrameSelection ?? this.exportFrameSelection),
     );
   }
 }
@@ -310,6 +326,24 @@ class CropNotifier extends StateNotifier<CropState> {
            annotationStorageService ??
            _ref.read(annotationStorageServiceProvider),
        super(const CropState());
+
+  /// Enter the crop/export workspace mode.
+  void enterCropExportMode() {
+    if (!state.isCropExportModeActive) {
+      state = state.copyWith(isCropExportModeActive: true);
+    }
+  }
+
+  /// Exit the crop/export workspace mode.
+  void exitCropExportMode() {
+    state = state.copyWith(
+      isCropExportModeActive: false,
+      isCropModeActive: false,
+      cropRect: const CropRect.full(),
+      clearActiveHandle: true,
+      clearExportFrameSelection: true,
+    );
+  }
 
   /// Toggle crop mode on/off
   void toggleCropMode() {
@@ -680,15 +714,39 @@ class CropNotifier extends StateNotifier<CropState> {
       }
     }
 
+    final currentSelectionMs = state.exportFrameSelection?.inMilliseconds;
+    final selectionIsInRange =
+        currentSelectionMs != null &&
+        currentSelectionMs >= startMs &&
+        currentSelectionMs <= endMs;
+
     state = state.copyWith(
       exportStart: startMs == 0 ? null : Duration(milliseconds: startMs),
       exportEnd: endMs == fullMs ? null : Duration(milliseconds: endMs),
+      clearExportFrameSelection: !selectionIsInRange,
     );
   }
 
   /// Reset export segment to full video range.
   void resetExportRange() {
     state = state.copyWith(clearExportStart: true, clearExportEnd: true);
+  }
+
+  /// Show and move the selected export frame marker.
+  void setExportFrameSelection(Duration position, {bool seek = true}) {
+    final playerState = _ref.read(playerProvider);
+    final duration = playerState.duration;
+    if (duration <= Duration.zero) return;
+
+    final fullMs = duration.inMilliseconds;
+    final startMs = state.exportStart?.inMilliseconds ?? 0;
+    final endMs = state.exportEnd?.inMilliseconds ?? fullMs;
+    final clampedMs = position.inMilliseconds.clamp(startMs, endMs);
+    final selected = Duration(milliseconds: clampedMs);
+    state = state.copyWith(exportFrameSelection: selected);
+    if (seek) {
+      _ref.read(playerProvider.notifier).seek(selected);
+    }
   }
 
   /// Export cropped video using FFmpeg (bundled with media_kit)

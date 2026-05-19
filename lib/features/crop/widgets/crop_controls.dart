@@ -19,7 +19,6 @@ enum _AnnotationExportFormat { framesketch, json }
 // ─── Floating crop/export panel ───────────────────────────────────────────────
 
 /// Floating panel that overlays the canvas, opened via the toolbar crop button.
-/// Two top-level tabs: Crop and Export.
 class CropExportPanel extends ConsumerStatefulWidget {
   final VoidCallback onClose;
   final void Function({
@@ -40,10 +39,9 @@ class CropExportPanel extends ConsumerStatefulWidget {
   ConsumerState<CropExportPanel> createState() => _CropExportPanelState();
 }
 
-class _CropExportPanelState extends ConsumerState<CropExportPanel>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+class _CropExportPanelState extends ConsumerState<CropExportPanel> {
   late final ProviderSubscription<dynamic> _metadataSubscription;
+  late final ProviderSubscription<Duration?> _exportFrameSelectionSubscription;
 
   _FrameExportScope _frameScope = _FrameExportScope.single;
   _FrameFormat _frameFormat = _FrameFormat.png;
@@ -56,7 +54,6 @@ class _CropExportPanelState extends ConsumerState<CropExportPanel>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
     _frameCtrl = TextEditingController();
     _startFrameCtrl = TextEditingController(text: '0');
     _endFrameCtrl = TextEditingController(text: '0');
@@ -70,12 +67,19 @@ class _CropExportPanelState extends ConsumerState<CropExportPanel>
         }
       },
     );
+    _exportFrameSelectionSubscription = ref.listenManual(
+      cropProvider.select((state) => state.exportFrameSelection),
+      (previous, next) {
+        if (next == null) return;
+        _frameCtrl.text = _frameFromPosition(next).toString();
+      },
+    );
   }
 
   @override
   void dispose() {
     _metadataSubscription.close();
-    _tabController.dispose();
+    _exportFrameSelectionSubscription.close();
     _frameCtrl.dispose();
     _startFrameCtrl.dispose();
     _endFrameCtrl.dispose();
@@ -92,6 +96,26 @@ class _CropExportPanelState extends ConsumerState<CropExportPanel>
     _frameCtrl.text = currentFrame.toString();
     _startFrameCtrl.text = '0';
     _endFrameCtrl.text = maxFrame.toString();
+  }
+
+  int _frameFromPosition(Duration position) {
+    final fps = ref.read(playerProvider).metadata?.fps ?? 30.0;
+    return ((position.inMilliseconds / 1000.0) * fps).round();
+  }
+
+  void _selectFrameForExport() {
+    final playerState = ref.read(playerProvider);
+    if (playerState.metadata == null || playerState.duration <= Duration.zero) {
+      return;
+    }
+
+    setState(() {
+      _frameScope = _FrameExportScope.single;
+      _frameValidation = null;
+    });
+    ref
+        .read(cropProvider.notifier)
+        .setExportFrameSelection(playerState.position);
   }
 
   void _submitFrameExport() {
@@ -152,23 +176,28 @@ class _CropExportPanelState extends ConsumerState<CropExportPanel>
       color: palette.panel,
       child: Column(
         children: [
-          // ── Title bar with tabs ──────────────────────────────────
-          _PanelTitleBar(
-            tabController: _tabController,
-            onClose: widget.onClose,
-            palette: palette,
-          ),
+          // ── Title bar ────────────────────────────────────────────
+          _PanelTitleBar(onClose: widget.onClose, palette: palette),
           Divider(height: 1, thickness: 1, color: palette.border),
-          // ── Tab content ─────────────────────────────────────────
+          // ── Panel content ────────────────────────────────────────
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
-              child: AnimatedBuilder(
-                animation: _tabController,
-                builder: (context, _) {
-                  return switch (_tabController.index) {
-                    0 => _CropTabContent(palette: palette),
-                    1 => _FramesContent(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _PanelSection(
+                    title: 'Crop',
+                    icon: Icons.crop,
+                    palette: palette,
+                    child: _CropTabContent(palette: palette),
+                  ),
+                  const SizedBox(height: 18),
+                  _PanelSection(
+                    title: 'Frames',
+                    icon: Icons.filter_frames_outlined,
+                    palette: palette,
+                    child: _FramesContent(
                       scope: _frameScope,
                       format: _frameFormat,
                       frameCtrl: _frameCtrl,
@@ -183,13 +212,19 @@ class _CropExportPanelState extends ConsumerState<CropExportPanel>
                       onFormatChanged: (f) => setState(() => _frameFormat = f),
                       onClearValidation: () =>
                           setState(() => _frameValidation = null),
+                      onSelectFrame: _selectFrameForExport,
                       onExport: _submitFrameExport,
                       palette: palette,
                     ),
-                    2 => const _VideoContent(),
-                    _ => const SizedBox.shrink(),
-                  };
-                },
+                  ),
+                  const SizedBox(height: 18),
+                  _PanelSection(
+                    title: 'Video',
+                    icon: Icons.movie_creation_outlined,
+                    palette: palette,
+                    child: const _VideoContent(),
+                  ),
+                ],
               ),
             ),
           ),
@@ -199,18 +234,13 @@ class _CropExportPanelState extends ConsumerState<CropExportPanel>
   }
 }
 
-// ─── Title bar with tabs ──────────────────────────────────────────────────────
+// ─── Title bar ────────────────────────────────────────────────────────────────
 
 class _PanelTitleBar extends StatelessWidget {
-  final TabController tabController;
   final VoidCallback onClose;
   final AppPalette palette;
 
-  const _PanelTitleBar({
-    required this.tabController,
-    required this.onClose,
-    required this.palette,
-  });
+  const _PanelTitleBar({required this.onClose, required this.palette});
 
   @override
   Widget build(BuildContext context) {
@@ -219,28 +249,24 @@ class _PanelTitleBar extends StatelessWidget {
       color: palette.panelElevated,
       child: Row(
         children: [
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           Expanded(
-            child: TabBar(
-              controller: tabController,
-              isScrollable: false,
-              indicatorColor: palette.accentBright,
-              indicatorWeight: 2,
-              labelColor: palette.accentBright,
-              unselectedLabelColor: palette.textSecondary,
-              labelStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-              unselectedLabelStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w400,
-              ),
-              dividerColor: Colors.transparent,
-              tabs: const [
-                Tab(text: 'Crop'),
-                Tab(text: 'Frames'),
-                Tab(text: 'Video'),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.ios_share_outlined,
+                  size: 15,
+                  color: palette.textMuted,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Crop & Export',
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ),
@@ -258,7 +284,46 @@ class _PanelTitleBar extends StatelessWidget {
   }
 }
 
-// ─── Crop tab ─────────────────────────────────────────────────────────────────
+// ─── Panel sections ───────────────────────────────────────────────────────────
+
+class _PanelSection extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final AppPalette palette;
+  final Widget child;
+
+  const _PanelSection({
+    required this.title,
+    required this.icon,
+    required this.palette,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 15, color: palette.accentBright),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        child,
+      ],
+    );
+  }
+}
 
 class _CropTabContent extends ConsumerWidget {
   final AppPalette palette;
@@ -483,6 +548,7 @@ class _FramesContent extends ConsumerWidget {
   final void Function(_FrameExportScope) onScopeChanged;
   final void Function(_FrameFormat) onFormatChanged;
   final VoidCallback onClearValidation;
+  final VoidCallback onSelectFrame;
   final VoidCallback onExport;
   final AppPalette palette;
 
@@ -497,6 +563,7 @@ class _FramesContent extends ConsumerWidget {
     required this.onScopeChanged,
     required this.onFormatChanged,
     required this.onClearValidation,
+    required this.onSelectFrame,
     required this.onExport,
     required this.palette,
   });
@@ -611,6 +678,24 @@ class _FramesContent extends ConsumerWidget {
         ],
 
         const SizedBox(height: 12),
+
+        SizedBox(
+          height: 32,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.place_outlined, size: 14),
+            label: const Text('Select Frame', style: TextStyle(fontSize: 12)),
+            onPressed: onSelectFrame,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: palette.accentBright,
+              side: BorderSide(color: palette.border),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 8),
 
         _ExportButton(
           label: scope == _FrameExportScope.single

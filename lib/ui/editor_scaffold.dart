@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_palette.dart';
 import '../features/player/providers/player_provider.dart';
@@ -10,6 +10,7 @@ import '../features/annotations/widgets/annotation_keyframe_timeline.dart';
 import '../features/annotations/providers/annotation_keyframe_timeline_provider.dart';
 import '../features/crop/providers/crop_provider.dart';
 import '../features/crop/widgets/crop_controls.dart';
+import '../features/crop/widgets/export_timeline.dart';
 import 'editor_toolbar.dart';
 import 'horizontal_tools_strip.dart';
 import 'inspector_panel.dart';
@@ -161,8 +162,10 @@ class EditorScaffold extends ConsumerWidget {
 
   Widget _buildDesktopLayout(BuildContext context, WidgetRef ref) {
     final palette = AppPalette.of(context);
-    final isCropModeActive = ref.watch(
-      cropProvider.select((s) => s.isCropModeActive),
+    final isCropWorkspaceActive = ref.watch(
+      cropProvider.select(
+        (s) => s.isCropModeActive || s.isCropExportModeActive,
+      ),
     );
     final hasLoadedSource = ref.watch(
       playerProvider.select((state) => state.hasLoadedSource),
@@ -199,7 +202,7 @@ class EditorScaffold extends ConsumerWidget {
         ),
         Divider(height: 1, thickness: 1, color: palette.border),
 
-        if (showToolsStrip && !isCropModeActive) ...[
+        if (showToolsStrip && !isCropWorkspaceActive) ...[
           const HorizontalToolsStrip(),
           Divider(height: 1, thickness: 1, color: palette.border),
         ],
@@ -210,7 +213,7 @@ class EditorScaffold extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Left: drawing tools panel (fixed width, scrollable internally)
-              if (showToolsPanel && !isCropModeActive) ...[
+              if (showToolsPanel && !isCropWorkspaceActive) ...[
                 const SizedBox(width: 240, child: DrawingToolsPanel()),
                 VerticalDivider(width: 1, thickness: 1, color: palette.border),
               ],
@@ -218,7 +221,7 @@ class EditorScaffold extends ConsumerWidget {
               // Center: canvas
               const Expanded(child: VideoViewport(showOverlays: true)),
 
-              if (showInspector && !isCropModeActive) ...[
+              if (showInspector && !isCropWorkspaceActive) ...[
                 VerticalDivider(width: 1, thickness: 1, color: palette.border),
 
                 // Right: inspector panel
@@ -249,8 +252,10 @@ class EditorScaffold extends ConsumerWidget {
 
   Widget _buildTabletLayout(BuildContext context, WidgetRef ref) {
     final palette = AppPalette.of(context);
-    final isCropModeActive = ref.watch(
-      cropProvider.select((s) => s.isCropModeActive),
+    final isCropWorkspaceActive = ref.watch(
+      cropProvider.select(
+        (s) => s.isCropModeActive || s.isCropExportModeActive,
+      ),
     );
     final hasLoadedSource = ref.watch(
       playerProvider.select((state) => state.hasLoadedSource),
@@ -291,7 +296,7 @@ class EditorScaffold extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Compact tools column (icon-only, narrower)
-              if (!isCropModeActive) ...[
+              if (!isCropWorkspaceActive) ...[
                 const _CompactToolsStrip(),
                 VerticalDivider(width: 1, thickness: 1, color: palette.border),
               ],
@@ -361,12 +366,19 @@ class EditorScaffold extends ConsumerWidget {
     final showAnnotationTimeline = ref.watch(
       annotationKeyframeTimelineVisibleProvider,
     );
+    final isCropExportModeActive = ref.watch(
+      cropProvider.select((state) => state.isCropExportModeActive),
+    );
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (showAnnotationTimeline) const AnnotationKeyframeTimeline(),
-        TimelineScrubber(showAnnotationTimelineToggle: true),
+        if (isCropExportModeActive)
+          const ExportTimeline()
+        else ...[
+          if (showAnnotationTimeline) const AnnotationKeyframeTimeline(),
+          TimelineScrubber(showAnnotationTimelineToggle: true),
+        ],
         Divider(height: 1, thickness: 1, color: palette.border),
         PlaybackControls(
           isFullscreen: false,
