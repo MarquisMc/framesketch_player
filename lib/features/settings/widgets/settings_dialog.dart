@@ -192,6 +192,16 @@ class _SettingsDialogState extends State<SettingsDialog> {
               ),
               const SizedBox(height: 16),
               _ShortcutRow(
+                label: 'Add Marker',
+                shortcut: _shortcuts.addMarker,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(addMarker: shortcut);
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _ShortcutRow(
                 label: 'Next Marker',
                 shortcut: _shortcuts.nextMarker,
                 onChanged: (shortcut) {

@@ -268,6 +268,7 @@ mixin _$KeyboardShortcuts {
   KeyboardShortcut get saveAnnotations => throw _privateConstructorUsedError;
   KeyboardShortcut get undo => throw _privateConstructorUsedError;
   KeyboardShortcut get redo => throw _privateConstructorUsedError;
+  KeyboardShortcut get addMarker => throw _privateConstructorUsedError;
   KeyboardShortcut get nextMarker => throw _privateConstructorUsedError;
   KeyboardShortcut get previousMarker =>
       throw _privateConstructorUsedError; // Annotation tools
@@ -326,6 +327,7 @@ abstract class $KeyboardShortcutsCopyWith<$Res> {
     KeyboardShortcut saveAnnotations,
     KeyboardShortcut undo,
     KeyboardShortcut redo,
+    KeyboardShortcut addMarker,
     KeyboardShortcut nextMarker,
     KeyboardShortcut previousMarker,
     KeyboardShortcut selectSelectionTool,
@@ -360,6 +362,7 @@ abstract class $KeyboardShortcutsCopyWith<$Res> {
   $KeyboardShortcutCopyWith<$Res> get saveAnnotations;
   $KeyboardShortcutCopyWith<$Res> get undo;
   $KeyboardShortcutCopyWith<$Res> get redo;
+  $KeyboardShortcutCopyWith<$Res> get addMarker;
   $KeyboardShortcutCopyWith<$Res> get nextMarker;
   $KeyboardShortcutCopyWith<$Res> get previousMarker;
   $KeyboardShortcutCopyWith<$Res> get selectSelectionTool;
@@ -405,6 +408,7 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
     Object? saveAnnotations = null,
     Object? undo = null,
     Object? redo = null,
+    Object? addMarker = null,
     Object? nextMarker = null,
     Object? previousMarker = null,
     Object? selectSelectionTool = null,
@@ -472,6 +476,10 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
             redo: null == redo
                 ? _value.redo
                 : redo // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            addMarker: null == addMarker
+                ? _value.addMarker
+                : addMarker // ignore: cast_nullable_to_non_nullable
                       as KeyboardShortcut,
             nextMarker: null == nextMarker
                 ? _value.nextMarker
@@ -677,6 +685,16 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
   /// with the given fields replaced by the non-null parameter values.
   @override
   @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get addMarker {
+    return $KeyboardShortcutCopyWith<$Res>(_value.addMarker, (value) {
+      return _then(_value.copyWith(addMarker: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
   $KeyboardShortcutCopyWith<$Res> get nextMarker {
     return $KeyboardShortcutCopyWith<$Res>(_value.nextMarker, (value) {
       return _then(_value.copyWith(nextMarker: value) as $Val);
@@ -867,6 +885,7 @@ abstract class _$$KeyboardShortcutsImplCopyWith<$Res>
     KeyboardShortcut saveAnnotations,
     KeyboardShortcut undo,
     KeyboardShortcut redo,
+    KeyboardShortcut addMarker,
     KeyboardShortcut nextMarker,
     KeyboardShortcut previousMarker,
     KeyboardShortcut selectSelectionTool,
@@ -912,6 +931,8 @@ abstract class _$$KeyboardShortcutsImplCopyWith<$Res>
   $KeyboardShortcutCopyWith<$Res> get undo;
   @override
   $KeyboardShortcutCopyWith<$Res> get redo;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get addMarker;
   @override
   $KeyboardShortcutCopyWith<$Res> get nextMarker;
   @override
@@ -973,6 +994,7 @@ class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
     Object? saveAnnotations = null,
     Object? undo = null,
     Object? redo = null,
+    Object? addMarker = null,
     Object? nextMarker = null,
     Object? previousMarker = null,
     Object? selectSelectionTool = null,
@@ -1040,6 +1062,10 @@ class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
         redo: null == redo
             ? _value.redo
             : redo // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        addMarker: null == addMarker
+            ? _value.addMarker
+            : addMarker // ignore: cast_nullable_to_non_nullable
                   as KeyboardShortcut,
         nextMarker: null == nextMarker
             ? _value.nextMarker
@@ -1149,6 +1175,10 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
     required this.saveAnnotations,
     required this.undo,
     required this.redo,
+    this.addMarker = const KeyboardShortcut(
+      key: LogicalKeyboardKey.keyB,
+      ctrlPressed: true,
+    ),
     required this.nextMarker,
     required this.previousMarker,
     required this.selectSelectionTool,
@@ -1199,6 +1229,9 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
   final KeyboardShortcut undo;
   @override
   final KeyboardShortcut redo;
+  @override
+  @JsonKey()
+  final KeyboardShortcut addMarker;
   @override
   final KeyboardShortcut nextMarker;
   @override
@@ -1252,7 +1285,7 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
 
   @override
   String toString() {
-    return 'KeyboardShortcuts(nextFrame: $nextFrame, previousFrame: $previousFrame, playPause: $playPause, jumpForward: $jumpForward, jumpBackward: $jumpBackward, toggleFullscreen: $toggleFullscreen, openCommandPalette: $openCommandPalette, openFile: $openFile, saveAnnotations: $saveAnnotations, undo: $undo, redo: $redo, nextMarker: $nextMarker, previousMarker: $previousMarker, selectSelectionTool: $selectSelectionTool, selectPenTool: $selectPenTool, selectEraserTool: $selectEraserTool, selectRectangleTool: $selectRectangleTool, selectCircleTool: $selectCircleTool, selectLineTool: $selectLineTool, selectArrowTool: $selectArrowTool, selectTextTool: $selectTextTool, toggleKeyframeMode: $toggleKeyframeMode, createManualKeyframe: $createManualKeyframe, toggleFullLoop: $toggleFullLoop, setLoopStart: $setLoopStart, setLoopEnd: $setLoopEnd, toggleSectionLoop: $toggleSectionLoop, toggleCropMode: $toggleCropMode, generalShortcutsEnabled: $generalShortcutsEnabled, annotationToolsShortcutsEnabled: $annotationToolsShortcutsEnabled, loopControlsShortcutsEnabled: $loopControlsShortcutsEnabled, cropControlsShortcutsEnabled: $cropControlsShortcutsEnabled)';
+    return 'KeyboardShortcuts(nextFrame: $nextFrame, previousFrame: $previousFrame, playPause: $playPause, jumpForward: $jumpForward, jumpBackward: $jumpBackward, toggleFullscreen: $toggleFullscreen, openCommandPalette: $openCommandPalette, openFile: $openFile, saveAnnotations: $saveAnnotations, undo: $undo, redo: $redo, addMarker: $addMarker, nextMarker: $nextMarker, previousMarker: $previousMarker, selectSelectionTool: $selectSelectionTool, selectPenTool: $selectPenTool, selectEraserTool: $selectEraserTool, selectRectangleTool: $selectRectangleTool, selectCircleTool: $selectCircleTool, selectLineTool: $selectLineTool, selectArrowTool: $selectArrowTool, selectTextTool: $selectTextTool, toggleKeyframeMode: $toggleKeyframeMode, createManualKeyframe: $createManualKeyframe, toggleFullLoop: $toggleFullLoop, setLoopStart: $setLoopStart, setLoopEnd: $setLoopEnd, toggleSectionLoop: $toggleSectionLoop, toggleCropMode: $toggleCropMode, generalShortcutsEnabled: $generalShortcutsEnabled, annotationToolsShortcutsEnabled: $annotationToolsShortcutsEnabled, loopControlsShortcutsEnabled: $loopControlsShortcutsEnabled, cropControlsShortcutsEnabled: $cropControlsShortcutsEnabled)';
   }
 
   @override
@@ -1280,6 +1313,8 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
                 other.saveAnnotations == saveAnnotations) &&
             (identical(other.undo, undo) || other.undo == undo) &&
             (identical(other.redo, redo) || other.redo == redo) &&
+            (identical(other.addMarker, addMarker) ||
+                other.addMarker == addMarker) &&
             (identical(other.nextMarker, nextMarker) ||
                 other.nextMarker == nextMarker) &&
             (identical(other.previousMarker, previousMarker) ||
@@ -1354,6 +1389,7 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
     saveAnnotations,
     undo,
     redo,
+    addMarker,
     nextMarker,
     previousMarker,
     selectSelectionTool,
@@ -1407,6 +1443,7 @@ abstract class _KeyboardShortcuts implements KeyboardShortcuts {
     required final KeyboardShortcut saveAnnotations,
     required final KeyboardShortcut undo,
     required final KeyboardShortcut redo,
+    final KeyboardShortcut addMarker,
     required final KeyboardShortcut nextMarker,
     required final KeyboardShortcut previousMarker,
     required final KeyboardShortcut selectSelectionTool,
@@ -1455,6 +1492,8 @@ abstract class _KeyboardShortcuts implements KeyboardShortcuts {
   KeyboardShortcut get undo;
   @override
   KeyboardShortcut get redo;
+  @override
+  KeyboardShortcut get addMarker;
   @override
   KeyboardShortcut get nextMarker;
   @override

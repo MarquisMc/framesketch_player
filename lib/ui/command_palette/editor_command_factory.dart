@@ -17,11 +17,11 @@ class EditorCommandFactory {
   const EditorCommandFactory({
     required this.ref,
     required this.shortcuts,
-    required this.markerColor,
     required this.isFullscreen,
     required this.onOpenFile,
     required this.onOpenRecent,
     required this.onSaveAnnotations,
+    required this.onAddMarker,
     required this.onExportVideoFromTopBar,
     required this.onOpenThemeManager,
     required this.onToggleFullscreen,
@@ -29,11 +29,11 @@ class EditorCommandFactory {
 
   final WidgetRef ref;
   final KeyboardShortcuts shortcuts;
-  final Color markerColor;
   final bool isFullscreen;
   final AsyncCommand onOpenFile;
   final AsyncCommand onOpenRecent;
   final AsyncCommand onSaveAnnotations;
+  final AsyncCommand onAddMarker;
   final AsyncCommand onExportVideoFromTopBar;
   final VoidCallback onOpenThemeManager;
   final VoidCallback onToggleFullscreen;
@@ -186,17 +186,10 @@ class EditorCommandFactory {
         label: 'Add Marker at Current Frame',
         category: 'Markers',
         icon: Icons.bookmark_add_outlined,
+        shortcut: formatShortcutLabel(shortcuts.addMarker),
         enabled: hasAnnotations,
         run: () {
-          final frame = playerState.metadata == null
-              ? 0
-              : ((playerState.position.inMilliseconds *
-                            playerState.metadata!.fps) /
-                        1000)
-                    .round();
-          ref
-              .read(annotationProvider.notifier)
-              .upsertMarker(label: 'Marker $frame', color: markerColor);
+          unawaited(onAddMarker());
           return null;
         },
       ),
@@ -206,7 +199,8 @@ class EditorCommandFactory {
         category: 'Annotations',
         icon: Icons.control_point_duplicate,
         shortcut: 'Ctrl+D',
-        enabled: annotationState.selectedStrokeId != null ||
+        enabled:
+            annotationState.selectedStrokeId != null ||
             annotationState.selectedStrokeIds.isNotEmpty,
         run: () {
           ref.read(annotationProvider.notifier).duplicateSelectedStroke();
@@ -320,6 +314,7 @@ class EditorCommandFactory {
       ('Previous Frame', shortcuts.previousFrame),
       ('Jump Forward 1s', shortcuts.jumpForward),
       ('Jump Backward 1s', shortcuts.jumpBackward),
+      ('Add Marker', shortcuts.addMarker),
       ('Next Marker', shortcuts.nextMarker),
       ('Previous Marker', shortcuts.previousMarker),
       ('Undo', shortcuts.undo),

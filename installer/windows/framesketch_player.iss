@@ -9,9 +9,6 @@
 #define AppSourceDir "..\..\build\windows\x64\runner\Release"
 #define AppOutputDir "..\..\release"
 #define SignCertSha1 GetEnv("FRAMESKETCH_SIGN_CERT_SHA1")
-#if SignCertSha1 == ""
-  #error FRAMESKETCH_SIGN_CERT_SHA1 must be set to build a signed installer.
-#endif
 #define SignTimestampUrl GetEnv("FRAMESKETCH_SIGN_TIMESTAMP_URL")
 #if SignTimestampUrl == ""
   #define SignTimestampUrl "http://timestamp.digicert.com"
@@ -36,8 +33,10 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#AppExeName}
+#if SignCertSha1 != ""
 SignedUninstaller=yes
 SignTool=signtool sign /d $q{#AppName}$q /fd sha256 /td sha256 /tr $q{#SignTimestampUrl}$q /sha1 $q{#SignCertSha1}$q $f
+#endif
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

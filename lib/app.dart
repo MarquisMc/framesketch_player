@@ -8,6 +8,7 @@ import 'core/models/project_library_entry.dart';
 import 'features/player/providers/player_provider.dart';
 import 'features/annotations/providers/annotation_provider.dart';
 import 'features/annotations/models/stroke.dart';
+import 'features/annotations/widgets/frame_marker_panel.dart';
 import 'core/models/annotation_data.dart';
 import 'core/models/keyboard_shortcuts.dart';
 import 'features/projects/providers/project_library_provider.dart';
@@ -447,11 +448,13 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                     commands: EditorCommandFactory(
                       ref: ref,
                       shortcuts: _shortcuts,
-                      markerColor: _activePalette.accent,
                       isFullscreen: _isFullscreen,
                       onOpenFile: _openFile,
                       onOpenRecent: _openRecentFromPalette,
                       onSaveAnnotations: _saveAnnotations,
+                      onAddMarker: () async {
+                        _openMarkerEditorAtCurrentFrame();
+                      },
                       onExportVideoFromTopBar: _exportVideoFromTopBar,
                       onOpenThemeManager: () {
                         final ctx = _navigatorKey.currentContext;
@@ -764,6 +767,12 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         }
       }
 
+      if (matchesShortcut(_shortcuts.addMarker)) {
+        return _openMarkerEditorAtCurrentFrame()
+            ? KeyEventResult.handled
+            : KeyEventResult.ignored;
+      }
+
       // Duplicate selected annotation (no repeat)
       if (event.logicalKey == LogicalKeyboardKey.keyD &&
           isCtrl &&
@@ -935,6 +944,28 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   void _openCommandPalette() {
     if (_showCommandPalette) return;
     setState(() => _showCommandPalette = true);
+  }
+
+  bool _openMarkerEditorAtCurrentFrame() {
+    final playerState = ref.read(playerProvider);
+    final annotationState = ref.read(annotationProvider);
+    if (annotationState.annotationData == null ||
+        playerState.metadata == null ||
+        playerState.player == null) {
+      return false;
+    }
+    final context = _navigatorKey.currentContext;
+    if (context == null) {
+      return false;
+    }
+    unawaited(
+      openMarkerEditorDialog(
+        context: context,
+        ref: ref,
+        defaultColor: _activePalette.annotationSwatches.first,
+      ),
+    );
+    return true;
   }
 
   void _closeCommandPalette() {

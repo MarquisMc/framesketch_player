@@ -11,6 +11,51 @@ import '../../player/providers/player_provider.dart';
 import '../models/frame_marker.dart';
 import '../providers/annotation_provider.dart';
 
+int _frameFromMs(int milliseconds, double fps) {
+  if (fps <= 0) return 0;
+  return ((milliseconds / 1000.0) * fps).round();
+}
+
+Future<void> openMarkerEditorDialog({
+  required BuildContext context,
+  required WidgetRef ref,
+  required Color defaultColor,
+  FrameMarker? marker,
+}) async {
+  final playerState = ref.read(playerProvider);
+  final annotationData = ref.read(annotationProvider).annotationData;
+  if (annotationData == null || playerState.player == null) {
+    return;
+  }
+
+  final fps = playerState.metadata?.fps ?? annotationData.fps;
+  final markerTimeMs = marker?.timeMs ?? playerState.position.inMilliseconds;
+  final currentFrame = _frameFromMs(markerTimeMs, fps);
+
+  final draft = await showDialog<_MarkerDraft>(
+    context: context,
+    builder: (dialogContext) => _MarkerEditorDialog(
+      initialLabel: marker?.label ?? 'Frame $currentFrame',
+      initialNote: marker?.note ?? '',
+      initialColor: marker?.color ?? defaultColor,
+      frameNumber: currentFrame,
+      timecode: TimecodeFormatter.format(Duration(milliseconds: markerTimeMs)),
+    ),
+  );
+
+  if (!context.mounted || draft == null) return;
+
+  ref
+      .read(annotationProvider.notifier)
+      .upsertMarker(
+        markerId: marker?.id,
+        label: draft.label,
+        note: draft.note,
+        color: draft.color,
+        timeMs: marker?.timeMs,
+      );
+}
+
 class FrameMarkerPanel extends ConsumerStatefulWidget {
   const FrameMarkerPanel({super.key});
 
@@ -22,51 +67,15 @@ class _FrameMarkerPanelState extends ConsumerState<FrameMarkerPanel> {
   final FrameMarkerFileService _fileService = FrameMarkerFileService();
   bool _isExpanded = true;
 
-  int _frameFromMs(int milliseconds, double fps) {
-    if (fps <= 0) return 0;
-    return ((milliseconds / 1000.0) * fps).round();
-  }
-
   Future<void> _openMarkerEditor({
     required Color defaultColor,
     FrameMarker? marker,
   }) async {
-    final playerState = ref.read(playerProvider);
-    final annotationData = ref.read(annotationProvider).annotationData;
-    if (annotationData == null || playerState.player == null) {
-      return;
-    }
-
-    final fps = playerState.metadata?.fps ?? annotationData.fps;
-    final currentFrame = _frameFromMs(
-      marker?.timeMs ?? playerState.position.inMilliseconds,
-      fps,
-    );
-
-    final draft = await showDialog<_MarkerDraft>(
+    return openMarkerEditorDialog(
       context: context,
-      builder: (dialogContext) => _MarkerEditorDialog(
-        initialLabel: marker?.label ?? 'Frame $currentFrame',
-        initialNote: marker?.note ?? '',
-        initialColor: marker?.color ?? defaultColor,
-        frameNumber: currentFrame,
-        timecode: TimecodeFormatter.format(
-          Duration(
-            milliseconds:
-                marker?.timeMs ?? playerState.position.inMilliseconds,
-          ),
-        ),
-      ),
-    );
-
-    if (!mounted || draft == null) return;
-
-    ref.read(annotationProvider.notifier).upsertMarker(
-      markerId: marker?.id,
-      label: draft.label,
-      note: draft.note,
-      color: draft.color,
-      timeMs: marker?.timeMs,
+      ref: ref,
+      defaultColor: defaultColor,
+      marker: marker,
     );
   }
 
@@ -74,8 +83,9 @@ class _FrameMarkerPanelState extends ConsumerState<FrameMarkerPanel> {
     final annotationData = ref.read(annotationProvider).annotationData;
     if (annotationData == null) return;
 
-    final suggestedBaseName =
-        _fileService.buildSuggestedBaseName(annotationData);
+    final suggestedBaseName = _fileService.buildSuggestedBaseName(
+      annotationData,
+    );
     final selectedPath = await FilePicker.platform.saveFile(
       dialogTitle: 'Export Marker List',
       fileName: '${suggestedBaseName}_markers.json',
@@ -88,8 +98,9 @@ class _FrameMarkerPanelState extends ConsumerState<FrameMarkerPanel> {
     final outputPath = selectedPath.toLowerCase().endsWith('.json')
         ? selectedPath
         : '$selectedPath.json';
-    final encoded =
-        _fileService.encodeMarkerList(annotationData: annotationData);
+    final encoded = _fileService.encodeMarkerList(
+      annotationData: annotationData,
+    );
     await File(outputPath).writeAsString(encoded);
 
     if (!mounted) return;
@@ -237,8 +248,10 @@ class _FrameMarkerPanelState extends ConsumerState<FrameMarkerPanel> {
                 if (markers.isNotEmpty) ...[
                   const SizedBox(width: 6),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 1,
+                    ),
                     decoration: BoxDecoration(
                       color: palette.accentSoft,
                       borderRadius: BorderRadius.circular(10),
@@ -304,8 +317,9 @@ class _FrameMarkerPanelState extends ConsumerState<FrameMarkerPanel> {
             fps: fps,
             defaultColor: defaultColor,
           ),
-          crossFadeState:
-              _isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          crossFadeState: _isExpanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
           duration: const Duration(milliseconds: 200),
           sizeCurve: Curves.easeInOut,
         ),
@@ -359,10 +373,8 @@ class _FrameMarkerPanelState extends ConsumerState<FrameMarkerPanel> {
             isCurrent: isCurrent,
             palette: palette,
             onTap: () => annotationNotifier.seekToMarker(marker),
-            onEdit: () => _openMarkerEditor(
-              defaultColor: defaultColor,
-              marker: marker,
-            ),
+            onEdit: () =>
+                _openMarkerEditor(defaultColor: defaultColor, marker: marker),
             onDelete: () => _confirmDeleteMarker(marker),
           );
         },
@@ -400,8 +412,9 @@ class _HeaderIconButton extends StatelessWidget {
             child: Icon(
               icon,
               size: 16,
-              color:
-                  onPressed != null ? palette.textSecondary : palette.textDisabled,
+              color: onPressed != null
+                  ? palette.textSecondary
+                  : palette.textDisabled,
             ),
           ),
         ),
@@ -495,8 +508,8 @@ class _MarkerTileState extends State<_MarkerTile> {
               color: widget.isCurrent
                   ? palette.accentSoft
                   : _hovered
-                      ? palette.panelElevated
-                      : Colors.transparent,
+                  ? palette.panelElevated
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(6),
               border: widget.isCurrent
                   ? Border.all(
@@ -552,8 +565,9 @@ class _MarkerTileState extends State<_MarkerTile> {
                                 ),
                               ),
                               Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                ),
                                 child: Text(
                                   '\u00B7',
                                   style: TextStyle(
@@ -572,8 +586,9 @@ class _MarkerTileState extends State<_MarkerTile> {
                               ),
                               if (marker.note.trim().isNotEmpty) ...[
                                 Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                  ),
                                   child: Text(
                                     '\u00B7',
                                     style: TextStyle(
@@ -772,8 +787,7 @@ class _MarkerEditorDialogState extends State<_MarkerEditorDialog> {
             children: [
               // Frame/timecode badge
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: palette.panelElevated,
                   borderRadius: BorderRadius.circular(6),
@@ -918,13 +932,11 @@ class _MarkerImportDialog extends StatelessWidget {
         ),
         if (existingCount > 0)
           TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(_MarkerImportMode.merge),
+            onPressed: () => Navigator.of(context).pop(_MarkerImportMode.merge),
             child: const Text('Merge'),
           ),
         FilledButton(
-          onPressed: () =>
-              Navigator.of(context).pop(_MarkerImportMode.replace),
+          onPressed: () => Navigator.of(context).pop(_MarkerImportMode.replace),
           child: Text(existingCount > 0 ? 'Replace' : 'Import'),
         ),
       ],
