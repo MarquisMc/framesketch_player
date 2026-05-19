@@ -201,6 +201,19 @@ class EditorCommandFactory {
         },
       ),
       PaletteCommand(
+        id: 'duplicate-selected-annotations',
+        label: 'Duplicate Selected Annotations',
+        category: 'Annotations',
+        icon: Icons.control_point_duplicate,
+        shortcut: 'Ctrl+D',
+        enabled: annotationState.selectedStrokeId != null ||
+            annotationState.selectedStrokeIds.isNotEmpty,
+        run: () {
+          ref.read(annotationProvider.notifier).duplicateSelectedStroke();
+          return null;
+        },
+      ),
+      PaletteCommand(
         id: 'switch-theme',
         label: themeState.mode == ThemeMode.dark
             ? 'Switch to Light Mode'

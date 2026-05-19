@@ -378,6 +378,17 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                   ),
                   const SizedBox(height: 8),
                   ElevatedButton.icon(
+                    onPressed: annotationNotifier.canDuplicateSelectedStroke
+                        ? annotationNotifier.duplicateSelectedStroke
+                        : null,
+                    icon: const Icon(Icons.control_point_duplicate),
+                    label: Text('Duplicate Selected'),
+                    style: ElevatedButton.styleFrom(
+                      alignment: Alignment.centerLeft,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
                     onPressed: annotationState.allStrokes.isNotEmpty
                         ? () => _showClearConfirmation(
                             context,

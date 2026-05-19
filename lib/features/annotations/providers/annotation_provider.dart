@@ -787,7 +787,14 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Set current drawing tool
   void setTool(DrawingTool tool) {
-    state = state.copyWith(currentTool: tool, clearCurrentStroke: true);
+    final shouldClearSelection = tool != DrawingTool.select;
+    state = state.copyWith(
+      currentTool: tool,
+      clearCurrentStroke: true,
+      clearSelectedStroke: shouldClearSelection,
+      clearSelectionBox: shouldClearSelection,
+      isBoxSelecting: shouldClearSelection ? false : null,
+    );
   }
 
   /// Toggle whether keyframes are created automatically while drawing.
@@ -1800,6 +1807,39 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     return selectedBounds;
   }
 
+  Offset _duplicateOffsetForSelection(Set<String> selectedSet) {
+    const preferredOffset = 0.025;
+    final bounds = _selectedStrokeBounds(selectedSet);
+    if (bounds == null) {
+      return const Offset(preferredOffset, preferredOffset);
+    }
+
+    final dx = bounds.right + preferredOffset <= 1.0
+        ? preferredOffset
+        : bounds.left - preferredOffset >= 0.0
+        ? -preferredOffset
+        : 0.0;
+    final dy = bounds.bottom + preferredOffset <= 1.0
+        ? preferredOffset
+        : bounds.top - preferredOffset >= 0.0
+        ? -preferredOffset
+        : 0.0;
+
+    return Offset(dx, dy);
+  }
+
+  Stroke _duplicateStroke(Stroke stroke, Offset offset) {
+    return stroke.copyWith(
+      id: _uuid.v4(),
+      points: stroke.points.map((point) {
+        return point.copyWith(
+          x: (point.x + offset.dx).clamp(0.0, 1.0).toDouble(),
+          y: (point.y + offset.dy).clamp(0.0, 1.0).toDouble(),
+        );
+      }).toList(),
+    );
+  }
+
   void _updateBoxSelection(StrokePoint currentPoint) {
     final start = state.selectionBoxStartPoint;
     if (start == null) return;
@@ -1860,6 +1900,45 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       clearSelectedStroke: true,
       clearSelectionBox: true,
       isBoxSelecting: false,
+    );
+  }
+
+  bool get canDuplicateSelectedStroke => _selectedStrokeIdSet().isNotEmpty;
+
+  /// Duplicate the currently selected annotations and select the duplicates.
+  void duplicateSelectedStroke() {
+    if (state.annotationData == null) return;
+
+    final selectedIds = _selectedStrokeIdSet();
+    if (selectedIds.isEmpty) return;
+
+    final selectedStrokes = state.allStrokes
+        .where((stroke) => selectedIds.contains(stroke.id))
+        .toList();
+    if (selectedStrokes.isEmpty) return;
+
+    final offset = _duplicateOffsetForSelection(selectedIds);
+    final duplicatedStrokes = selectedStrokes
+        .map((stroke) => _duplicateStroke(stroke, offset))
+        .toList();
+    final duplicatedIds = duplicatedStrokes.map((stroke) => stroke.id).toList();
+    final updatedStrokes = [...state.allStrokes, ...duplicatedStrokes];
+    final updatedData = state.annotationData!.copyWith(
+      strokes: updatedStrokes,
+      updatedAt: DateTime.now(),
+    );
+
+    _recordUndoSnapshot(state.allStrokes);
+    _clearRedoSnapshots();
+
+    state = state.copyWith(
+      annotationData: updatedData,
+      selectedStrokeId: duplicatedIds.first,
+      selectedStrokeIds: duplicatedIds,
+      clearSelectionBox: true,
+      isBoxSelecting: false,
+      hasUnsavedChanges: true,
+      redoStack: const [],
     );
   }
 

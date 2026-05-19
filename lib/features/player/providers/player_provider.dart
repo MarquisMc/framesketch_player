@@ -149,8 +149,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _allowStreamDimensionUpdates = false;
   }
 
-  Duration _frameDurationFor(VideoMetadata metadata) {
-    return Duration(microseconds: (1000000 / metadata.fps).round());
+  int _frameIndexFor(Duration position, VideoMetadata metadata) {
+    final seconds = position.inMicroseconds / 1000000.0;
+    return (seconds * metadata.fps).round();
+  }
+
+  Duration _positionForFrameIndex(int frameIndex, VideoMetadata metadata) {
+    final clampedFrame = metadata.frameCount > 0
+        ? frameIndex.clamp(0, metadata.frameCount)
+        : frameIndex.clamp(0, double.maxFinite).toInt();
+    final targetMicros = ((clampedFrame * 1000000.0) / metadata.fps).round();
+    return _clampToDuration(Duration(microseconds: targetMicros));
   }
 
   Duration _clampToDuration(Duration value) {
@@ -517,9 +526,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       final metadata = state.metadata;
       if (metadata == null) return;
 
-      final frameDuration = _frameDurationFor(metadata);
-      final basePosition = state.player?.state.position ?? state.position;
-      final nextPosition = _clampToDuration(basePosition + frameDuration);
+      final basePosition = state.position;
+      final baseFrame = _frameIndexFor(basePosition, metadata);
+      final nextPosition = _positionForFrameIndex(baseFrame + 1, metadata);
 
       if (state.isPlaying) {
         await pause();
@@ -550,27 +559,15 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       final metadata = state.metadata;
       if (metadata == null) return;
 
-      final frameDuration = _frameDurationFor(metadata);
-      final basePosition = state.player?.state.position ?? state.position;
-      final prevPosition = _clampToDuration(basePosition - frameDuration);
+      final basePosition = state.position;
+      final baseFrame = _frameIndexFor(basePosition, metadata);
+      final prevPosition = _positionForFrameIndex(baseFrame - 1, metadata);
 
       if (state.isPlaying) {
         await pause();
         state = state.copyWith(isPlaying: false);
       } else {
         await _setStillFrameAudioMuted(true);
-      }
-
-      if (await _tryNativeFrameStep(forward: false)) {
-        final resolvedPosition = state.player?.state.position;
-        final targetPosition =
-            (resolvedPosition != null && resolvedPosition != basePosition)
-            ? _clampToDuration(resolvedPosition)
-            : prevPosition;
-        if (state.position != targetPosition) {
-          state = state.copyWith(position: targetPosition);
-        }
-        return;
       }
 
       await seek(prevPosition);
@@ -665,8 +662,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final metadata = state.metadata;
     if (metadata == null) return 0;
 
-    final seconds = state.position.inMicroseconds / 1000000.0;
-    return (seconds * metadata.fps).round();
+    return _frameIndexFor(state.position, metadata);
   }
 
   /// Dispose player

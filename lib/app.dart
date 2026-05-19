@@ -764,6 +764,16 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         }
       }
 
+      // Duplicate selected annotation (no repeat)
+      if (event.logicalKey == LogicalKeyboardKey.keyD &&
+          isCtrl &&
+          !isShift &&
+          !isAlt &&
+          annotationNotifier.canDuplicateSelectedStroke) {
+        annotationNotifier.duplicateSelectedStroke();
+        return KeyEventResult.handled;
+      }
+
       if (matchesShortcut(_shortcuts.nextMarker)) {
         unawaited(annotationNotifier.seekToNextMarker());
         return KeyEventResult.handled;
