@@ -847,9 +847,11 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       // Toggle keyframe creation mode (no repeat)
       if (matchesShortcut(_shortcuts.toggleKeyframeMode)) {
         annotationNotifier.setKeyframeCreationMode(
-          annotationState.keyframeCreationMode == KeyframeCreationMode.manual
-              ? KeyframeCreationMode.automatic
-              : KeyframeCreationMode.manual,
+          switch (annotationState.keyframeCreationMode) {
+            KeyframeCreationMode.automatic => KeyframeCreationMode.manual,
+            KeyframeCreationMode.manual => KeyframeCreationMode.whiteboard,
+            KeyframeCreationMode.whiteboard => KeyframeCreationMode.automatic,
+          },
         );
         return KeyEventResult.handled;
       }

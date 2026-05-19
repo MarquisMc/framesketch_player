@@ -4,6 +4,7 @@ import '../../../core/theme/app_palette.dart';
 import '../models/stroke.dart';
 import '../providers/annotation_provider.dart';
 import 'annotation_size_control.dart';
+import '../../loop/providers/loop_provider.dart';
 import '../../player/providers/player_provider.dart';
 
 /// Drawing tools panel
@@ -32,6 +33,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
     final activeStrokeWidth = ref.watch(activeAnnotationStrokeWidthProvider);
     final activeFontSize = ref.watch(activeAnnotationFontSizeProvider);
     final canCreateManualKeyframe = ref.watch(canCreateManualKeyframeProvider);
+    final loopState = ref.watch(loopProvider);
     final fps =
         ref.watch(playerProvider.select((state) => state.metadata?.fps)) ??
         30.0;
@@ -77,7 +79,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                   Row(
                     children: [
                       _buildKeyframeModeButton(
-                        label: 'Automatic',
+                        label: 'Auto',
                         isSelected:
                             keyframeMode == KeyframeCreationMode.automatic,
                         onTap: () => annotationNotifier.setKeyframeCreationMode(
@@ -92,13 +94,26 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                           KeyframeCreationMode.manual,
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      _buildKeyframeModeButton(
+                        label: 'Board',
+                        isSelected:
+                            keyframeMode == KeyframeCreationMode.whiteboard,
+                        onTap: () => annotationNotifier.setKeyframeCreationMode(
+                          KeyframeCreationMode.whiteboard,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),
                   Text(
                     keyframeMode == KeyframeCreationMode.automatic
                         ? 'Drawing on a frame automatically creates/uses that frame keyframe.'
-                        : 'Drawing edits the active keyframe. Use New Frame to create an empty keyframe at the playhead.',
+                        : keyframeMode == KeyframeCreationMode.manual
+                        ? 'Drawing edits the active keyframe. Use New Frame to create an empty keyframe at the playhead.'
+                        : loopState.isSectionLoopValid
+                        ? 'Drawing stays visible across the current A-B section.'
+                        : 'Drawing stays visible for the whole video.',
                     style: TextStyle(
                       color: _palette.textSecondary,
                       fontSize: 12,
@@ -429,15 +444,26 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                         fontSize: 12,
                       ),
                     ),
-                  Text(
-                    'Draw target: ${((drawingTargetKeyframeMs / 1000.0) * fps).round()}',
-                    style: TextStyle(
-                      color: keyframeMode == KeyframeCreationMode.manual
-                          ? _palette.loopB
-                          : _palette.textMuted,
-                      fontSize: 12,
+                  if (keyframeMode == KeyframeCreationMode.whiteboard)
+                    Text(
+                      loopState.isSectionLoopValid
+                          ? 'Whiteboard range: A-B'
+                          : 'Whiteboard range: full video',
+                      style: TextStyle(
+                        color: _palette.loopB,
+                        fontSize: 12,
+                      ),
+                    )
+                  else
+                    Text(
+                      'Draw target: ${((drawingTargetKeyframeMs / 1000.0) * fps).round()}',
+                      style: TextStyle(
+                        color: keyframeMode == KeyframeCreationMode.manual
+                            ? _palette.loopB
+                            : _palette.textMuted,
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
                   if (annotationState.hasUnsavedChanges)
                     Text(
                       'Unsaved changes',

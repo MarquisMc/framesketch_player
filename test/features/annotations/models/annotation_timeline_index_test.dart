@@ -40,6 +40,37 @@ void main() {
       expect(index.visibleStrokesAt(305), [later]);
     });
 
+    test('combines active keyframe strokes with whiteboard range strokes', () {
+      final keyframe = _stroke('keyframe', startTimeMs: 100);
+      final whiteboard = _stroke(
+        'whiteboard',
+        startTimeMs: 150,
+        endTimeMs: 350,
+        timingMode: StrokeTimingMode.whiteboard,
+      );
+      final index = AnnotationTimelineIndex.build(
+        fps: 10,
+        strokes: [keyframe, whiteboard],
+        markers: const [],
+      );
+
+      expect(index.sortedKeyframeTimesMs, [100]);
+      expect(
+        index.visibleStrokesAtPosition(
+          200,
+          allStrokes: [keyframe, whiteboard],
+        ),
+        [keyframe, whiteboard],
+      );
+      expect(
+        index.visibleStrokesAtPosition(
+          400,
+          allStrokes: [keyframe, whiteboard],
+        ),
+        [keyframe],
+      );
+    });
+
     test(
       'looks up markers by snapped frame and preserves marker sort order',
       () {
@@ -83,7 +114,12 @@ void main() {
   });
 }
 
-Stroke _stroke(String id, {required int startTimeMs}) {
+Stroke _stroke(
+  String id, {
+  required int startTimeMs,
+  int? endTimeMs,
+  StrokeTimingMode timingMode = StrokeTimingMode.keyframe,
+}) {
   return Stroke(
     id: id,
     tool: DrawingTool.pen,
@@ -91,7 +127,8 @@ Stroke _stroke(String id, {required int startTimeMs}) {
     strokeWidth: 2,
     points: const [StrokePoint(x: 0.1, y: 0.1), StrokePoint(x: 0.2, y: 0.2)],
     startTimeMs: startTimeMs,
-    endTimeMs: startTimeMs + 100,
+    endTimeMs: endTimeMs ?? startTimeMs + 100,
+    timingMode: timingMode,
   );
 }
 

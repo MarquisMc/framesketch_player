@@ -37,6 +37,10 @@ class AnnotationTimelineIndex {
     final effectiveFps = fps > 0 ? fps : 30.0;
     final strokesByKeyframe = <int, List<Stroke>>{};
     for (final stroke in strokes) {
+      if (stroke.timingMode == StrokeTimingMode.whiteboard) {
+        continue;
+      }
+
       final keyframeMs = snapToFrameTimeMs(stroke.startTimeMs, effectiveFps);
       strokesByKeyframe.putIfAbsent(keyframeMs, () => <Stroke>[]).add(stroke);
     }
@@ -110,9 +114,46 @@ class AnnotationTimelineIndex {
   }
 
   List<Stroke> visibleStrokesAt(int positionMs) {
+    return visibleStrokesAtPosition(positionMs, allStrokes: [
+      for (final keyframeMs in sortedKeyframeTimesMs)
+        ...strokesAtKeyframe(keyframeMs),
+    ]);
+  }
+
+  List<Stroke> visibleStrokesAtPosition(
+    int positionMs, {
+    required List<Stroke> allStrokes,
+  }) {
     final keyframeMs = activeKeyframeTimeMsAt(positionMs);
-    if (keyframeMs == null) return const [];
-    return strokesAtKeyframe(keyframeMs);
+    final visible = <Stroke>[];
+    if (keyframeMs != null) {
+      visible.addAll(strokesAtKeyframe(keyframeMs));
+    }
+
+    for (final stroke in allStrokes) {
+      if (stroke.timingMode == StrokeTimingMode.whiteboard &&
+          isWhiteboardStrokeVisibleAt(stroke, positionMs, fps)) {
+        visible.add(stroke);
+      }
+    }
+
+    return List<Stroke>.unmodifiable(visible);
+  }
+
+  static bool isWhiteboardStrokeVisibleAt(
+    Stroke stroke,
+    int positionMs,
+    double fps,
+  ) {
+    if (stroke.timingMode != StrokeTimingMode.whiteboard) return false;
+
+    final startMs = snapToFrameTimeMs(stroke.startTimeMs, fps);
+    final endMs = snapToFrameTimeMs(stroke.endTimeMs, fps);
+    if (endMs <= startMs) {
+      return positionMs >= startMs;
+    }
+
+    return positionMs >= startMs && positionMs < endMs;
   }
 
   /// Returns all markers stored in [markersByFrameTimeMs] for the frame that

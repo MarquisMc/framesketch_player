@@ -8,10 +8,11 @@ import '../models/stroke.dart';
 import '../../../core/models/annotation_data.dart';
 import '../../../core/services/annotation_storage_service.dart';
 import '../../../core/utils/coordinate_transformer.dart';
+import '../../loop/providers/loop_provider.dart';
 import '../../player/providers/player_provider.dart';
 import '../widgets/annotation_hit_testing.dart';
 
-enum KeyframeCreationMode { automatic, manual }
+enum KeyframeCreationMode { automatic, manual, whiteboard }
 
 const double _textReferenceVideoHeight = 720.0;
 const double _fallbackTextReferenceAspectRatio = 16.0 / 9.0;
@@ -503,9 +504,39 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       return _snapToFrameTimeMs(currentPositionMs, _effectiveFps);
     }
 
+    if (state.keyframeCreationMode == KeyframeCreationMode.whiteboard) {
+      return _whiteboardStrokeRange().startMs;
+    }
+
     final activeKeyframeMs = _activeKeyframeTimeMsAt(currentPositionMs);
     return activeKeyframeMs ??
         _snapToFrameTimeMs(currentPositionMs, _effectiveFps);
+  }
+
+  ({int startMs, int endMs}) _whiteboardStrokeRange() {
+    final fps = _effectiveFps;
+    final loopState = ref.read(loopProvider);
+    if (loopState.isSectionLoopValid) {
+      return (
+        startMs: _snapToFrameTimeMs(loopState.loopStartMs!, fps),
+        endMs: _snapToFrameTimeMs(loopState.loopEndMs!, fps),
+      );
+    }
+
+    final playerState = ref.read(playerProvider);
+    final durationMs = playerState.duration.inMilliseconds > 0
+        ? playerState.duration.inMilliseconds
+        : playerState.metadata?.duration.inMilliseconds ?? 0;
+    return (
+      startMs: 0,
+      endMs: durationMs > 0 ? _snapToFrameTimeMs(durationMs, fps) : 0,
+    );
+  }
+
+  StrokeTimingMode _newStrokeTimingMode() {
+    return state.keyframeCreationMode == KeyframeCreationMode.whiteboard
+        ? StrokeTimingMode.whiteboard
+        : StrokeTimingMode.keyframe;
   }
 
   List<int> _sortedKeyframeTimesMs() {
@@ -514,10 +545,6 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   int? _activeKeyframeTimeMsAt(int positionMs) {
     return state.timelineIndex.activeKeyframeTimeMsAt(positionMs);
-  }
-
-  List<Stroke> _strokesAtKeyframe(int keyframeMs) {
-    return state.timelineIndex.strokesAtKeyframe(keyframeMs);
   }
 
   List<FrameMarker> _sortedMarkers([List<FrameMarker>? markers]) {
@@ -544,6 +571,14 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   bool _isStrokeVisibleAtCurrentPosition(Stroke stroke) {
     final currentPositionMs = ref.read(playerProvider).position.inMilliseconds;
+    if (stroke.timingMode == StrokeTimingMode.whiteboard) {
+      return AnnotationTimelineIndex.isWhiteboardStrokeVisibleAt(
+        stroke,
+        _snapToFrameTimeMs(currentPositionMs, _effectiveFps),
+        _effectiveFps,
+      );
+    }
+
     final activeKeyframeMs = _activeKeyframeTimeMsAt(currentPositionMs);
     if (activeKeyframeMs == null) return false;
 
@@ -1078,6 +1113,12 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   /// Start drawing a new stroke
   void startStroke(StrokePoint point) {
     final currentTimeMs = _strokeFrameTimeMs();
+    final timingMode = _newStrokeTimingMode();
+    final whiteboardRange = timingMode == StrokeTimingMode.whiteboard
+        ? _whiteboardStrokeRange()
+        : null;
+    final strokeStartTimeMs = whiteboardRange?.startMs ?? currentTimeMs;
+    final strokeEndTimeMs = whiteboardRange?.endMs ?? currentTimeMs;
 
     // If eraser tool, start erasing strokes instead of drawing
     if (state.currentTool == DrawingTool.eraser) {
@@ -1142,8 +1183,9 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
             timestampMs: point.timestampMs,
           ),
         ],
-        startTimeMs: currentTimeMs,
-        endTimeMs: currentTimeMs,
+        startTimeMs: strokeStartTimeMs,
+        endTimeMs: strokeEndTimeMs,
+        timingMode: timingMode,
         text: '',
         fontSize: state.currentFontSize,
       );
@@ -1172,8 +1214,9 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       color: state.currentColor,
       strokeWidth: state.currentStrokeWidth,
       points: [point],
-      startTimeMs: currentTimeMs,
-      endTimeMs: currentTimeMs,
+      startTimeMs: strokeStartTimeMs,
+      endTimeMs: strokeEndTimeMs,
+      timingMode: timingMode,
     );
 
     state = state.copyWith(currentStroke: newStroke, isDrawing: true);
@@ -1440,10 +1483,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   /// Erase parts of strokes at a given point (for eraser tool)
   void _eraseStrokesAtPoint(StrokePoint point) {
     if (state.annotationData == null) return;
-    final activeKeyframeMs = _activeKeyframeTimeMsAt(
-      ref.read(playerProvider).position.inMilliseconds,
-    );
-    if (activeKeyframeMs == null) return;
+    final currentPositionMs = ref.read(playerProvider).position.inMilliseconds;
+    final activeKeyframeMs = _activeKeyframeTimeMsAt(currentPositionMs);
 
     // Eraser radius (in normalized coordinates)
     const eraserRadius = 0.02;
@@ -1455,7 +1496,14 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     for (final stroke in state.allStrokes) {
       final strokeKeyframeMs = _snapToFrameTimeMs(stroke.startTimeMs, fps);
-      if (strokeKeyframeMs != activeKeyframeMs) {
+      final isVisibleStroke = stroke.timingMode == StrokeTimingMode.whiteboard
+          ? AnnotationTimelineIndex.isWhiteboardStrokeVisibleAt(
+              stroke,
+              _snapToFrameTimeMs(currentPositionMs, fps),
+              fps,
+            )
+          : activeKeyframeMs != null && strokeKeyframeMs == activeKeyframeMs;
+      if (!isVisibleStroke) {
         updatedStrokes.add(stroke);
         continue;
       }
@@ -1550,6 +1598,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       points: points,
       startTimeMs: original.startTimeMs,
       endTimeMs: original.endTimeMs,
+      timingMode: original.timingMode,
       text: original.text,
       fontSize: original.fontSize,
       scale: original.scale,
@@ -1572,12 +1621,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   Stroke? _findStrokeAtPoint(StrokePoint point) {
     const selectionRadius =
         0.02; // Selection tolerance in normalized coordinates
-    final activeKeyframeMs = _activeKeyframeTimeMsAt(
-      ref.read(playerProvider).position.inMilliseconds,
-    );
-    if (activeKeyframeMs == null) return null;
-
-    final visibleStrokes = _strokesAtKeyframe(activeKeyframeMs);
+    final visibleStrokes = getVisibleStrokes();
+    if (visibleStrokes.isEmpty) return null;
 
     // Search in reverse order to select the topmost stroke
     for (int i = visibleStrokes.length - 1; i >= 0; i--) {
@@ -2244,9 +2289,11 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Visible annotation strokes for the active keyframe at a playback position.
   List<Stroke> getVisibleStrokes([Duration? position]) {
-    final keyframeMs = getActiveKeyframeTimeMs(position);
-    if (keyframeMs == null) return const [];
-    return _strokesAtKeyframe(keyframeMs);
+    final targetPosition = position ?? ref.read(playerProvider).position;
+    return state.timelineIndex.visibleStrokesAtPosition(
+      targetPosition.inMilliseconds,
+      allStrokes: state.allStrokes,
+    );
   }
 }
 
