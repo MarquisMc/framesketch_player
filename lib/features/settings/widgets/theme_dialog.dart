@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/theme_provider.dart';
@@ -11,15 +13,12 @@ class ThemeManagerDialog extends ConsumerStatefulWidget {
 
 class _ThemeManagerDialogState extends ConsumerState<ThemeManagerDialog> {
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _seedController = TextEditingController(
-    text: '#39B7A8',
-  );
+  HSVColor _seedColor = HSVColor.fromColor(const Color(0xFF39B7A8));
   String? _errorText;
 
   @override
   void dispose() {
     _nameController.dispose();
-    _seedController.dispose();
     super.dispose();
   }
 
@@ -27,7 +26,7 @@ class _ThemeManagerDialogState extends ConsumerState<ThemeManagerDialog> {
   Widget build(BuildContext context) {
     final themeState = ref.watch(themeControllerProvider);
     final controller = ref.read(themeControllerProvider.notifier);
-    final parsedSeed = _parseSeedColor(_seedController.text);
+    final selectedSeed = _seedColor.toColor();
 
     return AlertDialog(
       title: const Text('Theme Manager'),
@@ -112,14 +111,13 @@ class _ThemeManagerDialogState extends ConsumerState<ThemeManagerDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: _seedController,
-                decoration: const InputDecoration(
-                  labelText: 'Seed Color (Hex)',
-                  hintText: '#39B7A8',
-                ),
-                onChanged: (_) {
-                  setState(() {});
+              _SeedColorPicker(
+                color: _seedColor,
+                onChanged: (color) {
+                  setState(() {
+                    _seedColor = color;
+                    _errorText = null;
+                  });
                 },
               ),
               const SizedBox(height: 10),
@@ -129,16 +127,14 @@ class _ThemeManagerDialogState extends ConsumerState<ThemeManagerDialog> {
                     width: 18,
                     height: 18,
                     decoration: BoxDecoration(
-                      color: parsedSeed ?? Colors.transparent,
+                      color: selectedSeed,
                       borderRadius: BorderRadius.circular(99),
                       border: Border.all(color: Colors.grey.shade500),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    parsedSeed == null
-                        ? 'Enter a valid hex color (example: #39B7A8)'
-                        : 'This seed will generate both dark and light palettes.',
+                  const Text(
+                    'This seed will generate both dark and light palettes.',
                   ),
                 ],
               ),
@@ -190,16 +186,10 @@ class _ThemeManagerDialogState extends ConsumerState<ThemeManagerDialog> {
 
   Future<void> _createTheme(ThemeController controller) async {
     final name = _nameController.text.trim();
-    final color = _parseSeedColor(_seedController.text);
+    final color = _seedColor.toColor();
     if (name.isEmpty) {
       setState(() {
         _errorText = 'Theme name is required.';
-      });
-      return;
-    }
-    if (color == null) {
-      setState(() {
-        _errorText = 'Seed color must be a valid 6-digit hex value.';
       });
       return;
     }
@@ -211,12 +201,207 @@ class _ThemeManagerDialogState extends ConsumerState<ThemeManagerDialog> {
       _errorText = null;
     });
   }
+}
 
-  Color? _parseSeedColor(String raw) {
-    final trimmed = raw.trim().replaceFirst('#', '');
-    if (!RegExp(r'^[0-9a-fA-F]{6}$').hasMatch(trimmed)) {
-      return null;
+class _SeedColorPicker extends StatelessWidget {
+  final HSVColor color;
+  final ValueChanged<HSVColor> onChanged;
+
+  const _SeedColorPicker({required this.color, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _ColorWheel(color: color, onChanged: onChanged),
+        const SizedBox(width: 18),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Seed Color',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 10),
+              Slider(
+                value: color.value,
+                min: 0.2,
+                max: 1.0,
+                onChanged: (value) => onChanged(color.withValue(value)),
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: const [
+                  Color(0xFF39B7A8),
+                  Color(0xFF4F8DFF),
+                  Color(0xFFEF4444),
+                  Color(0xFFF59E0B),
+                  Color(0xFF8B5CF6),
+                ].map((preset) {
+                  final selected =
+                      preset.toARGB32() == color.toColor().toARGB32();
+                  return _PresetColorButton(
+                    color: preset,
+                    selected: selected,
+                    onTap: () => onChanged(HSVColor.fromColor(preset)),
+                  );
+                }).toList(growable: false),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ColorWheel extends StatelessWidget {
+  final HSVColor color;
+  final ValueChanged<HSVColor> onChanged;
+
+  const _ColorWheel({required this.color, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 172.0;
+    final position = _positionForColor(color, size);
+    return GestureDetector(
+      onPanDown: (details) => _select(details.localPosition, size),
+      onPanUpdate: (details) => _select(details.localPosition, size),
+      child: CustomPaint(
+        size: const Size.square(size),
+        painter: _ColorWheelPainter(),
+        foregroundPainter: _ColorWheelThumbPainter(position: position),
+      ),
+    );
+  }
+
+  void _select(Offset position, double size) {
+    final center = Offset(size / 2, size / 2);
+    final vector = position - center;
+    final maxRadius = size / 2;
+    final radius = vector.distance.clamp(0.0, maxRadius).toDouble();
+    final angle = math.atan2(vector.dy, vector.dx);
+    final hue = ((angle * 180 / math.pi) + 360) % 360;
+    final saturation = (radius / maxRadius).clamp(0.0, 1.0).toDouble();
+    onChanged(color.withHue(hue).withSaturation(saturation));
+  }
+
+  Offset _positionForColor(HSVColor color, double size) {
+    final radius = (size / 2) * color.saturation;
+    final angle = color.hue * math.pi / 180;
+    return Offset(
+      size / 2 + math.cos(angle) * radius,
+      size / 2 + math.sin(angle) * radius,
+    );
+  }
+}
+
+class _ColorWheelPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = size.shortestSide / 2;
+    const rings = 36;
+    const steps = 180;
+
+    for (var ring = rings; ring >= 1; ring--) {
+      final saturation = ring / rings;
+      final ringRadius = radius * saturation;
+      for (var step = 0; step < steps; step++) {
+        final hue = step * 360.0 / steps;
+        final start = step * 2 * math.pi / steps;
+        final sweep = 2 * math.pi / steps + 0.01;
+        final paint = Paint()
+          ..color = HSVColor.fromAHSV(1, hue, saturation, 1).toColor()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = radius / rings + 1;
+        canvas.drawArc(
+          Rect.fromCircle(center: center, radius: ringRadius),
+          start,
+          sweep,
+          false,
+          paint,
+        );
+      }
     }
-    return Color(int.parse('FF$trimmed', radix: 16));
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.black.withValues(alpha: 0.18),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ColorWheelPainter oldDelegate) => false;
+}
+
+class _ColorWheelThumbPainter extends CustomPainter {
+  final Offset position;
+
+  const _ColorWheelThumbPainter({required this.position});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawCircle(
+      position,
+      7,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..color = Colors.white,
+    );
+    canvas.drawCircle(
+      position,
+      7,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.black.withValues(alpha: 0.42),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ColorWheelThumbPainter oldDelegate) {
+    return oldDelegate.position != position;
+  }
+}
+
+class _PresetColorButton extends StatelessWidget {
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PresetColorButton({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(99),
+      child: Container(
+        width: 26,
+        height: 26,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: selected ? Theme.of(context).colorScheme.primary : Colors.grey,
+            width: selected ? 2 : 1,
+          ),
+        ),
+      ),
+    );
   }
 }

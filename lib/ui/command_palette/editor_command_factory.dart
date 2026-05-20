@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/models/keyboard_shortcuts.dart';
 import '../../core/theme/theme_provider.dart';
+import '../../features/annotations/models/stroke.dart';
 import '../../features/annotations/providers/annotation_provider.dart';
 import '../../features/crop/providers/crop_provider.dart';
 import '../../features/loop/providers/loop_provider.dart';
@@ -307,52 +309,229 @@ class EditorCommandFactory {
   }
 
   List<PaletteCommand> _buildShortcutDiscoveryCommands() {
-    final entries = <(String, KeyboardShortcut)>[
-      ('Open Command Palette', shortcuts.openCommandPalette),
-      ('Play / Pause', shortcuts.playPause),
-      ('Next Frame', shortcuts.nextFrame),
-      ('Previous Frame', shortcuts.previousFrame),
-      ('Jump Forward 1s', shortcuts.jumpForward),
-      ('Jump Backward 1s', shortcuts.jumpBackward),
-      ('Add Marker', shortcuts.addMarker),
-      ('Next Marker', shortcuts.nextMarker),
-      ('Previous Marker', shortcuts.previousMarker),
-      ('Undo', shortcuts.undo),
-      ('Redo', shortcuts.redo),
-      ('Open File', shortcuts.openFile),
-      ('Save Annotations', shortcuts.saveAnnotations),
-      ('Toggle Fullscreen', shortcuts.toggleFullscreen),
-      ('Pen Tool', shortcuts.selectPenTool),
-      ('Eraser', shortcuts.selectEraserTool),
-      ('Select Tool', shortcuts.selectSelectionTool),
-      ('Rectangle', shortcuts.selectRectangleTool),
-      ('Circle', shortcuts.selectCircleTool),
-      ('Line', shortcuts.selectLineTool),
-      ('Arrow', shortcuts.selectArrowTool),
-      ('Text', shortcuts.selectTextTool),
-      ('Toggle Keyframe Mode', shortcuts.toggleKeyframeMode),
-      ('Create Manual Keyframe', shortcuts.createManualKeyframe),
-      ('Set Loop A', shortcuts.setLoopStart),
-      ('Set Loop B', shortcuts.setLoopEnd),
-      ('Toggle Section Loop', shortcuts.toggleSectionLoop),
-      ('Toggle Full Video Loop', shortcuts.toggleFullLoop),
-      ('Toggle Crop Mode', shortcuts.toggleCropMode),
+    final playerState = ref.read(playerProvider);
+    final loopState = ref.read(loopProvider);
+    final cropState = ref.read(cropProvider);
+    final annotationState = ref.read(annotationProvider);
+    final annotationNotifier = ref.read(annotationProvider.notifier);
+    final hasVideo = playerState.hasLoadedSource;
+    final hasLocal = playerState.isLocalFileSource;
+    final hasAnnotations = annotationState.annotationData != null;
+    final hasSelection =
+        annotationState.selectedStrokeId != null ||
+        annotationState.selectedStrokeIds.isNotEmpty;
+
+    final entries = <_ShortcutCommandEntry>[
+      _ShortcutCommandEntry(
+        'Open Command Palette',
+        shortcuts.openCommandPalette,
+        () => null,
+      ),
+      _ShortcutCommandEntry('Play / Pause', shortcuts.playPause, () {
+        ref.read(playerProvider.notifier).togglePlayPause();
+        return null;
+      }, enabled: hasVideo),
+      _ShortcutCommandEntry('Next Frame', shortcuts.nextFrame, () {
+        unawaited(ref.read(playerProvider.notifier).stepForward());
+        return null;
+      }, enabled: hasVideo),
+      _ShortcutCommandEntry('Previous Frame', shortcuts.previousFrame, () {
+        unawaited(ref.read(playerProvider.notifier).stepBackward());
+        return null;
+      }, enabled: hasVideo),
+      _ShortcutCommandEntry('Jump Forward 1s', shortcuts.jumpForward, () {
+        unawaited(
+          ref
+              .read(playerProvider.notifier)
+              .jumpForward(const Duration(seconds: 1)),
+        );
+        return null;
+      }, enabled: hasVideo),
+      _ShortcutCommandEntry('Jump Backward 1s', shortcuts.jumpBackward, () {
+        unawaited(
+          ref
+              .read(playerProvider.notifier)
+              .jumpBackward(const Duration(seconds: 1)),
+        );
+        return null;
+      }, enabled: hasVideo),
+      _ShortcutCommandEntry('Add Marker', shortcuts.addMarker, () {
+        unawaited(onAddMarker());
+        return null;
+      }, enabled: hasAnnotations),
+      _ShortcutCommandEntry('Next Marker', shortcuts.nextMarker, () {
+        unawaited(annotationNotifier.seekToNextMarker());
+        return null;
+      }, enabled: hasAnnotations),
+      _ShortcutCommandEntry('Previous Marker', shortcuts.previousMarker, () {
+        unawaited(annotationNotifier.seekToPreviousMarker());
+        return null;
+      }, enabled: hasAnnotations),
+      _ShortcutCommandEntry('Undo', shortcuts.undo, () {
+        unawaited(annotationNotifier.undo());
+        return null;
+      }, enabled: annotationNotifier.canUndo),
+      _ShortcutCommandEntry('Redo', shortcuts.redo, () {
+        unawaited(annotationNotifier.redo());
+        return null;
+      }, enabled: annotationNotifier.canRedo),
+      _ShortcutCommandEntry('Open File', shortcuts.openFile, () {
+        unawaited(onOpenFile());
+        return null;
+      }),
+      _ShortcutCommandEntry('Save Annotations', shortcuts.saveAnnotations, () {
+        unawaited(onSaveAnnotations());
+        return null;
+      }, enabled: hasAnnotations),
+      _ShortcutCommandEntry(
+        'Toggle Fullscreen',
+        shortcuts.toggleFullscreen,
+        () {
+          onToggleFullscreen();
+          return null;
+        },
+      ),
+      _ShortcutCommandEntry('Pen Tool', shortcuts.selectPenTool, () {
+        annotationNotifier.setTool(DrawingTool.pen);
+        return null;
+      }, enabled: hasAnnotations),
+      _ShortcutCommandEntry('Eraser', shortcuts.selectEraserTool, () {
+        annotationNotifier.setTool(DrawingTool.eraser);
+        return null;
+      }, enabled: hasAnnotations),
+      _ShortcutCommandEntry('Select Tool', shortcuts.selectSelectionTool, () {
+        annotationNotifier.setTool(DrawingTool.select);
+        return null;
+      }, enabled: hasAnnotations),
+      _ShortcutCommandEntry('Rectangle', shortcuts.selectRectangleTool, () {
+        annotationNotifier.setTool(DrawingTool.rectangle);
+        return null;
+      }, enabled: hasAnnotations),
+      _ShortcutCommandEntry('Circle', shortcuts.selectCircleTool, () {
+        annotationNotifier.setTool(DrawingTool.circle);
+        return null;
+      }, enabled: hasAnnotations),
+      _ShortcutCommandEntry('Line', shortcuts.selectLineTool, () {
+        annotationNotifier.setTool(DrawingTool.line);
+        return null;
+      }, enabled: hasAnnotations),
+      _ShortcutCommandEntry('Arrow', shortcuts.selectArrowTool, () {
+        annotationNotifier.setTool(DrawingTool.arrow);
+        return null;
+      }, enabled: hasAnnotations),
+      _ShortcutCommandEntry('Text', shortcuts.selectTextTool, () {
+        annotationNotifier.setTool(DrawingTool.text);
+        return null;
+      }, enabled: hasAnnotations),
+      _ShortcutCommandEntry(
+        'Toggle Keyframe Mode',
+        shortcuts.toggleKeyframeMode,
+        () {
+          annotationNotifier.setKeyframeCreationMode(
+            switch (annotationState.keyframeCreationMode) {
+              KeyframeCreationMode.automatic => KeyframeCreationMode.manual,
+              KeyframeCreationMode.manual => KeyframeCreationMode.whiteboard,
+              KeyframeCreationMode.whiteboard => KeyframeCreationMode.automatic,
+            },
+          );
+          return null;
+        },
+        enabled: hasAnnotations,
+      ),
+      _ShortcutCommandEntry(
+        'Create Manual Keyframe',
+        shortcuts.createManualKeyframe,
+        () {
+          annotationNotifier.createManualKeyframeAtCurrentFrame();
+          return null;
+        },
+        enabled: annotationNotifier.canCreateManualKeyframeAtCurrentFrame(),
+      ),
+      _ShortcutCommandEntry(
+        'Duplicate Selected Annotations',
+        const KeyboardShortcut(key: LogicalKeyboardKey.keyD, ctrlPressed: true),
+        () {
+          annotationNotifier.duplicateSelectedStroke();
+          return null;
+        },
+        enabled: hasSelection,
+      ),
+      _ShortcutCommandEntry('Set Loop A', shortcuts.setLoopStart, () {
+        ref.read(loopProvider.notifier).setAPoint();
+        return null;
+      }, enabled: hasVideo),
+      _ShortcutCommandEntry('Set Loop B', shortcuts.setLoopEnd, () {
+        ref.read(loopProvider.notifier).setBPoint();
+        return null;
+      }, enabled: hasVideo),
+      _ShortcutCommandEntry(
+        'Toggle Section Loop',
+        shortcuts.toggleSectionLoop,
+        () {
+          ref.read(loopProvider.notifier).toggleSectionLoop();
+          return null;
+        },
+        enabled: loopState.isSectionLoopValid,
+      ),
+      _ShortcutCommandEntry(
+        'Toggle Full Video Loop',
+        shortcuts.toggleFullLoop,
+        () {
+          ref.read(loopProvider.notifier).toggleFullVideoLoop();
+          return null;
+        },
+        enabled: hasVideo,
+      ),
+      _ShortcutCommandEntry('Toggle Crop Mode', shortcuts.toggleCropMode, () {
+        final cropNotifier = ref.read(cropProvider.notifier);
+        final wasActive = cropState.isCropModeActive;
+        cropNotifier.toggleCropMode();
+        if (!wasActive) {
+          cropNotifier.setExportRange(
+            start: loopState.loopStart,
+            end: loopState.loopEnd,
+          );
+        }
+        return null;
+      }, enabled: hasLocal),
     ];
 
-    return entries
-        .map(
-          (e) => PaletteCommand(
-            id: 'shortcut-${e.$1}',
-            label: e.$1,
-            category: 'Keyboard Shortcuts',
-            icon: Icons.keyboard_outlined,
-            shortcut: formatShortcutLabel(e.$2),
-            subtitle: 'Shortcut reference (read-only)',
-            enabled: false,
-          ),
-        )
-        .toList();
+    return [
+      PaletteCommand(
+        id: 'shortcut-pan-zoomed-view',
+        label: 'Pan Zoomed View',
+        category: 'Keyboard Shortcuts',
+        icon: Icons.mouse_outlined,
+        shortcut: formatMouseShortcutLabel(shortcuts.panZoomedView),
+        subtitle: 'Hold and drag while zoomed in',
+      ),
+      ...entries.map(
+        (e) => PaletteCommand(
+          id: 'shortcut-${e.label}',
+          label: e.label,
+          category: 'Keyboard Shortcuts',
+          icon: Icons.keyboard_outlined,
+          shortcut: formatShortcutLabel(e.shortcut),
+          enabled: e.enabled,
+          run: e.run,
+        ),
+      ),
+    ];
   }
+}
+
+class _ShortcutCommandEntry {
+  final String label;
+  final KeyboardShortcut shortcut;
+  final PaletteStep? Function() run;
+  final bool enabled;
+
+  const _ShortcutCommandEntry(
+    this.label,
+    this.shortcut,
+    this.run, {
+    this.enabled = true,
+  });
 }
 
 int? _parsePaletteDurationMs(String input) {
@@ -380,4 +559,12 @@ String formatShortcutLabel(KeyboardShortcut shortcut) {
         : shortcut.key.debugName ?? '',
   );
   return parts.join('+');
+}
+
+String formatMouseShortcutLabel(MouseShortcut shortcut) {
+  return switch (shortcut.button) {
+    MouseShortcutButton.primary => 'Left Mouse Hold',
+    MouseShortcutButton.middle => 'Middle Mouse Hold',
+    MouseShortcutButton.secondary => 'Right Mouse Hold',
+  };
 }

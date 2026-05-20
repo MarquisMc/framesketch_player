@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import '../../../core/models/keyboard_shortcuts.dart';
 
@@ -135,6 +136,16 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     _shortcuts = _shortcuts.copyWith(
                       toggleFullscreen: shortcut,
                     );
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _MouseShortcutRow(
+                label: 'Pan Zoomed View',
+                shortcut: _shortcuts.panZoomedView,
+                onChanged: (shortcut) {
+                  setState(() {
+                    _shortcuts = _shortcuts.copyWith(panZoomedView: shortcut);
                   });
                 },
               ),
@@ -619,6 +630,7 @@ class _ShortcutRowState extends State<_ShortcutRow> {
     if (key == LogicalKeyboardKey.keyA) return 'A';
     if (key == LogicalKeyboardKey.keyM) return 'M';
     if (key == LogicalKeyboardKey.keyN) return 'N';
+    if (key == LogicalKeyboardKey.keyH) return 'H';
     if (key == LogicalKeyboardKey.keyL) return 'L';
     if (key == LogicalKeyboardKey.keyI) return 'I';
     if (key == LogicalKeyboardKey.keyC) return 'C';
@@ -630,5 +642,91 @@ class _ShortcutRowState extends State<_ShortcutRow> {
       return debugName.replaceAll('LogicalKeyboardKey.', '');
     }
     return 'Unknown';
+  }
+}
+
+class _MouseShortcutRow extends StatefulWidget {
+  final String label;
+  final MouseShortcut shortcut;
+  final ValueChanged<MouseShortcut> onChanged;
+
+  const _MouseShortcutRow({
+    required this.label,
+    required this.shortcut,
+    required this.onChanged,
+  });
+
+  @override
+  State<_MouseShortcutRow> createState() => _MouseShortcutRowState();
+}
+
+class _MouseShortcutRowState extends State<_MouseShortcutRow> {
+  bool _isListening = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(flex: 2, child: Text(widget.label)),
+        Expanded(
+          flex: 3,
+          child: Listener(
+            onPointerDown: (event) {
+              if (!_isListening || event.kind != PointerDeviceKind.mouse) {
+                return;
+              }
+              final button = _buttonFromButtons(event.buttons);
+              if (button == null) return;
+              setState(() => _isListening = false);
+              widget.onChanged(MouseShortcut(button: button));
+            },
+            child: GestureDetector(
+              onTap: () => setState(() => _isListening = !_isListening),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(4),
+                  color: _isListening
+                      ? Colors.blue.shade100
+                      : Colors.transparent,
+                ),
+                child: Text(
+                  _isListening
+                      ? 'Click a mouse button...'
+                      : _formatMouseShortcut(widget.shortcut),
+                  style: TextStyle(
+                    fontFamily: _isListening ? null : 'monospace',
+                    fontSize: 12,
+                    fontStyle: _isListening ? FontStyle.italic : null,
+                    color: _isListening ? Colors.blue : null,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  MouseShortcutButton? _buttonFromButtons(int buttons) {
+    if (buttons & kMiddleMouseButton != 0) return MouseShortcutButton.middle;
+    if (buttons & kSecondaryMouseButton != 0) {
+      return MouseShortcutButton.secondary;
+    }
+    if (buttons & kPrimaryMouseButton != 0) return MouseShortcutButton.primary;
+    return null;
+  }
+
+  String _formatMouseShortcut(MouseShortcut shortcut) {
+    return switch (shortcut.button) {
+      MouseShortcutButton.primary => 'Left Mouse Hold',
+      MouseShortcutButton.middle => 'Middle Mouse Hold',
+      MouseShortcutButton.secondary => 'Right Mouse Hold',
+    };
   }
 }

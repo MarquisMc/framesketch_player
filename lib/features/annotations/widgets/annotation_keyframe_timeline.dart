@@ -27,6 +27,49 @@ class _AnnotationKeyframeTimelineState
     return ((milliseconds / 1000.0) * fps).round();
   }
 
+  KeyframeCreationMode _nextKeyframeMode(KeyframeCreationMode mode) {
+    return switch (mode) {
+      KeyframeCreationMode.automatic => KeyframeCreationMode.manual,
+      KeyframeCreationMode.manual => KeyframeCreationMode.whiteboard,
+      KeyframeCreationMode.whiteboard => KeyframeCreationMode.automatic,
+    };
+  }
+
+  String _keyframeModeLabel(KeyframeCreationMode mode) {
+    return switch (mode) {
+      KeyframeCreationMode.automatic => 'Automatic',
+      KeyframeCreationMode.manual => 'Manual',
+      KeyframeCreationMode.whiteboard => 'Whiteboard',
+    };
+  }
+
+  String _keyframeModeTooltip(KeyframeCreationMode mode) {
+    return switch (mode) {
+      KeyframeCreationMode.automatic =>
+        'Automatic mode: drawing on a frame automatically creates or uses that frame keyframe.',
+      KeyframeCreationMode.manual =>
+        'Manual mode: drawing edits the active keyframe. Use New Frame to create an empty keyframe at the playhead.',
+      KeyframeCreationMode.whiteboard =>
+        'Whiteboard mode: drawing stays visible across the active section or whole video.',
+    };
+  }
+
+  Color _keyframeModeBackground(KeyframeCreationMode mode, AppPalette palette) {
+    return switch (mode) {
+      KeyframeCreationMode.automatic => palette.accentSoft,
+      KeyframeCreationMode.manual => palette.loopB.withValues(alpha: 0.24),
+      KeyframeCreationMode.whiteboard => palette.warning.withValues(alpha: 0.2),
+    };
+  }
+
+  Color _keyframeModeForeground(KeyframeCreationMode mode, AppPalette palette) {
+    return switch (mode) {
+      KeyframeCreationMode.automatic => palette.accentBright,
+      KeyframeCreationMode.manual => palette.loopB,
+      KeyframeCreationMode.whiteboard => palette.warning,
+    };
+  }
+
   _VisibleWindow _visibleWindow({
     required Duration duration,
     required Duration playhead,
@@ -194,15 +237,11 @@ class _AnnotationKeyframeTimelineState
               ),
               const SizedBox(width: 8),
               Tooltip(
-                message: keyframeMode == KeyframeCreationMode.manual
-                    ? 'Manual mode: drawing edits the active keyframe. Use New Frame to create an empty keyframe at the playhead.'
-                    : 'Automatic mode: drawing on a frame automatically creates or uses that frame keyframe.',
+                message: _keyframeModeTooltip(keyframeMode),
                 child: TextButton(
                   onPressed: () {
                     annotationNotifier.setKeyframeCreationMode(
-                      keyframeMode == KeyframeCreationMode.manual
-                          ? KeyframeCreationMode.automatic
-                          : KeyframeCreationMode.manual,
+                      _nextKeyframeMode(keyframeMode),
                     );
                   },
                   style: TextButton.styleFrom(
@@ -212,21 +251,18 @@ class _AnnotationKeyframeTimelineState
                       horizontal: 8,
                       vertical: 3,
                     ),
-                    backgroundColor: keyframeMode == KeyframeCreationMode.manual
-                        ? palette.loopB.withValues(alpha: 0.24)
-                        : palette.accentSoft,
+                    backgroundColor: _keyframeModeBackground(
+                      keyframeMode,
+                      palette,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                   child: Text(
-                    keyframeMode == KeyframeCreationMode.manual
-                        ? 'Manual'
-                        : 'Automatic',
+                    _keyframeModeLabel(keyframeMode),
                     style: TextStyle(
-                      color: keyframeMode == KeyframeCreationMode.manual
-                          ? palette.loopB
-                          : palette.accentBright,
+                      color: _keyframeModeForeground(keyframeMode, palette),
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),

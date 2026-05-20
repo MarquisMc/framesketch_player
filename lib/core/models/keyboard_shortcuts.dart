@@ -35,6 +35,18 @@ class KeyboardShortcut with _$KeyboardShortcut {
       _$KeyboardShortcutFromJson(json);
 }
 
+enum MouseShortcutButton { primary, middle, secondary }
+
+@freezed
+class MouseShortcut with _$MouseShortcut {
+  const factory MouseShortcut({
+    @Default(MouseShortcutButton.middle) MouseShortcutButton button,
+  }) = _MouseShortcut;
+
+  factory MouseShortcut.fromJson(Map<String, dynamic> json) =>
+      _$MouseShortcutFromJson(json);
+}
+
 /// All configurable keyboard shortcuts
 @freezed
 class KeyboardShortcuts with _$KeyboardShortcuts {
@@ -46,6 +58,7 @@ class KeyboardShortcuts with _$KeyboardShortcuts {
     required KeyboardShortcut jumpBackward,
     @Default(KeyboardShortcut(key: LogicalKeyboardKey.f11))
     KeyboardShortcut toggleFullscreen,
+    @Default(MouseShortcut()) MouseShortcut panZoomedView,
     @Default(
       KeyboardShortcut(
         key: LogicalKeyboardKey.keyP,
@@ -105,6 +118,7 @@ final defaultKeyboardShortcuts = KeyboardShortcuts(
     shiftPressed: true,
   ),
   toggleFullscreen: const KeyboardShortcut(key: LogicalKeyboardKey.f11),
+  panZoomedView: const MouseShortcut(),
   openCommandPalette: const KeyboardShortcut(
     key: LogicalKeyboardKey.keyP,
     ctrlPressed: true,

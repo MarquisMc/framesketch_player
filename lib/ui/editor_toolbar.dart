@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:io' show Platform;
@@ -190,7 +190,7 @@ class EditorToolbar extends ConsumerWidget {
             onPressed: onOpenThemeManager,
           ),
           _Btn(
-            icon: Icons.bolt_outlined,
+            icon: Icons.search,
             tooltip: _commandPaletteTooltip(commandPaletteShortcutLabel),
             onPressed: onOpenCommandPalette,
           ),

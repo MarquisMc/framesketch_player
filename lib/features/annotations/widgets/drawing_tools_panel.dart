@@ -4,6 +4,7 @@ import '../../../core/theme/app_palette.dart';
 import '../models/stroke.dart';
 import '../providers/annotation_provider.dart';
 import 'annotation_size_control.dart';
+import 'eraser_tool_icon.dart';
 import '../../loop/providers/loop_provider.dart';
 import '../../player/providers/player_provider.dart';
 
@@ -181,7 +182,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                   ),
                   const SizedBox(height: 8),
                   _buildToolButton(
-                    icon: Icons.auto_fix_high,
+                    customIcon: EraserToolIcon(color: _palette.textPrimary),
                     label: 'Eraser',
                     tool: DrawingTool.eraser,
                     isSelected:
@@ -449,10 +450,7 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
                       loopState.isSectionLoopValid
                           ? 'Whiteboard range: A-B'
                           : 'Whiteboard range: full video',
-                      style: TextStyle(
-                        color: _palette.loopB,
-                        fontSize: 12,
-                      ),
+                      style: TextStyle(color: _palette.loopB, fontSize: 12),
                     )
                   else
                     Text(
@@ -515,7 +513,8 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
   }
 
   Widget _buildToolButton({
-    required IconData icon,
+    IconData? icon,
+    Widget? customIcon,
     required String label,
     required DrawingTool tool,
     required bool isSelected,
@@ -535,12 +534,13 @@ class _DrawingToolsPanelState extends ConsumerState<DrawingToolsPanel> {
         ),
         child: Row(
           children: [
-            Icon(
-              icon,
-              color: onTap != null
-                  ? _palette.textPrimary
-                  : _palette.textDisabled,
-            ),
+            customIcon ??
+                Icon(
+                  icon,
+                  color: onTap != null
+                      ? _palette.textPrimary
+                      : _palette.textDisabled,
+                ),
             const SizedBox(width: 12),
             Text(
               label,

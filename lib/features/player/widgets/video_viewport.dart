@@ -3,9 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import '../../../core/models/keyboard_shortcuts.dart';
 import '../../../core/theme/app_palette.dart';
+import '../../settings/providers/keyboard_shortcuts_provider.dart';
 import '../providers/player_provider.dart';
 import '../../annotations/widgets/annotation_overlay.dart';
 import '../../crop/widgets/crop_overlay.dart';
@@ -147,7 +148,7 @@ class VideoViewport extends ConsumerWidget {
   }
 }
 
-class _ZoomableVideoSurface extends StatefulWidget {
+class _ZoomableVideoSurface extends ConsumerStatefulWidget {
   final String? sourceIdentity;
   final VideoController controller;
   final Size viewportSize;
@@ -161,23 +162,17 @@ class _ZoomableVideoSurface extends StatefulWidget {
   });
 
   @override
-  State<_ZoomableVideoSurface> createState() => _ZoomableVideoSurfaceState();
+  ConsumerState<_ZoomableVideoSurface> createState() =>
+      _ZoomableVideoSurfaceState();
 }
 
-class _ZoomableVideoSurfaceState extends State<_ZoomableVideoSurface> {
+class _ZoomableVideoSurfaceState extends ConsumerState<_ZoomableVideoSurface> {
   static const double _minScale = 1.0;
   static const double _maxScale = 8.0;
 
   double _scale = _minScale;
   Offset _offset = Offset.zero;
   int? _panPointer;
-  bool _isControlPressed = HardwareKeyboard.instance.isControlPressed;
-
-  @override
-  void initState() {
-    super.initState();
-    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
-  }
 
   @override
   void didUpdateWidget(covariant _ZoomableVideoSurface oldWidget) {
@@ -190,25 +185,6 @@ class _ZoomableVideoSurfaceState extends State<_ZoomableVideoSurface> {
     if (clampedOffset != _offset) {
       _offset = clampedOffset;
     }
-  }
-
-  @override
-  void dispose() {
-    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
-    super.dispose();
-  }
-
-  bool _handleKeyEvent(KeyEvent event) {
-    final isControlPressed = HardwareKeyboard.instance.isControlPressed;
-    if (isControlPressed != _isControlPressed) {
-      setState(() {
-        _isControlPressed = isControlPressed;
-        if (!isControlPressed) {
-          _panPointer = null;
-        }
-      });
-    }
-    return false;
   }
 
   @override
@@ -232,6 +208,10 @@ class _ZoomableVideoSurfaceState extends State<_ZoomableVideoSurface> {
 
     return Listener(
       onPointerSignal: _handlePointerSignal,
+      onPointerDown: _handlePanPointerDown,
+      onPointerMove: _handlePanPointerMove,
+      onPointerUp: _handlePanPointerEnd,
+      onPointerCancel: _handlePanPointerEnd,
       child: ClipRect(
         child: Stack(
           fit: StackFit.expand,
@@ -241,7 +221,7 @@ class _ZoomableVideoSurfaceState extends State<_ZoomableVideoSurface> {
                 ..setTranslationRaw(_offset.dx, _offset.dy, 0),
               child: content,
             ),
-            if (_isControlPressed || _panPointer != null)
+            if (_panPointer != null)
               Positioned.fill(
                 child: MouseRegion(
                   cursor: SystemMouseCursors.move,
@@ -280,7 +260,9 @@ class _ZoomableVideoSurfaceState extends State<_ZoomableVideoSurface> {
   }
 
   void _handlePanPointerDown(PointerDownEvent event) {
-    if (!_isControlPressed || event.buttons & kPrimaryMouseButton == 0) {
+    final shortcut = ref.read(keyboardShortcutsProvider).panZoomedView;
+    if (event.kind != PointerDeviceKind.mouse ||
+        !_matchesMouseShortcut(event.buttons, shortcut)) {
       return;
     }
     _panPointer = event.pointer;
@@ -310,6 +292,14 @@ class _ZoomableVideoSurfaceState extends State<_ZoomableVideoSurface> {
     _scale = _minScale;
     _offset = Offset.zero;
     _panPointer = null;
+  }
+
+  bool _matchesMouseShortcut(int buttons, MouseShortcut shortcut) {
+    return switch (shortcut.button) {
+      MouseShortcutButton.primary => buttons & kPrimaryMouseButton != 0,
+      MouseShortcutButton.middle => buttons & kMiddleMouseButton != 0,
+      MouseShortcutButton.secondary => buttons & kSecondaryMouseButton != 0,
+    };
   }
 
   Offset _clampOffset(Offset offset, double scale, Size viewportSize) {

@@ -1486,8 +1486,9 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     final currentPositionMs = ref.read(playerProvider).position.inMilliseconds;
     final activeKeyframeMs = _activeKeyframeTimeMsAt(currentPositionMs);
 
-    // Eraser radius (in normalized coordinates)
-    const eraserRadius = 0.02;
+    // Eraser radius (in normalized coordinates), matched to the visible
+    // cursor and driven by the stroke width control.
+    final eraserRadius = state.currentStrokeWidth / 3.0 * 0.02;
 
     // Process each stroke and split/remove affected parts
     final updatedStrokes = <Stroke>[];
