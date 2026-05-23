@@ -711,7 +711,10 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
       // Previous frame (with repeat)
       if (matchesShortcut(_shortcuts.previousFrame)) {
-        startKeyRepeat(() async => playerNotifier.stepBackward());
+        startKeyRepeat(
+          () async => playerNotifier.stepBackward(),
+          interval: const Duration(milliseconds: 70),
+        );
         return KeyEventResult.handled;
       }
 

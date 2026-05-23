@@ -290,6 +290,7 @@ class PlaybackControls extends ConsumerWidget {
               ),
               onPressed: hasVideo ? () => playerNotifier.stepBackward() : null,
               tooltip: 'Previous Frame (,) - Hold to repeat',
+              repeatInterval: const Duration(milliseconds: 70),
             ),
 
             // Frame step forward

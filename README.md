@@ -263,6 +263,8 @@ flutter test
 
 - Export is local-file only; YouTube sources are not exportable
 - YouTube playback depends on stream availability and may fail for restricted or unsupported videos
+- Reverse frame stepping can appear slower on long-GOP codecs (for example H.264/H.265 with sparse keyframes)
+- Shorter GOP/intra-heavy sources provide more responsive backward stepping
 - Very large videos or very dense annotation sessions may reduce responsiveness on older hardware
 - Desktop support is the primary target; the app is not documented as a mobile product
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -105,6 +106,12 @@ class PlayerState {
 class PlayerNotifier extends StateNotifier<PlayerState> {
   final Ref _ref;
   static const int _uiPositionUpdateIntervalMs = 33;
+  // Debug latency threshold for considering backward-step visual update landed.
+  static const int _backwardStepDebugPositionToleranceMs = 20;
+  // Debug timeout to stop waiting for backward-step visual update callbacks.
+  static const int _backwardStepDebugTimeoutMs = 1200;
+  // Tolerance for treating two player positions as meaningfully different.
+  static const int _positionComparisonToleranceMicros = 500;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<bool>? _playingSubscription;
@@ -119,6 +126,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   bool? _supportsNativeFrameStep;
   bool _stillFrameAudioMuted = false;
   Future<void> _frameStepQueue = Future<void>.value();
+  bool _pendingBackwardStep = false;
+  Future<void>? _activeBackwardStepOperation;
+  int? _debugBackwardStepRequestMicros;
+  Duration? _debugBackwardStepTarget;
 
   PlayerNotifier(this._ref) : super(const PlayerState());
 
@@ -169,6 +180,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
     final clampedUs = value.inMicroseconds.clamp(0, maxUs);
     return Duration(microseconds: clampedUs);
+  }
+
+  bool _positionsDiffer(Duration left, Duration right) {
+    return (left - right).inMicroseconds.abs() >
+        _positionComparisonToleranceMicros;
   }
 
   Future<void> _enqueueFrameStep(Future<void> Function() operation) {
@@ -256,6 +272,45 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     } catch (_) {}
   }
 
+  void _markBackwardStepRequestForDebug(Duration targetPosition) {
+    assert(() {
+      _debugBackwardStepRequestMicros = DateTime.now().microsecondsSinceEpoch;
+      _debugBackwardStepTarget = targetPosition;
+      return true;
+    }());
+  }
+
+  /// Debug-only: logs request-to-visual-update latency for backward frame step.
+  void _maybeReportBackwardStepVisualUpdate(Duration currentPosition) {
+    assert(() {
+      final requestMicros = _debugBackwardStepRequestMicros;
+      if (requestMicros == null) return true;
+
+      final target = _debugBackwardStepTarget;
+      final nowMicros = DateTime.now().microsecondsSinceEpoch;
+      final elapsedMs = (nowMicros - requestMicros) / 1000.0;
+      final closeToTarget = target == null
+          ? true
+          : (currentPosition - target).inMilliseconds.abs() <=
+                _backwardStepDebugPositionToleranceMs;
+      final timedOut = elapsedMs >= _backwardStepDebugTimeoutMs;
+
+      if (closeToTarget || timedOut) {
+        final targetText = target == null ? 'n/a' : '${target.inMilliseconds}ms';
+        developer.log(
+          '[Player][Debug] stepBackward visual update: '
+          'elapsed=${elapsedMs.toStringAsFixed(1)}ms, '
+          'position=${currentPosition.inMilliseconds}ms, '
+          'target=$targetText, '
+          'closeToTarget=$closeToTarget',
+        );
+        _debugBackwardStepRequestMicros = null;
+        _debugBackwardStepTarget = null;
+      }
+      return true;
+    }());
+  }
+
   /// Initialize media_kit (call once at app startup)
   static void initializeMediaKit() {
     MediaKit.ensureInitialized();
@@ -313,6 +368,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
       // Listen to streams immediately with loop boundary checking
       _positionSubscription = player.stream.position.listen((position) {
+        _maybeReportBackwardStepVisualUpdate(position);
         final positionMs = position.inMilliseconds;
         final shouldPublishPosition =
             !state.isPlaying ||
@@ -540,7 +596,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       if (await _tryNativeFrameStep(forward: true)) {
         final resolvedPosition = state.player?.state.position;
         final targetPosition =
-            (resolvedPosition != null && resolvedPosition != basePosition)
+            (resolvedPosition != null &&
+                _positionsDiffer(resolvedPosition, basePosition))
             ? _clampToDuration(resolvedPosition)
             : nextPosition;
         if (state.position != targetPosition) {
@@ -555,23 +612,56 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// Step backward by one frame
   Future<void> stepBackward() async {
-    return _enqueueFrameStep(() async {
-      final metadata = state.metadata;
-      if (metadata == null) return;
-
-      final basePosition = state.position;
-      final baseFrame = _frameIndexFor(basePosition, metadata);
-      final prevPosition = _positionForFrameIndex(baseFrame - 1, metadata);
-
-      if (state.isPlaying) {
-        await pause();
-        state = state.copyWith(isPlaying: false);
-      } else {
-        await _setStillFrameAudioMuted(true);
+    _pendingBackwardStep = true;
+    _activeBackwardStepOperation ??= _enqueueFrameStep(() async {
+      // Drain backward-step requests sequentially while coalescing extra presses
+      // that arrive during an active backward-step operation.
+      while (_pendingBackwardStep) {
+        _pendingBackwardStep = false;
+        await _performSingleStepBackward();
       }
-
-      await seek(prevPosition);
+    }).whenComplete(() {
+      _activeBackwardStepOperation = null;
+      if (_pendingBackwardStep) {
+        unawaited(stepBackward());
+      }
     });
+    return _activeBackwardStepOperation!;
+  }
+
+  Future<void> _performSingleStepBackward() async {
+    final metadata = state.metadata;
+    if (metadata == null) return;
+
+    final basePosition = state.position;
+    final baseFrame = _frameIndexFor(basePosition, metadata);
+    final prevPosition = _positionForFrameIndex(baseFrame - 1, metadata);
+
+    if (state.isPlaying) {
+      await pause();
+      state = state.copyWith(isPlaying: false);
+    } else {
+      await _setStillFrameAudioMuted(true);
+    }
+
+    _markBackwardStepRequestForDebug(prevPosition);
+
+    // Prefer native reverse frame stepping for better visual responsiveness.
+    // If native stepping is unavailable/fails, fall back to timestamp seek.
+    if (await _tryNativeFrameStep(forward: false)) {
+      final resolvedPosition = state.player?.state.position;
+      final targetPosition =
+          (resolvedPosition != null &&
+              _positionsDiffer(resolvedPosition, basePosition))
+          ? _clampToDuration(resolvedPosition)
+          : prevPosition;
+      if (state.position != targetPosition) {
+        state = state.copyWith(position: targetPosition);
+      }
+      return;
+    }
+
+    await seek(prevPosition);
   }
 
   /// Jump forward by duration
@@ -693,6 +783,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _supportsNativeFrameStep = null;
     _stillFrameAudioMuted = false;
     _frameStepQueue = Future<void>.value();
+    _pendingBackwardStep = false;
+    _activeBackwardStepOperation = null;
+    _debugBackwardStepRequestMicros = null;
+    _debugBackwardStepTarget = null;
 
     if (mounted) {
       // Detach the disposed controller from the widget tree before tearing
