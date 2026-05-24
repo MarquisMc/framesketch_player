@@ -118,6 +118,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   int _lastPublishedPositionMs = -1;
   bool? _supportsNativeFrameStep;
   bool _stillFrameAudioMuted = false;
+  Duration? _realFrameStepDuration;
   Future<void> _frameStepQueue = Future<void>.value();
 
   PlayerNotifier(this._ref) : super(const PlayerState());
@@ -149,17 +150,49 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _allowStreamDimensionUpdates = false;
   }
 
-  int _frameIndexFor(Duration position, VideoMetadata metadata) {
+  int _frameIndexFor(Duration position, double fps) {
     final seconds = position.inMicroseconds / 1000000.0;
-    return (seconds * metadata.fps).round();
+    return (seconds * fps).round();
   }
 
-  Duration _positionForFrameIndex(int frameIndex, VideoMetadata metadata) {
-    final clampedFrame = metadata.frameCount > 0
-        ? frameIndex.clamp(0, metadata.frameCount)
-        : frameIndex.clamp(0, double.maxFinite).toInt();
-    final targetMicros = ((clampedFrame * 1000000.0) / metadata.fps).round();
+  Duration _positionForFrameIndex(int frameIndex, double fps, int frameCount) {
+    final clampedFrame = frameCount > 0
+        ? frameIndex.clamp(0, frameCount)
+        : (frameIndex < 0 ? 0 : frameIndex);
+    final targetMicros = ((clampedFrame * 1000000.0) / fps).round();
     return _clampToDuration(Duration(microseconds: targetMicros));
+  }
+
+  /// FPS used only as a first-step fallback for frame-step math, before the
+  /// real frame duration has been measured from a native frame-step.
+  double get _stepFps {
+    final source = state.sourceFps;
+    if (source != null && source > 0) return source;
+    return state.metadata?.fps ?? 30.0;
+  }
+
+  /// Position exactly one real video frame before/after [from].
+  ///
+  /// Once a native `frame-step` has run, the real frame duration is known by
+  /// measurement and used for both directions so they move identically. Until
+  /// then it falls back to FPS math — which can be wrong when the container
+  /// reports a misdetected (e.g. halved) frame rate.
+  Duration _frameStepTarget(
+    Duration from,
+    VideoMetadata metadata, {
+    required bool forward,
+  }) {
+    final measured = _realFrameStepDuration;
+    if (measured != null) {
+      return _clampToDuration(forward ? from + measured : from - measured);
+    }
+    final fps = _stepFps;
+    final baseFrame = _frameIndexFor(from, fps);
+    return _positionForFrameIndex(
+      forward ? baseFrame + 1 : baseFrame - 1,
+      fps,
+      metadata.frameCount,
+    );
   }
 
   Duration _clampToDuration(Duration value) {
@@ -175,6 +208,45 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final queued = _frameStepQueue.then((_) => operation());
     _frameStepQueue = queued.catchError((_) {});
     return queued;
+  }
+
+  /// Wait until the player reports a position near [target] (or a safety
+  /// deadline elapses) so the stepped frame has actually landed before the
+  /// next queued step runs. This stops rapid steps from being coalesced
+  /// (backward seeks) or dropped (overlapping forward frame-steps) by mpv,
+  /// which otherwise skips frames or fails to advance. Polls [Player.state]
+  /// directly so it cannot miss a position update that lands before a stream
+  /// listener could attach.
+  Future<void> _awaitPositionSettled(Duration target) async {
+    final player = state.player;
+    if (player == null) return;
+
+    final fps = state.metadata?.fps ?? 30.0;
+    final toleranceUs = (750000.0 / fps).round().clamp(2000, 60000);
+
+    bool near() =>
+        (player.state.position.inMicroseconds - target.inMicroseconds).abs() <=
+        toleranceUs;
+
+    final deadline = DateTime.now().add(const Duration(milliseconds: 600));
+    while (!near()) {
+      if (DateTime.now().isAfter(deadline)) return;
+      await Future<void>.delayed(const Duration(milliseconds: 8));
+    }
+  }
+
+  /// Wait until the player position moves away from [from] (or a safety
+  /// deadline elapses). Used after a native `frame-step`, whose exact landing
+  /// position is not known in advance.
+  Future<void> _awaitPositionChanged(Duration from) async {
+    final player = state.player;
+    if (player == null) return;
+
+    final deadline = DateTime.now().add(const Duration(milliseconds: 600));
+    while (player.state.position == from) {
+      if (DateTime.now().isAfter(deadline)) return;
+      await Future<void>.delayed(const Duration(milliseconds: 8));
+    }
   }
 
   Future<bool> _tryNativeFrameStep({required bool forward}) async {
@@ -527,8 +599,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       if (metadata == null) return;
 
       final basePosition = state.position;
-      final baseFrame = _frameIndexFor(basePosition, metadata);
-      final nextPosition = _positionForFrameIndex(baseFrame + 1, metadata);
+      final nextPosition = _frameStepTarget(
+        basePosition,
+        metadata,
+        forward: true,
+      );
 
       if (state.isPlaying) {
         await pause();
@@ -537,8 +612,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         await _setStillFrameAudioMuted(true);
       }
 
+      final positionBeforeStep = state.player?.state.position;
+
       if (await _tryNativeFrameStep(forward: true)) {
+        if (positionBeforeStep != null) {
+          await _awaitPositionChanged(positionBeforeStep);
+        }
         final resolvedPosition = state.player?.state.position;
+        // Measure the real frame duration so backward steps can match it
+        // exactly, instead of relying on a possibly-misdetected FPS.
+        if (positionBeforeStep != null &&
+            resolvedPosition != null &&
+            resolvedPosition > positionBeforeStep) {
+          final delta = resolvedPosition - positionBeforeStep;
+          if (delta < const Duration(seconds: 1)) {
+            _realFrameStepDuration = delta;
+          }
+        }
         final targetPosition =
             (resolvedPosition != null && resolvedPosition != basePosition)
             ? _clampToDuration(resolvedPosition)
@@ -550,6 +640,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       }
 
       await seek(nextPosition);
+      await _awaitPositionSettled(nextPosition);
     });
   }
 
@@ -560,8 +651,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       if (metadata == null) return;
 
       final basePosition = state.position;
-      final baseFrame = _frameIndexFor(basePosition, metadata);
-      final prevPosition = _positionForFrameIndex(baseFrame - 1, metadata);
+      final prevPosition = _frameStepTarget(
+        basePosition,
+        metadata,
+        forward: false,
+      );
 
       if (state.isPlaying) {
         await pause();
@@ -571,6 +665,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       }
 
       await seek(prevPosition);
+      await _awaitPositionSettled(prevPosition);
     });
   }
 
@@ -662,7 +757,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final metadata = state.metadata;
     if (metadata == null) return 0;
 
-    return _frameIndexFor(state.position, metadata);
+    return _frameIndexFor(state.position, metadata.fps);
   }
 
   /// Dispose player
@@ -691,6 +786,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _streamVideoHeight = null;
     _lastPublishedPositionMs = -1;
     _supportsNativeFrameStep = null;
+    _realFrameStepDuration = null;
     _stillFrameAudioMuted = false;
     _frameStepQueue = Future<void>.value();
 
