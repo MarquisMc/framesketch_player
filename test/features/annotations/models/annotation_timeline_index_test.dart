@@ -56,17 +56,11 @@ void main() {
 
       expect(index.sortedKeyframeTimesMs, [100]);
       expect(
-        index.visibleStrokesAtPosition(
-          200,
-          allStrokes: [keyframe, whiteboard],
-        ),
+        index.visibleStrokesAtPosition(200, allStrokes: [keyframe, whiteboard]),
         [keyframe, whiteboard],
       );
       expect(
-        index.visibleStrokesAtPosition(
-          400,
-          allStrokes: [keyframe, whiteboard],
-        ),
+        index.visibleStrokesAtPosition(400, allStrokes: [keyframe, whiteboard]),
         [keyframe],
       );
     });

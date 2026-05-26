@@ -170,31 +170,6 @@ class _FrameMarkerPanelState extends ConsumerState<FrameMarkerPanel> {
     }
   }
 
-  void _confirmDeleteMarker(FrameMarker marker) {
-    final palette = AppPalette.of(context);
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Marker'),
-        content: Text('Remove "${marker.label}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: palette.error),
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              ref.read(annotationProvider.notifier).deleteMarker(marker.id);
-            },
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
@@ -367,6 +342,7 @@ class _FrameMarkerPanelState extends ConsumerState<FrameMarkerPanel> {
           );
 
           return _MarkerTile(
+            key: ValueKey(marker.id),
             marker: marker,
             frameNumber: frameNumber,
             timecode: timecode,
@@ -375,7 +351,7 @@ class _FrameMarkerPanelState extends ConsumerState<FrameMarkerPanel> {
             onTap: () => annotationNotifier.seekToMarker(marker),
             onEdit: () =>
                 _openMarkerEditor(defaultColor: defaultColor, marker: marker),
-            onDelete: () => _confirmDeleteMarker(marker),
+            onDelete: () => annotationNotifier.deleteMarker(marker.id),
           );
         },
       ),
@@ -471,6 +447,7 @@ class _MarkerTile extends StatefulWidget {
   final VoidCallback onDelete;
 
   const _MarkerTile({
+    super.key,
     required this.marker,
     required this.frameNumber,
     required this.timecode,
@@ -487,6 +464,15 @@ class _MarkerTile extends StatefulWidget {
 
 class _MarkerTileState extends State<_MarkerTile> {
   bool _hovered = false;
+  bool _isDeleteArmed = false;
+
+  @override
+  void didUpdateWidget(covariant _MarkerTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.marker.id != widget.marker.id) {
+      _isDeleteArmed = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -629,9 +615,13 @@ class _MarkerTileState extends State<_MarkerTile> {
                             palette: palette,
                           ),
                           _TileAction(
-                            tooltip: 'Delete',
-                            icon: Icons.close_rounded,
-                            onTap: widget.onDelete,
+                            tooltip: _isDeleteArmed
+                                ? 'Confirm delete'
+                                : 'Delete',
+                            icon: _isDeleteArmed
+                                ? Icons.check_rounded
+                                : Icons.close_rounded,
+                            onTap: _handleDeleteTap,
                             palette: palette,
                             isDestructive: true,
                           ),
@@ -685,9 +675,22 @@ class _MarkerTileState extends State<_MarkerTile> {
       if (value == 'edit') {
         widget.onEdit();
       } else if (value == 'delete') {
-        widget.onDelete();
+        _armDelete();
       }
     });
+  }
+
+  void _handleDeleteTap() {
+    if (_isDeleteArmed) {
+      widget.onDelete();
+      return;
+    }
+
+    _armDelete();
+  }
+
+  void _armDelete() {
+    setState(() => _isDeleteArmed = true);
   }
 }
 

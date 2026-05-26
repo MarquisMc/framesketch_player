@@ -38,6 +38,8 @@ class EditorScaffold extends ConsumerWidget {
   final VoidCallback onSaveAnnotationsAs;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenThemeManager;
+  final VoidCallback onCheckForUpdates;
+  final bool isUpdateAvailable;
   final VoidCallback onOpenCommandPalette;
   final String commandPaletteShortcutLabel;
   final void Function(String, BuildContext)? onMenuAction;
@@ -70,6 +72,8 @@ class EditorScaffold extends ConsumerWidget {
     required this.onSaveAnnotationsAs,
     required this.onOpenSettings,
     required this.onOpenThemeManager,
+    required this.onCheckForUpdates,
+    required this.isUpdateAvailable,
     required this.onOpenCommandPalette,
     required this.commandPaletteShortcutLabel,
     this.onMenuAction,
@@ -146,6 +150,8 @@ class EditorScaffold extends ConsumerWidget {
           onSaveAnnotationsAs: onSaveAnnotationsAs,
           onOpenSettings: onOpenSettings,
           onOpenThemeManager: onOpenThemeManager,
+          onCheckForUpdates: onCheckForUpdates,
+          isUpdateAvailable: isUpdateAvailable,
           onOpenCommandPalette: onOpenCommandPalette,
           commandPaletteShortcutLabel: commandPaletteShortcutLabel,
           onToggleCropExportPanel: isDesktop ? onToggleCropExportPanel : null,
@@ -194,6 +200,8 @@ class EditorScaffold extends ConsumerWidget {
           onSaveAnnotationsAs: onSaveAnnotationsAs,
           onOpenSettings: onOpenSettings,
           onOpenThemeManager: onOpenThemeManager,
+          onCheckForUpdates: onCheckForUpdates,
+          isUpdateAvailable: isUpdateAvailable,
           onOpenCommandPalette: onOpenCommandPalette,
           commandPaletteShortcutLabel: commandPaletteShortcutLabel,
           onToggleCropExportPanel: onToggleCropExportPanel,
@@ -283,6 +291,8 @@ class EditorScaffold extends ConsumerWidget {
           onSaveAnnotationsAs: onSaveAnnotationsAs,
           onOpenSettings: onOpenSettings,
           onOpenThemeManager: onOpenThemeManager,
+          onCheckForUpdates: onCheckForUpdates,
+          isUpdateAvailable: isUpdateAvailable,
           onOpenCommandPalette: onOpenCommandPalette,
           commandPaletteShortcutLabel: commandPaletteShortcutLabel,
           onToggleCropExportPanel: null,
@@ -344,6 +354,8 @@ class EditorScaffold extends ConsumerWidget {
           onSaveAnnotationsAs: onSaveAnnotationsAs,
           onOpenSettings: onOpenSettings,
           onOpenThemeManager: onOpenThemeManager,
+          onCheckForUpdates: onCheckForUpdates,
+          isUpdateAvailable: isUpdateAvailable,
           onOpenCommandPalette: onOpenCommandPalette,
           commandPaletteShortcutLabel: commandPaletteShortcutLabel,
           onToggleCropExportPanel: null,

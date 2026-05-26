@@ -194,6 +194,22 @@ class SourceOpenActions {
     }
   }
 
+  Future<void> openDroppedFiles(Iterable<String> filePaths) async {
+    for (final filePath in filePaths) {
+      if (isSupportedVideoPath(filePath)) {
+        await loadInitialVideo(filePath);
+        return;
+      }
+    }
+
+    if (isMounted()) {
+      showErrorDialog(
+        'No supported video file was dropped. Try an MP4, MOV, MKV, AVI, '
+        'WebM, WMV, M4V, MPEG, MPG, TS, MTS, or M2TS file.',
+      );
+    }
+  }
+
   Future<void> openFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -256,7 +272,7 @@ class SourceOpenActions {
           content: TextField(
             autofocus: true,
             decoration: const InputDecoration(
-              hintText: 'https://www.youtube.com/watch?v=...',
+              hintText: 'Enter YouTube Link...',
             ),
             onChanged: (value) => enteredUrl = value,
             onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
@@ -498,4 +514,22 @@ bool isAnnotationJsonPath(String value) {
   return lower.endsWith('.framesketch') ||
       lower.endsWith('.annotations.json') ||
       lower.endsWith('.json');
+}
+
+bool isSupportedVideoPath(String value) {
+  final lower = value.toLowerCase();
+  return const <String>[
+    '.mp4',
+    '.mov',
+    '.mkv',
+    '.avi',
+    '.webm',
+    '.wmv',
+    '.m4v',
+    '.mpeg',
+    '.mpg',
+    '.ts',
+    '.mts',
+    '.m2ts',
+  ].any(lower.endsWith);
 }

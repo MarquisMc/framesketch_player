@@ -24,6 +24,8 @@ class EditorToolbar extends ConsumerWidget {
   final VoidCallback onSaveAnnotationsAs;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenThemeManager;
+  final VoidCallback onCheckForUpdates;
+  final bool isUpdateAvailable;
   final VoidCallback onOpenCommandPalette;
   final String commandPaletteShortcutLabel;
 
@@ -50,6 +52,8 @@ class EditorToolbar extends ConsumerWidget {
     required this.onSaveAnnotationsAs,
     required this.onOpenSettings,
     required this.onOpenThemeManager,
+    required this.onCheckForUpdates,
+    required this.isUpdateAvailable,
     required this.onOpenCommandPalette,
     required this.commandPaletteShortcutLabel,
     this.onToggleCropExportPanel,
@@ -198,6 +202,14 @@ class EditorToolbar extends ConsumerWidget {
             icon: Icons.keyboard_outlined,
             tooltip: 'Keyboard Shortcuts',
             onPressed: onOpenSettings,
+          ),
+          _Btn(
+            icon: Icons.new_releases_outlined,
+            tooltip: isUpdateAvailable
+                ? 'Update Available'
+                : 'Check for Updates',
+            onPressed: onCheckForUpdates,
+            color: isUpdateAvailable ? palette.warning : null,
           ),
           if (isDesktop)
             _Btn(
@@ -608,21 +620,27 @@ class _Btn extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
+  final Color? color;
 
-  const _Btn({required this.icon, required this.tooltip, this.onPressed});
+  const _Btn({
+    required this.icon,
+    required this.tooltip,
+    this.onPressed,
+    this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
-    final color = onPressed != null
-        ? palette.textSecondary
-        : palette.textDisabled;
+    final foregroundColor =
+        color ??
+        (onPressed != null ? palette.textSecondary : palette.textDisabled);
 
     return Tooltip(
       message: tooltip,
       waitDuration: const Duration(milliseconds: 500),
       child: IconButton(
-        icon: Icon(icon, size: 18, color: color),
+        icon: Icon(icon, size: 18, color: foregroundColor),
         onPressed: onPressed,
         iconSize: 18,
         visualDensity: VisualDensity.compact,

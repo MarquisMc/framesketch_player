@@ -224,6 +224,20 @@ Or use `macos` / `linux` as the target device.
 flutter build windows --release
 ```
 
+### Publish Updates
+
+The desktop app checks the latest published GitHub Release on startup and from
+the toolbar's **Check for Updates** action. To make a release detectable:
+
+1. Update `version:` in `pubspec.yaml`, such as `1.0.1+2`.
+2. Build and package the release.
+3. Publish a non-draft, non-prerelease GitHub Release with a matching semantic
+   version tag, such as `v1.0.1`.
+
+The published tag must be newer than the version built into the installed app.
+For example, an installed `1.0.0` build will offer a published `v1.0.1`
+release as an update.
+
 ## Basic Usage
 
 ### Start a Review Session
