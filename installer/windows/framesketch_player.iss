@@ -33,6 +33,8 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#AppExeName}
+CloseApplications=yes
+RestartApplications=no
 #if SignCertSha1 != ""
 SignedUninstaller=yes
 SignTool=signtool sign /d $q{#AppName}$q /fd sha256 /td sha256 /tr $q{#SignTimestampUrl}$q /sha1 $q{#SignCertSha1}$q $f
@@ -54,3 +56,26 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename:
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Flags: nowait; Check: ShouldRelaunchSilentUpdate
+
+[Code]
+function HasCommandLineParameter(Value: String): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+  begin
+    if CompareText(ParamStr(I), Value) = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+end;
+
+function ShouldRelaunchSilentUpdate(): Boolean;
+begin
+  Result := WizardSilent and
+    (not HasCommandLineParameter('/FRAMESELFUPDATELAUNCHER'));
+end;

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'core/models/project_library_entry.dart';
+import 'core/services/app_update_installer_service.dart';
 import 'core/services/github_release_update_service.dart';
 import 'features/player/providers/player_provider.dart';
 import 'features/annotations/providers/annotation_provider.dart';
@@ -20,6 +21,7 @@ import 'features/projects/widgets/project_browser.dart';
 import 'features/settings/providers/auto_save_provider.dart';
 import 'features/settings/providers/keyboard_shortcuts_provider.dart';
 import 'features/settings/widgets/settings_actions.dart';
+import 'features/settings/widgets/update_download_dialog.dart';
 import 'features/export/widgets/export_actions.dart';
 import 'features/loop/providers/loop_provider.dart';
 import 'features/crop/providers/crop_provider.dart';
@@ -53,6 +55,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       GlobalKey<ScaffoldMessengerState>();
   late final ExportActions _exportActions;
   late final GitHubReleaseUpdateService _updateService;
+  late final AppUpdateInstallerService _updateInstallerService;
   late final ProviderSubscription<(bool, DateTime?)> _autoSaveSubscription;
   late final ProviderSubscription<({int strokeCount, int undoCount})>
   _historyFeedbackSubscription;
@@ -93,6 +96,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   void initState() {
     super.initState();
     _updateService = GitHubReleaseUpdateService();
+    _updateInstallerService = AppUpdateInstallerService();
     _exportActions = ExportActions(
       ref: ref,
       navigatorKey: _navigatorKey,
@@ -1293,6 +1297,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     final context = _navigatorKey.currentContext;
     final release = result.latestRelease;
     if (context == null || release == null || !mounted) return;
+    final installerAsset = _updateInstallerService.supportsAutomaticInstallation
+        ? release.windowsInstallerAsset
+        : null;
 
     await showDialog<void>(
       context: context,
@@ -1301,7 +1308,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         title: const Text('Update Available'),
         content: Text(
           'FrameSketch ${release.displayVersion} is available.\n\n'
-          'Installed version: ${result.installedVersion}',
+          'Installed version: ${result.installedVersion}\n\n'
+          '${installerAsset == null ? 'Open the release page to download it.' : 'Save your work before installing. The app will restart during the update.'}',
         ),
         actions: [
           TextButton(
@@ -1311,16 +1319,39 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
             },
             child: const Text('Later'),
           ),
-          FilledButton(
+          TextButton(
             onPressed: () {
               Navigator.of(dialogContext).pop();
               unawaited(_openReleasePage(release.pageUrl));
             },
             child: const Text('Open Release Page'),
           ),
+          if (installerAsset != null)
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                unawaited(_downloadAndInstallUpdate(installerAsset));
+              },
+              child: const Text('Download and Install Update'),
+            ),
         ],
       ),
     );
+  }
+
+  Future<void> _downloadAndInstallUpdate(GitHubReleaseAsset asset) async {
+    final context = _navigatorKey.currentContext;
+    if (context == null || !mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => UpdateDownloadDialog(
+        asset: asset,
+        installerService: _updateInstallerService,
+      ),
+    );
+    _focusNode.requestFocus();
   }
 
   Future<void> _openReleasePage(Uri pageUrl) async {

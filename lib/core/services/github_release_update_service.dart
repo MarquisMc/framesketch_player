@@ -70,6 +70,7 @@ class GitHubReleaseUpdateService {
           tagName: tagName,
           pageUrl: Uri.parse(releaseUrl),
           name: body['name'] is String ? body['name'] as String : null,
+          assets: _parseAssets(body['assets']),
         ),
       );
     } finally {
@@ -82,6 +83,28 @@ class GitHubReleaseUpdateService {
   static Future<String> _readInstalledVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
     return packageInfo.version;
+  }
+
+  static List<GitHubReleaseAsset> _parseAssets(Object? assets) {
+    if (assets is! List<dynamic>) return const [];
+
+    return assets
+        .whereType<Map<String, dynamic>>()
+        .map((asset) {
+          final name = asset['name'];
+          final downloadUrl = asset['browser_download_url'];
+          final size = asset['size'];
+          if (name is! String || downloadUrl is! String || size is! int) {
+            return null;
+          }
+          return GitHubReleaseAsset(
+            name: name,
+            downloadUrl: Uri.parse(downloadUrl),
+            size: size,
+          );
+        })
+        .whereType<GitHubReleaseAsset>()
+        .toList(growable: false);
   }
 }
 
@@ -104,13 +127,39 @@ class GitHubRelease {
     required this.tagName,
     required this.pageUrl,
     this.name,
+    this.assets = const [],
   });
 
   final String tagName;
   final Uri pageUrl;
   final String? name;
+  final List<GitHubReleaseAsset> assets;
 
   String get displayVersion => tagName.replaceFirst(RegExp(r'^[vV]'), '');
+
+  GitHubReleaseAsset? get windowsInstallerAsset {
+    for (final asset in assets) {
+      final lowerName = asset.name.toLowerCase();
+      if (lowerName.endsWith('.exe') &&
+          lowerName.contains('setup') &&
+          lowerName.contains('windows')) {
+        return asset;
+      }
+    }
+    return null;
+  }
+}
+
+class GitHubReleaseAsset {
+  const GitHubReleaseAsset({
+    required this.name,
+    required this.downloadUrl,
+    required this.size,
+  });
+
+  final String name;
+  final Uri downloadUrl;
+  final int size;
 }
 
 class UpdateCheckException implements Exception {

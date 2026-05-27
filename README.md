@@ -233,10 +233,21 @@ the toolbar's **Check for Updates** action. To make a release detectable:
 2. Build and package the release.
 3. Publish a non-draft, non-prerelease GitHub Release with a matching semantic
    version tag, such as `v1.0.1`.
+4. Attach the Windows installer asset produced by Inno Setup, named like
+   `FrameSketch-Setup-v1.0.1-windows-x64.exe`.
 
 The published tag must be newer than the version built into the installed app.
 For example, an installed `1.0.0` build will offer a published `v1.0.1`
 release as an update.
+
+On Windows, releases with the installer asset can be downloaded and installed
+inside the app. During installation, Inno Setup closes FrameSketch and the
+update launcher reopens it after replacing the application files. Releases
+without an installer asset, and non-Windows builds, open the GitHub release
+page for manual installation.
+
+The installer also contains a silent-install fallback relaunch for users
+updating from app builds created before the in-app relaunch helper existed.
 
 ## Basic Usage
 

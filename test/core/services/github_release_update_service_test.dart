@@ -36,7 +36,10 @@ void main() {
       client: MockClient(
         (_) async => http.Response(
           '{"tag_name":"v1.2.0","html_url":"https://github.com/'
-          'MarquisMc/framesketch_player/releases/tag/v1.2.0"}',
+          'MarquisMc/framesketch_player/releases/tag/v1.2.0",'
+          '"assets":[{"name":"FrameSketch-Setup-v1.2.0-windows-x64.exe",'
+          '"browser_download_url":"https://github.com/example/setup.exe",'
+          '"size":2048}]}',
           200,
         ),
       ),
@@ -46,6 +49,10 @@ void main() {
 
     expect(result.hasUpdate, isTrue);
     expect(result.latestRelease?.displayVersion, '1.2.0');
+    expect(
+      result.latestRelease?.windowsInstallerAsset?.name,
+      'FrameSketch-Setup-v1.2.0-windows-x64.exe',
+    );
   });
 
   test(
