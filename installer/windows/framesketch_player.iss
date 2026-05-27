@@ -1,7 +1,7 @@
 #define AppName "FrameSketch Player"
 #define AppVersion GetEnv("FRAMESKETCH_VERSION")
 #if AppVersion == ""
-  #define AppVersion "1.0.2"
+  #define AppVersion "1.0.3"
 #endif
 #define AppPublisher "Marquis McCann"
 #define AppExeName "framesketch_player.exe"
