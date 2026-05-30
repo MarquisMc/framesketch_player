@@ -295,6 +295,39 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         );
   }
 
+  Future<void> _renameCurrentVideoFromToolbar(String newTitle) async {
+    final trimmedTitle = newTitle.trim();
+    if (trimmedTitle.isEmpty) return;
+
+    ref.read(playerProvider.notifier).renameCurrentDisplayLabel(trimmedTitle);
+
+    final annotationData = ref.read(annotationProvider).annotationData;
+    if (annotationData == null) return;
+
+    final projects = ref.read(projectLibraryProvider).projects;
+    ProjectLibraryEntry? currentProject;
+    for (final project in projects) {
+      if (project.id == annotationData.videoId) {
+        currentProject = project;
+        break;
+      }
+    }
+
+    if (currentProject == null || currentProject.title == trimmedTitle) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(projectLibraryProvider.notifier)
+          .renameProject(project: currentProject, newTitle: trimmedTitle);
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Error renaming video: $e');
+      }
+    }
+  }
+
   SourceOpenActions get _sourceOpenActions => SourceOpenActions(
     ref: ref,
     navigatorKey: _navigatorKey,
@@ -339,16 +372,35 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     return _projectLibraryActions.openProjectsDialog();
   }
 
-  Future<void> _renameProjectFromBrowser(ProjectLibraryEntry project) {
-    return _projectLibraryActions.renameProjectFromBrowser(project);
+  Future<void> _renameProjectFromBrowser(ProjectLibraryEntry project) async {
+    await _projectLibraryActions.renameProjectFromBrowser(project);
+    _syncCurrentPlayerTitleFromProject(project.id);
   }
 
   Future<void> _deleteProjectFromBrowser(ProjectLibraryEntry project) {
     return _projectLibraryActions.deleteProjectFromBrowser(project);
   }
 
-  Future<void> _revertProjectNameFromBrowser(ProjectLibraryEntry project) {
-    return _projectLibraryActions.revertProjectNameFromBrowser(project);
+  Future<void> _revertProjectNameFromBrowser(
+    ProjectLibraryEntry project,
+  ) async {
+    await _projectLibraryActions.revertProjectNameFromBrowser(project);
+    _syncCurrentPlayerTitleFromProject(project.id);
+  }
+
+  void _syncCurrentPlayerTitleFromProject(String projectId) {
+    final annotationData = ref.read(annotationProvider).annotationData;
+    if (annotationData?.videoId != projectId) return;
+
+    final projects = ref.read(projectLibraryProvider).projects;
+    for (final project in projects) {
+      if (project.id == projectId) {
+        ref
+            .read(playerProvider.notifier)
+            .renameCurrentDisplayLabel(project.title);
+        return;
+      }
+    }
   }
 
   Future<void> _pinProjectFromBrowser(ProjectLibraryEntry project) {
@@ -464,6 +516,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
                     onCheckForUpdates: () =>
                         _checkForUpdates(notifyWhenCurrent: true),
                     isUpdateAvailable: _isUpdateAvailable,
+                    isCheckingForUpdates: _isCheckingForUpdates,
+                    onRenameCurrentVideo: _renameCurrentVideoFromToolbar,
                     onOpenCommandPalette: _openCommandPalette,
                     commandPaletteShortcutLabel: formatShortcutLabel(
                       shortcuts.openCommandPalette,
@@ -1262,7 +1316,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
   Future<void> _checkForUpdates({bool notifyWhenCurrent = false}) async {
     if (_isCheckingForUpdates) return;
-    _isCheckingForUpdates = true;
+    setState(() => _isCheckingForUpdates = true);
 
     try {
       final result = await _updateService.checkForUpdate();
@@ -1289,7 +1343,11 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         _showErrorDialog('Unable to check for updates right now.');
       }
     } finally {
-      _isCheckingForUpdates = false;
+      if (mounted) {
+        setState(() => _isCheckingForUpdates = false);
+      } else {
+        _isCheckingForUpdates = false;
+      }
     }
   }
 

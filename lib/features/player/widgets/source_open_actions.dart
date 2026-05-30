@@ -321,9 +321,15 @@ class SourceOpenActions {
           );
 
           final playerState = ref.read(playerProvider);
-          if (playerState.metadata == null) {
+          if (playerState.metadata == null ||
+              playerState.duration <= Duration.zero) {
             if (isMounted()) {
-              showErrorDialog('Failed to load YouTube video stream.');
+              scaffoldMessengerKey.currentState?.showSnackBar(
+                SnackBar(
+                  content: const Text('Failed to load video download instead'),
+                  backgroundColor: activePalette().error,
+                ),
+              );
             }
             return;
           }
@@ -353,7 +359,12 @@ class SourceOpenActions {
     } catch (e) {
       if (isMounted()) {
         if (e is YouTubeSourceLoadException) {
-          showErrorDialog(e.userMessage);
+          scaffoldMessengerKey.currentState?.showSnackBar(
+            SnackBar(
+              content: const Text('Failed to load video download instead'),
+              backgroundColor: activePalette().error,
+            ),
+          );
         } else {
           showErrorDialog('Error loading YouTube URL: $e');
         }

@@ -20,7 +20,7 @@ const double _kMobileBreakpoint = 600;
 const double _kTabletBreakpoint = 1024;
 
 /// Adaptive editor scaffold that switches between mobile/tablet/desktop layouts.
-class EditorScaffold extends ConsumerWidget {
+class EditorScaffold extends ConsumerStatefulWidget {
   final bool isFullscreen;
   final bool showInspector;
   final bool showToolsPanel;
@@ -40,6 +40,8 @@ class EditorScaffold extends ConsumerWidget {
   final VoidCallback onOpenThemeManager;
   final VoidCallback onCheckForUpdates;
   final bool isUpdateAvailable;
+  final bool isCheckingForUpdates;
+  final ValueChanged<String> onRenameCurrentVideo;
   final VoidCallback onOpenCommandPalette;
   final String commandPaletteShortcutLabel;
   final void Function(String, BuildContext)? onMenuAction;
@@ -74,6 +76,8 @@ class EditorScaffold extends ConsumerWidget {
     required this.onOpenThemeManager,
     required this.onCheckForUpdates,
     required this.isUpdateAvailable,
+    required this.isCheckingForUpdates,
+    required this.onRenameCurrentVideo,
     required this.onOpenCommandPalette,
     required this.commandPaletteShortcutLabel,
     this.onMenuAction,
@@ -83,8 +87,64 @@ class EditorScaffold extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (isFullscreen) {
+  ConsumerState<EditorScaffold> createState() => _EditorScaffoldState();
+}
+
+class _EditorScaffoldState extends ConsumerState<EditorScaffold> {
+  bool _fullscreenControlsHovered = false;
+  bool _fullscreenControlsLocked = false;
+
+  bool get isFullscreen => widget.isFullscreen;
+  bool get showInspector => widget.showInspector;
+  bool get showToolsPanel => widget.showToolsPanel;
+  bool get showToolsStrip => widget.showToolsStrip;
+  Widget get projectBrowser => widget.projectBrowser;
+  VoidCallback get onToggleFullscreen => widget.onToggleFullscreen;
+  VoidCallback get onToggleInspector => widget.onToggleInspector;
+  VoidCallback get onToggleToolsPanel => widget.onToggleToolsPanel;
+  VoidCallback get onToggleToolsStrip => widget.onToggleToolsStrip;
+  VoidCallback get onOpenFile => widget.onOpenFile;
+  VoidCallback get onOpenYouTube => widget.onOpenYouTube;
+  VoidCallback get onOpenAnnotation => widget.onOpenAnnotation;
+  VoidCallback get onOpenProjects => widget.onOpenProjects;
+  VoidCallback get onSaveAnnotations => widget.onSaveAnnotations;
+  VoidCallback get onSaveAnnotationsAs => widget.onSaveAnnotationsAs;
+  VoidCallback get onOpenSettings => widget.onOpenSettings;
+  VoidCallback get onOpenThemeManager => widget.onOpenThemeManager;
+  VoidCallback get onCheckForUpdates => widget.onCheckForUpdates;
+  bool get isUpdateAvailable => widget.isUpdateAvailable;
+  bool get isCheckingForUpdates => widget.isCheckingForUpdates;
+  ValueChanged<String> get onRenameCurrentVideo => widget.onRenameCurrentVideo;
+  VoidCallback get onOpenCommandPalette => widget.onOpenCommandPalette;
+  String get commandPaletteShortcutLabel => widget.commandPaletteShortcutLabel;
+  void Function(String, BuildContext)? get onMenuAction => widget.onMenuAction;
+  VoidCallback? get onToggleCropExportPanel => widget.onToggleCropExportPanel;
+  bool get isCropExportPanelOpen => widget.isCropExportPanelOpen;
+  void Function({
+    required int startFrame,
+    required int endFrame,
+    required int step,
+    required bool isPng,
+  })?
+  get onExportFrames => widget.onExportFrames;
+
+  static const double _fullscreenControlsHeight = 150;
+
+  bool get _showFullscreenControls =>
+      _fullscreenControlsLocked || _fullscreenControlsHovered;
+
+  @override
+  void didUpdateWidget(covariant EditorScaffold oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isFullscreen) {
+      _fullscreenControlsHovered = false;
+      _fullscreenControlsLocked = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.isFullscreen) {
       return _buildFullscreen(context, ref);
     }
 
@@ -110,15 +170,79 @@ class EditorScaffold extends ConsumerWidget {
     return ColoredBox(
       color: Colors.black,
       child: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            const Expanded(child: VideoViewport(showOverlays: true)),
-            Divider(height: 1, thickness: 1, color: palette.border),
-            const TimelineScrubber(showAnnotationTimelineToggle: false),
-            Divider(height: 1, thickness: 1, color: palette.border),
-            PlaybackControls(
-              isFullscreen: true,
-              onToggleFullscreen: onToggleFullscreen,
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: _fullscreenControlsLocked ? _fullscreenControlsHeight : 0,
+              child: const VideoViewport(showOverlays: true),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: _fullscreenControlsHeight,
+              child: MouseRegion(
+                onEnter: (_) {
+                  if (!_fullscreenControlsHovered) {
+                    setState(() => _fullscreenControlsHovered = true);
+                  }
+                },
+                onExit: (_) {
+                  if (!_fullscreenControlsLocked) {
+                    setState(() => _fullscreenControlsHovered = false);
+                  }
+                },
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: AnimatedSlide(
+                    offset: _showFullscreenControls
+                        ? Offset.zero
+                        : const Offset(0, 1),
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOut,
+                    child: AnimatedOpacity(
+                      opacity: _showFullscreenControls ? 1 : 0,
+                      duration: const Duration(milliseconds: 120),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: palette.panel.withValues(alpha: 0.96),
+                          border: Border(
+                            top: BorderSide(color: palette.border),
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const TimelineScrubber(
+                              showAnnotationTimelineToggle: false,
+                            ),
+                            Divider(
+                              height: 1,
+                              thickness: 1,
+                              color: palette.border,
+                            ),
+                            PlaybackControls(
+                              isFullscreen: true,
+                              onToggleFullscreen: onToggleFullscreen,
+                              fullscreenControlsLocked:
+                                  _fullscreenControlsLocked,
+                              onFullscreenControlsLockedChanged: (locked) {
+                                setState(() {
+                                  _fullscreenControlsLocked = locked;
+                                  _fullscreenControlsHovered = locked;
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -152,6 +276,8 @@ class EditorScaffold extends ConsumerWidget {
           onOpenThemeManager: onOpenThemeManager,
           onCheckForUpdates: onCheckForUpdates,
           isUpdateAvailable: isUpdateAvailable,
+          isCheckingForUpdates: isCheckingForUpdates,
+          onRenameCurrentVideo: onRenameCurrentVideo,
           onOpenCommandPalette: onOpenCommandPalette,
           commandPaletteShortcutLabel: commandPaletteShortcutLabel,
           onToggleCropExportPanel: isDesktop ? onToggleCropExportPanel : null,
@@ -202,6 +328,8 @@ class EditorScaffold extends ConsumerWidget {
           onOpenThemeManager: onOpenThemeManager,
           onCheckForUpdates: onCheckForUpdates,
           isUpdateAvailable: isUpdateAvailable,
+          isCheckingForUpdates: isCheckingForUpdates,
+          onRenameCurrentVideo: onRenameCurrentVideo,
           onOpenCommandPalette: onOpenCommandPalette,
           commandPaletteShortcutLabel: commandPaletteShortcutLabel,
           onToggleCropExportPanel: onToggleCropExportPanel,
@@ -293,6 +421,8 @@ class EditorScaffold extends ConsumerWidget {
           onOpenThemeManager: onOpenThemeManager,
           onCheckForUpdates: onCheckForUpdates,
           isUpdateAvailable: isUpdateAvailable,
+          isCheckingForUpdates: isCheckingForUpdates,
+          onRenameCurrentVideo: onRenameCurrentVideo,
           onOpenCommandPalette: onOpenCommandPalette,
           commandPaletteShortcutLabel: commandPaletteShortcutLabel,
           onToggleCropExportPanel: null,
@@ -356,6 +486,8 @@ class EditorScaffold extends ConsumerWidget {
           onOpenThemeManager: onOpenThemeManager,
           onCheckForUpdates: onCheckForUpdates,
           isUpdateAvailable: isUpdateAvailable,
+          isCheckingForUpdates: isCheckingForUpdates,
+          onRenameCurrentVideo: onRenameCurrentVideo,
           onOpenCommandPalette: onOpenCommandPalette,
           commandPaletteShortcutLabel: commandPaletteShortcutLabel,
           onToggleCropExportPanel: null,

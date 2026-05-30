@@ -26,6 +26,8 @@ class EditorToolbar extends ConsumerWidget {
   final VoidCallback onOpenThemeManager;
   final VoidCallback onCheckForUpdates;
   final bool isUpdateAvailable;
+  final bool isCheckingForUpdates;
+  final ValueChanged<String> onRenameCurrentVideo;
   final VoidCallback onOpenCommandPalette;
   final String commandPaletteShortcutLabel;
 
@@ -54,6 +56,8 @@ class EditorToolbar extends ConsumerWidget {
     required this.onOpenThemeManager,
     required this.onCheckForUpdates,
     required this.isUpdateAvailable,
+    required this.isCheckingForUpdates,
+    required this.onRenameCurrentVideo,
     required this.onOpenCommandPalette,
     required this.commandPaletteShortcutLabel,
     this.onToggleCropExportPanel,
@@ -153,11 +157,9 @@ class EditorToolbar extends ConsumerWidget {
             child: hasVideoLoaded && sourceLabel != null && isDesktop
                 ? Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(
-                      _shortenLabel(sourceLabel),
-                      style: TextStyle(color: palette.textMuted, fontSize: 11),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: _EditableSourceLabel(
+                      label: _shortenLabel(sourceLabel),
+                      onRename: onRenameCurrentVideo,
                     ),
                   )
                 : const SizedBox.shrink(),
@@ -203,13 +205,10 @@ class EditorToolbar extends ConsumerWidget {
             tooltip: 'Keyboard Shortcuts',
             onPressed: onOpenSettings,
           ),
-          _Btn(
-            icon: Icons.new_releases_outlined,
-            tooltip: isUpdateAvailable
-                ? 'Update Available'
-                : 'Check for Updates',
+          _UpdateCheckButton(
+            isChecking: isCheckingForUpdates,
+            isUpdateAvailable: isUpdateAvailable,
             onPressed: onCheckForUpdates,
-            color: isUpdateAvailable ? palette.warning : null,
           ),
           if (isDesktop)
             _Btn(
@@ -616,17 +615,200 @@ class _Sep extends StatelessWidget {
   }
 }
 
+class _EditableSourceLabel extends StatefulWidget {
+  final String label;
+  final ValueChanged<String> onRename;
+
+  const _EditableSourceLabel({required this.label, required this.onRename});
+
+  @override
+  State<_EditableSourceLabel> createState() => _EditableSourceLabelState();
+}
+
+class _EditableSourceLabelState extends State<_EditableSourceLabel> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+  bool _isEditing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.label);
+    _focusNode = FocusNode();
+    _focusNode.addListener(_handleFocusChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _EditableSourceLabel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isEditing && oldWidget.label != widget.label) {
+      _controller.text = widget.label;
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_handleFocusChanged);
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
+    if (_isEditing) {
+      return SizedBox(
+        height: 28,
+        child: TextField(
+          controller: _controller,
+          focusNode: _focusNode,
+          style: TextStyle(color: palette.textPrimary, fontSize: 11),
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 6,
+            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+          ),
+          onSubmitted: _submit,
+        ),
+      );
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onDoubleTap: _startEditing,
+      child: Tooltip(
+        message: 'Double-click to rename video',
+        child: Text(
+          widget.label,
+          style: TextStyle(color: palette.textMuted, fontSize: 11),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    );
+  }
+
+  void _startEditing() {
+    setState(() {
+      _isEditing = true;
+      _controller.text = widget.label;
+      _controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _controller.text.length,
+      );
+    });
+    _focusNode.requestFocus();
+  }
+
+  void _submit(String value) {
+    final trimmed = value.trim();
+    setState(() => _isEditing = false);
+    if (trimmed.isNotEmpty && trimmed != widget.label) {
+      widget.onRename(trimmed);
+    } else {
+      _controller.text = widget.label;
+    }
+  }
+
+  void _cancelEditing() {
+    if (!_isEditing) return;
+    setState(() {
+      _isEditing = false;
+      _controller.text = widget.label;
+    });
+  }
+
+  void _handleFocusChanged() {
+    if (!_focusNode.hasFocus) {
+      _cancelEditing();
+    }
+  }
+}
+
+class _UpdateCheckButton extends StatefulWidget {
+  final bool isChecking;
+  final bool isUpdateAvailable;
+  final VoidCallback onPressed;
+
+  const _UpdateCheckButton({
+    required this.isChecking,
+    required this.isUpdateAvailable,
+    required this.onPressed,
+  });
+
+  @override
+  State<_UpdateCheckButton> createState() => _UpdateCheckButtonState();
+}
+
+class _UpdateCheckButtonState extends State<_UpdateCheckButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    );
+    if (widget.isChecking) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _UpdateCheckButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isChecking && !oldWidget.isChecking) {
+      _controller.repeat();
+    } else if (!widget.isChecking && oldWidget.isChecking) {
+      _controller.stop();
+      _controller.reset();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
+    final color = widget.isUpdateAvailable ? palette.warning : null;
+
+    return _Btn(
+      icon: widget.isChecking ? Icons.refresh : Icons.new_releases_outlined,
+      tooltip: widget.isChecking
+          ? 'Checking for updates'
+          : widget.isUpdateAvailable
+          ? 'Update Available'
+          : 'Check for Updates',
+      onPressed: widget.isChecking ? null : widget.onPressed,
+      color: color,
+      turns: widget.isChecking ? _controller : null,
+    );
+  }
+}
+
 class _Btn extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
   final Color? color;
+  final Animation<double>? turns;
 
   const _Btn({
     required this.icon,
     required this.tooltip,
     this.onPressed,
     this.color,
+    this.turns,
   });
 
   @override
@@ -640,7 +822,12 @@ class _Btn extends StatelessWidget {
       message: tooltip,
       waitDuration: const Duration(milliseconds: 500),
       child: IconButton(
-        icon: Icon(icon, size: 18, color: foregroundColor),
+        icon: turns == null
+            ? Icon(icon, size: 18, color: foregroundColor)
+            : RotationTransition(
+                turns: turns!,
+                child: Icon(icon, size: 18, color: foregroundColor),
+              ),
         onPressed: onPressed,
         iconSize: 18,
         visualDensity: VisualDensity.compact,

@@ -731,7 +731,18 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     if (!fps.isFinite) return;
     final clamped = fps.clamp(1.0, 240.0);
     if ((metadata.fps - clamped).abs() < 0.0001) return;
-    state = state.copyWith(metadata: metadata.copyWith(fps: clamped));
+    final frameCount =
+        ((metadata.duration.inMicroseconds / 1000000.0) * clamped).round();
+    state = state.copyWith(
+      metadata: metadata.copyWith(fps: clamped, frameCount: frameCount),
+    );
+  }
+
+  /// Rename the visible video title shown in the player chrome.
+  void renameCurrentDisplayLabel(String label) {
+    final trimmed = label.trim();
+    if (trimmed.isEmpty) return;
+    state = state.copyWith(currentDisplayLabel: trimmed);
   }
 
   /// Restore FPS to the originally detected value for the loaded video.
