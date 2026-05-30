@@ -116,6 +116,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   int? _streamVideoWidth;
   int? _streamVideoHeight;
   int _lastPublishedPositionMs = -1;
+  // While frame-stepping (paused), the deliberately-stepped position in ms. The
+  // position stream listener uses it to reject the transient, out-of-order
+  // positions mpv emits during a backward frame-step's internal seek, which
+  // would otherwise make the displayed frame jump back and forth (e.g.
+  // 361, 360, 361, 359). Cleared by any non-frame-step move (seek/jump/play).
+  int? _frameStepTargetMs;
   bool? _supportsNativeFrameStep;
   bool _stillFrameAudioMuted = false;
   Duration? _realFrameStepDuration;
@@ -386,12 +392,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // Listen to streams immediately with loop boundary checking
       _positionSubscription = player.stream.position.listen((position) {
         final positionMs = position.inMilliseconds;
-        final shouldPublishPosition =
-            !state.isPlaying ||
-            _lastPublishedPositionMs < 0 ||
-            (positionMs - _lastPublishedPositionMs).abs() >=
-                _uiPositionUpdateIntervalMs ||
-            positionMs < _lastPublishedPositionMs;
+        final bool shouldPublishPosition;
+        if (_frameStepTargetMs != null && !state.isPlaying) {
+          // Frame-stepping while paused: the step already published the exact
+          // target frame position. Ignore the stream's follow-up events — they
+          // are either transient seek positions (from a backward frame-step's
+          // internal seek) or sub-frame wobble, both of which would make the
+          // displayed frame/timecode jitter. The lock is cleared by any real
+          // move (seek/jump/play), after which normal publishing resumes.
+          shouldPublishPosition = false;
+        } else {
+          shouldPublishPosition =
+              !state.isPlaying ||
+              _lastPublishedPositionMs < 0 ||
+              (positionMs - _lastPublishedPositionMs).abs() >=
+                  _uiPositionUpdateIntervalMs ||
+              positionMs < _lastPublishedPositionMs;
+        }
         if (shouldPublishPosition) {
           state = state.copyWith(position: position);
           _lastPublishedPositionMs = positionMs;
@@ -552,6 +569,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// Play video
   Future<void> play() async {
+    _frameStepTargetMs = null;
     await _setStillFrameAudioMuted(false);
     await state.player?.play();
   }
@@ -580,6 +598,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// Seek to position
   Future<void> seek(Duration position) async {
+    _frameStepTargetMs = null;
     if (!state.isPlaying) {
       await _setStillFrameAudioMuted(true);
     }
@@ -636,11 +655,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         if (state.position != targetPosition) {
           state = state.copyWith(position: targetPosition);
         }
+        _frameStepTargetMs = targetPosition.inMilliseconds;
         return;
       }
 
       await seek(nextPosition);
       await _awaitPositionSettled(nextPosition);
+      _frameStepTargetMs = nextPosition.inMilliseconds;
     });
   }
 
@@ -650,13 +671,6 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       final metadata = state.metadata;
       if (metadata == null) return;
 
-      final basePosition = state.position;
-      final prevPosition = _frameStepTarget(
-        basePosition,
-        metadata,
-        forward: false,
-      );
-
       if (state.isPlaying) {
         await pause();
         state = state.copyWith(isPlaying: false);
@@ -664,14 +678,51 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         await _setStillFrameAudioMuted(true);
       }
 
+      final basePosition = state.position;
+      final prevPosition = _frameStepTarget(
+        basePosition,
+        metadata,
+        forward: false,
+      );
+
+      final positionBeforeStep = state.player?.state.position;
+
+      if (await _tryNativeFrameStep(forward: false)) {
+        if (positionBeforeStep != null) {
+          await _awaitPositionChanged(positionBeforeStep);
+        }
+        final resolvedPosition = state.player?.state.position;
+        // Measure the real frame duration so forward steps can match it
+        // exactly, instead of relying on a possibly-misdetected FPS.
+        if (positionBeforeStep != null &&
+            resolvedPosition != null &&
+            resolvedPosition < positionBeforeStep) {
+          final delta = positionBeforeStep - resolvedPosition;
+          if (delta < const Duration(seconds: 1)) {
+            _realFrameStepDuration = delta;
+          }
+        }
+        final targetPosition =
+            (resolvedPosition != null && resolvedPosition != basePosition)
+            ? _clampToDuration(resolvedPosition)
+            : prevPosition;
+        if (state.position != targetPosition) {
+          state = state.copyWith(position: targetPosition);
+        }
+        _frameStepTargetMs = targetPosition.inMilliseconds;
+        return;
+      }
+
       await seek(prevPosition);
       await _awaitPositionSettled(prevPosition);
+      _frameStepTargetMs = prevPosition.inMilliseconds;
     });
   }
 
   /// Jump forward by duration
   Future<void> jumpForward(Duration amount) async {
     return _enqueueFrameStep(() async {
+      _frameStepTargetMs = null;
       final basePosition = state.position;
       final newPosition = _clampToDuration(basePosition + amount);
       final delta = newPosition - basePosition;
@@ -685,6 +736,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         if (state.position != newPosition) {
           state = state.copyWith(position: newPosition);
         }
+        _frameStepTargetMs = newPosition.inMilliseconds;
         return;
       }
       await seek(newPosition);
@@ -694,6 +746,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// Jump backward by duration
   Future<void> jumpBackward(Duration amount) async {
     return _enqueueFrameStep(() async {
+      _frameStepTargetMs = null;
       final basePosition = state.position;
       final newPosition = _clampToDuration(basePosition - amount);
       final delta = newPosition - basePosition;
@@ -707,6 +760,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         if (state.position != newPosition) {
           state = state.copyWith(position: newPosition);
         }
+        _frameStepTargetMs = newPosition.inMilliseconds;
         return;
       }
       await seek(newPosition);
@@ -796,6 +850,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _streamVideoWidth = null;
     _streamVideoHeight = null;
     _lastPublishedPositionMs = -1;
+    _frameStepTargetMs = null;
     _supportsNativeFrameStep = null;
     _realFrameStepDuration = null;
     _stillFrameAudioMuted = false;
