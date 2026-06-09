@@ -251,6 +251,159 @@ abstract class _KeyboardShortcut implements KeyboardShortcut {
       throw _privateConstructorUsedError;
 }
 
+MouseShortcut _$MouseShortcutFromJson(Map<String, dynamic> json) {
+  return _MouseShortcut.fromJson(json);
+}
+
+/// @nodoc
+mixin _$MouseShortcut {
+  MouseShortcutButton get button => throw _privateConstructorUsedError;
+
+  /// Serializes this MouseShortcut to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
+
+  /// Create a copy of MouseShortcut
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  $MouseShortcutCopyWith<MouseShortcut> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $MouseShortcutCopyWith<$Res> {
+  factory $MouseShortcutCopyWith(
+    MouseShortcut value,
+    $Res Function(MouseShortcut) then,
+  ) = _$MouseShortcutCopyWithImpl<$Res, MouseShortcut>;
+  @useResult
+  $Res call({MouseShortcutButton button});
+}
+
+/// @nodoc
+class _$MouseShortcutCopyWithImpl<$Res, $Val extends MouseShortcut>
+    implements $MouseShortcutCopyWith<$Res> {
+  _$MouseShortcutCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of MouseShortcut
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({Object? button = null}) {
+    return _then(
+      _value.copyWith(
+            button: null == button
+                ? _value.button
+                : button // ignore: cast_nullable_to_non_nullable
+                      as MouseShortcutButton,
+          )
+          as $Val,
+    );
+  }
+}
+
+/// @nodoc
+abstract class _$$MouseShortcutImplCopyWith<$Res>
+    implements $MouseShortcutCopyWith<$Res> {
+  factory _$$MouseShortcutImplCopyWith(
+    _$MouseShortcutImpl value,
+    $Res Function(_$MouseShortcutImpl) then,
+  ) = __$$MouseShortcutImplCopyWithImpl<$Res>;
+  @override
+  @useResult
+  $Res call({MouseShortcutButton button});
+}
+
+/// @nodoc
+class __$$MouseShortcutImplCopyWithImpl<$Res>
+    extends _$MouseShortcutCopyWithImpl<$Res, _$MouseShortcutImpl>
+    implements _$$MouseShortcutImplCopyWith<$Res> {
+  __$$MouseShortcutImplCopyWithImpl(
+    _$MouseShortcutImpl _value,
+    $Res Function(_$MouseShortcutImpl) _then,
+  ) : super(_value, _then);
+
+  /// Create a copy of MouseShortcut
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({Object? button = null}) {
+    return _then(
+      _$MouseShortcutImpl(
+        button: null == button
+            ? _value.button
+            : button // ignore: cast_nullable_to_non_nullable
+                  as MouseShortcutButton,
+      ),
+    );
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _$MouseShortcutImpl implements _MouseShortcut {
+  const _$MouseShortcutImpl({this.button = MouseShortcutButton.middle});
+
+  factory _$MouseShortcutImpl.fromJson(Map<String, dynamic> json) =>
+      _$$MouseShortcutImplFromJson(json);
+
+  @override
+  @JsonKey()
+  final MouseShortcutButton button;
+
+  @override
+  String toString() {
+    return 'MouseShortcut(button: $button)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$MouseShortcutImpl &&
+            (identical(other.button, button) || other.button == button));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, button);
+
+  /// Create a copy of MouseShortcut
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$MouseShortcutImplCopyWith<_$MouseShortcutImpl> get copyWith =>
+      __$$MouseShortcutImplCopyWithImpl<_$MouseShortcutImpl>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$MouseShortcutImplToJson(this);
+  }
+}
+
+abstract class _MouseShortcut implements MouseShortcut {
+  const factory _MouseShortcut({final MouseShortcutButton button}) =
+      _$MouseShortcutImpl;
+
+  factory _MouseShortcut.fromJson(Map<String, dynamic> json) =
+      _$MouseShortcutImpl.fromJson;
+
+  @override
+  MouseShortcutButton get button;
+
+  /// Create a copy of MouseShortcut
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$MouseShortcutImplCopyWith<_$MouseShortcutImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
 KeyboardShortcuts _$KeyboardShortcutsFromJson(Map<String, dynamic> json) {
   return _KeyboardShortcuts.fromJson(json);
 }
@@ -263,11 +416,13 @@ mixin _$KeyboardShortcuts {
   KeyboardShortcut get jumpForward => throw _privateConstructorUsedError;
   KeyboardShortcut get jumpBackward => throw _privateConstructorUsedError;
   KeyboardShortcut get toggleFullscreen => throw _privateConstructorUsedError;
+  MouseShortcut get panZoomedView => throw _privateConstructorUsedError;
   KeyboardShortcut get openCommandPalette => throw _privateConstructorUsedError;
   KeyboardShortcut get openFile => throw _privateConstructorUsedError;
   KeyboardShortcut get saveAnnotations => throw _privateConstructorUsedError;
   KeyboardShortcut get undo => throw _privateConstructorUsedError;
   KeyboardShortcut get redo => throw _privateConstructorUsedError;
+  KeyboardShortcut get addMarker => throw _privateConstructorUsedError;
   KeyboardShortcut get nextMarker => throw _privateConstructorUsedError;
   KeyboardShortcut get previousMarker =>
       throw _privateConstructorUsedError; // Annotation tools
@@ -321,11 +476,13 @@ abstract class $KeyboardShortcutsCopyWith<$Res> {
     KeyboardShortcut jumpForward,
     KeyboardShortcut jumpBackward,
     KeyboardShortcut toggleFullscreen,
+    MouseShortcut panZoomedView,
     KeyboardShortcut openCommandPalette,
     KeyboardShortcut openFile,
     KeyboardShortcut saveAnnotations,
     KeyboardShortcut undo,
     KeyboardShortcut redo,
+    KeyboardShortcut addMarker,
     KeyboardShortcut nextMarker,
     KeyboardShortcut previousMarker,
     KeyboardShortcut selectSelectionTool,
@@ -355,11 +512,13 @@ abstract class $KeyboardShortcutsCopyWith<$Res> {
   $KeyboardShortcutCopyWith<$Res> get jumpForward;
   $KeyboardShortcutCopyWith<$Res> get jumpBackward;
   $KeyboardShortcutCopyWith<$Res> get toggleFullscreen;
+  $MouseShortcutCopyWith<$Res> get panZoomedView;
   $KeyboardShortcutCopyWith<$Res> get openCommandPalette;
   $KeyboardShortcutCopyWith<$Res> get openFile;
   $KeyboardShortcutCopyWith<$Res> get saveAnnotations;
   $KeyboardShortcutCopyWith<$Res> get undo;
   $KeyboardShortcutCopyWith<$Res> get redo;
+  $KeyboardShortcutCopyWith<$Res> get addMarker;
   $KeyboardShortcutCopyWith<$Res> get nextMarker;
   $KeyboardShortcutCopyWith<$Res> get previousMarker;
   $KeyboardShortcutCopyWith<$Res> get selectSelectionTool;
@@ -400,11 +559,13 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
     Object? jumpForward = null,
     Object? jumpBackward = null,
     Object? toggleFullscreen = null,
+    Object? panZoomedView = null,
     Object? openCommandPalette = null,
     Object? openFile = null,
     Object? saveAnnotations = null,
     Object? undo = null,
     Object? redo = null,
+    Object? addMarker = null,
     Object? nextMarker = null,
     Object? previousMarker = null,
     Object? selectSelectionTool = null,
@@ -453,6 +614,10 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
                 ? _value.toggleFullscreen
                 : toggleFullscreen // ignore: cast_nullable_to_non_nullable
                       as KeyboardShortcut,
+            panZoomedView: null == panZoomedView
+                ? _value.panZoomedView
+                : panZoomedView // ignore: cast_nullable_to_non_nullable
+                      as MouseShortcut,
             openCommandPalette: null == openCommandPalette
                 ? _value.openCommandPalette
                 : openCommandPalette // ignore: cast_nullable_to_non_nullable
@@ -472,6 +637,10 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
             redo: null == redo
                 ? _value.redo
                 : redo // ignore: cast_nullable_to_non_nullable
+                      as KeyboardShortcut,
+            addMarker: null == addMarker
+                ? _value.addMarker
+                : addMarker // ignore: cast_nullable_to_non_nullable
                       as KeyboardShortcut,
             nextMarker: null == nextMarker
                 ? _value.nextMarker
@@ -627,6 +796,16 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
   /// with the given fields replaced by the non-null parameter values.
   @override
   @pragma('vm:prefer-inline')
+  $MouseShortcutCopyWith<$Res> get panZoomedView {
+    return $MouseShortcutCopyWith<$Res>(_value.panZoomedView, (value) {
+      return _then(_value.copyWith(panZoomedView: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
   $KeyboardShortcutCopyWith<$Res> get openCommandPalette {
     return $KeyboardShortcutCopyWith<$Res>(_value.openCommandPalette, (value) {
       return _then(_value.copyWith(openCommandPalette: value) as $Val);
@@ -670,6 +849,16 @@ class _$KeyboardShortcutsCopyWithImpl<$Res, $Val extends KeyboardShortcuts>
   $KeyboardShortcutCopyWith<$Res> get redo {
     return $KeyboardShortcutCopyWith<$Res>(_value.redo, (value) {
       return _then(_value.copyWith(redo: value) as $Val);
+    });
+  }
+
+  /// Create a copy of KeyboardShortcuts
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $KeyboardShortcutCopyWith<$Res> get addMarker {
+    return $KeyboardShortcutCopyWith<$Res>(_value.addMarker, (value) {
+      return _then(_value.copyWith(addMarker: value) as $Val);
     });
   }
 
@@ -862,11 +1051,13 @@ abstract class _$$KeyboardShortcutsImplCopyWith<$Res>
     KeyboardShortcut jumpForward,
     KeyboardShortcut jumpBackward,
     KeyboardShortcut toggleFullscreen,
+    MouseShortcut panZoomedView,
     KeyboardShortcut openCommandPalette,
     KeyboardShortcut openFile,
     KeyboardShortcut saveAnnotations,
     KeyboardShortcut undo,
     KeyboardShortcut redo,
+    KeyboardShortcut addMarker,
     KeyboardShortcut nextMarker,
     KeyboardShortcut previousMarker,
     KeyboardShortcut selectSelectionTool,
@@ -903,6 +1094,8 @@ abstract class _$$KeyboardShortcutsImplCopyWith<$Res>
   @override
   $KeyboardShortcutCopyWith<$Res> get toggleFullscreen;
   @override
+  $MouseShortcutCopyWith<$Res> get panZoomedView;
+  @override
   $KeyboardShortcutCopyWith<$Res> get openCommandPalette;
   @override
   $KeyboardShortcutCopyWith<$Res> get openFile;
@@ -912,6 +1105,8 @@ abstract class _$$KeyboardShortcutsImplCopyWith<$Res>
   $KeyboardShortcutCopyWith<$Res> get undo;
   @override
   $KeyboardShortcutCopyWith<$Res> get redo;
+  @override
+  $KeyboardShortcutCopyWith<$Res> get addMarker;
   @override
   $KeyboardShortcutCopyWith<$Res> get nextMarker;
   @override
@@ -968,11 +1163,13 @@ class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
     Object? jumpForward = null,
     Object? jumpBackward = null,
     Object? toggleFullscreen = null,
+    Object? panZoomedView = null,
     Object? openCommandPalette = null,
     Object? openFile = null,
     Object? saveAnnotations = null,
     Object? undo = null,
     Object? redo = null,
+    Object? addMarker = null,
     Object? nextMarker = null,
     Object? previousMarker = null,
     Object? selectSelectionTool = null,
@@ -1021,6 +1218,10 @@ class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
             ? _value.toggleFullscreen
             : toggleFullscreen // ignore: cast_nullable_to_non_nullable
                   as KeyboardShortcut,
+        panZoomedView: null == panZoomedView
+            ? _value.panZoomedView
+            : panZoomedView // ignore: cast_nullable_to_non_nullable
+                  as MouseShortcut,
         openCommandPalette: null == openCommandPalette
             ? _value.openCommandPalette
             : openCommandPalette // ignore: cast_nullable_to_non_nullable
@@ -1040,6 +1241,10 @@ class __$$KeyboardShortcutsImplCopyWithImpl<$Res>
         redo: null == redo
             ? _value.redo
             : redo // ignore: cast_nullable_to_non_nullable
+                  as KeyboardShortcut,
+        addMarker: null == addMarker
+            ? _value.addMarker
+            : addMarker // ignore: cast_nullable_to_non_nullable
                   as KeyboardShortcut,
         nextMarker: null == nextMarker
             ? _value.nextMarker
@@ -1140,6 +1345,7 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
     required this.jumpForward,
     required this.jumpBackward,
     this.toggleFullscreen = const KeyboardShortcut(key: LogicalKeyboardKey.f11),
+    this.panZoomedView = const MouseShortcut(),
     this.openCommandPalette = const KeyboardShortcut(
       key: LogicalKeyboardKey.keyP,
       ctrlPressed: true,
@@ -1149,6 +1355,10 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
     required this.saveAnnotations,
     required this.undo,
     required this.redo,
+    this.addMarker = const KeyboardShortcut(
+      key: LogicalKeyboardKey.keyB,
+      ctrlPressed: true,
+    ),
     required this.nextMarker,
     required this.previousMarker,
     required this.selectSelectionTool,
@@ -1190,6 +1400,9 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
   final KeyboardShortcut toggleFullscreen;
   @override
   @JsonKey()
+  final MouseShortcut panZoomedView;
+  @override
+  @JsonKey()
   final KeyboardShortcut openCommandPalette;
   @override
   final KeyboardShortcut openFile;
@@ -1199,6 +1412,9 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
   final KeyboardShortcut undo;
   @override
   final KeyboardShortcut redo;
+  @override
+  @JsonKey()
+  final KeyboardShortcut addMarker;
   @override
   final KeyboardShortcut nextMarker;
   @override
@@ -1252,7 +1468,7 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
 
   @override
   String toString() {
-    return 'KeyboardShortcuts(nextFrame: $nextFrame, previousFrame: $previousFrame, playPause: $playPause, jumpForward: $jumpForward, jumpBackward: $jumpBackward, toggleFullscreen: $toggleFullscreen, openCommandPalette: $openCommandPalette, openFile: $openFile, saveAnnotations: $saveAnnotations, undo: $undo, redo: $redo, nextMarker: $nextMarker, previousMarker: $previousMarker, selectSelectionTool: $selectSelectionTool, selectPenTool: $selectPenTool, selectEraserTool: $selectEraserTool, selectRectangleTool: $selectRectangleTool, selectCircleTool: $selectCircleTool, selectLineTool: $selectLineTool, selectArrowTool: $selectArrowTool, selectTextTool: $selectTextTool, toggleKeyframeMode: $toggleKeyframeMode, createManualKeyframe: $createManualKeyframe, toggleFullLoop: $toggleFullLoop, setLoopStart: $setLoopStart, setLoopEnd: $setLoopEnd, toggleSectionLoop: $toggleSectionLoop, toggleCropMode: $toggleCropMode, generalShortcutsEnabled: $generalShortcutsEnabled, annotationToolsShortcutsEnabled: $annotationToolsShortcutsEnabled, loopControlsShortcutsEnabled: $loopControlsShortcutsEnabled, cropControlsShortcutsEnabled: $cropControlsShortcutsEnabled)';
+    return 'KeyboardShortcuts(nextFrame: $nextFrame, previousFrame: $previousFrame, playPause: $playPause, jumpForward: $jumpForward, jumpBackward: $jumpBackward, toggleFullscreen: $toggleFullscreen, panZoomedView: $panZoomedView, openCommandPalette: $openCommandPalette, openFile: $openFile, saveAnnotations: $saveAnnotations, undo: $undo, redo: $redo, addMarker: $addMarker, nextMarker: $nextMarker, previousMarker: $previousMarker, selectSelectionTool: $selectSelectionTool, selectPenTool: $selectPenTool, selectEraserTool: $selectEraserTool, selectRectangleTool: $selectRectangleTool, selectCircleTool: $selectCircleTool, selectLineTool: $selectLineTool, selectArrowTool: $selectArrowTool, selectTextTool: $selectTextTool, toggleKeyframeMode: $toggleKeyframeMode, createManualKeyframe: $createManualKeyframe, toggleFullLoop: $toggleFullLoop, setLoopStart: $setLoopStart, setLoopEnd: $setLoopEnd, toggleSectionLoop: $toggleSectionLoop, toggleCropMode: $toggleCropMode, generalShortcutsEnabled: $generalShortcutsEnabled, annotationToolsShortcutsEnabled: $annotationToolsShortcutsEnabled, loopControlsShortcutsEnabled: $loopControlsShortcutsEnabled, cropControlsShortcutsEnabled: $cropControlsShortcutsEnabled)';
   }
 
   @override
@@ -1272,6 +1488,8 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
                 other.jumpBackward == jumpBackward) &&
             (identical(other.toggleFullscreen, toggleFullscreen) ||
                 other.toggleFullscreen == toggleFullscreen) &&
+            (identical(other.panZoomedView, panZoomedView) ||
+                other.panZoomedView == panZoomedView) &&
             (identical(other.openCommandPalette, openCommandPalette) ||
                 other.openCommandPalette == openCommandPalette) &&
             (identical(other.openFile, openFile) ||
@@ -1280,6 +1498,8 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
                 other.saveAnnotations == saveAnnotations) &&
             (identical(other.undo, undo) || other.undo == undo) &&
             (identical(other.redo, redo) || other.redo == redo) &&
+            (identical(other.addMarker, addMarker) ||
+                other.addMarker == addMarker) &&
             (identical(other.nextMarker, nextMarker) ||
                 other.nextMarker == nextMarker) &&
             (identical(other.previousMarker, previousMarker) ||
@@ -1349,11 +1569,13 @@ class _$KeyboardShortcutsImpl implements _KeyboardShortcuts {
     jumpForward,
     jumpBackward,
     toggleFullscreen,
+    panZoomedView,
     openCommandPalette,
     openFile,
     saveAnnotations,
     undo,
     redo,
+    addMarker,
     nextMarker,
     previousMarker,
     selectSelectionTool,
@@ -1402,11 +1624,13 @@ abstract class _KeyboardShortcuts implements KeyboardShortcuts {
     required final KeyboardShortcut jumpForward,
     required final KeyboardShortcut jumpBackward,
     final KeyboardShortcut toggleFullscreen,
+    final MouseShortcut panZoomedView,
     final KeyboardShortcut openCommandPalette,
     required final KeyboardShortcut openFile,
     required final KeyboardShortcut saveAnnotations,
     required final KeyboardShortcut undo,
     required final KeyboardShortcut redo,
+    final KeyboardShortcut addMarker,
     required final KeyboardShortcut nextMarker,
     required final KeyboardShortcut previousMarker,
     required final KeyboardShortcut selectSelectionTool,
@@ -1446,6 +1670,8 @@ abstract class _KeyboardShortcuts implements KeyboardShortcuts {
   @override
   KeyboardShortcut get toggleFullscreen;
   @override
+  MouseShortcut get panZoomedView;
+  @override
   KeyboardShortcut get openCommandPalette;
   @override
   KeyboardShortcut get openFile;
@@ -1455,6 +1681,8 @@ abstract class _KeyboardShortcuts implements KeyboardShortcuts {
   KeyboardShortcut get undo;
   @override
   KeyboardShortcut get redo;
+  @override
+  KeyboardShortcut get addMarker;
   @override
   KeyboardShortcut get nextMarker;
   @override

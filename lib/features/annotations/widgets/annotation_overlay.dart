@@ -129,6 +129,8 @@ class _AnnotationOverlayState extends ConsumerState<AnnotationOverlay> {
                     textDirection: Directionality.of(context),
                     currentTool: annotationState.currentTool,
                     eraserPosition: _currentCursorPosition,
+                    eraserRadius:
+                        annotationState.currentStrokeWidth / 3.0 * 0.02,
                     selectedStrokeId: annotationState.selectedStrokeId,
                     selectedStrokeIds: annotationState.selectedStrokeIds,
                     selectionBoxStartPoint:

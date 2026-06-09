@@ -1,7 +1,7 @@
 #define AppName "FrameSketch Player"
 #define AppVersion GetEnv("FRAMESKETCH_VERSION")
 #if AppVersion == ""
-  #define AppVersion "0.2.1"
+  #define AppVersion "1.0.3"
 #endif
 #define AppPublisher "Marquis McCann"
 #define AppExeName "framesketch_player.exe"
@@ -9,9 +9,6 @@
 #define AppSourceDir "..\..\build\windows\x64\runner\Release"
 #define AppOutputDir "..\..\release"
 #define SignCertSha1 GetEnv("FRAMESKETCH_SIGN_CERT_SHA1")
-#if SignCertSha1 == ""
-  #error FRAMESKETCH_SIGN_CERT_SHA1 must be set to build a signed installer.
-#endif
 #define SignTimestampUrl GetEnv("FRAMESKETCH_SIGN_TIMESTAMP_URL")
 #if SignTimestampUrl == ""
   #define SignTimestampUrl "http://timestamp.digicert.com"
@@ -36,8 +33,12 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#AppExeName}
+CloseApplications=yes
+RestartApplications=no
+#if SignCertSha1 != ""
 SignedUninstaller=yes
 SignTool=signtool sign /d $q{#AppName}$q /fd sha256 /td sha256 /tr $q{#SignTimestampUrl}$q /sha1 $q{#SignCertSha1}$q $f
+#endif
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -55,3 +56,26 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename:
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Flags: nowait; Check: ShouldRelaunchSilentUpdate
+
+[Code]
+function HasCommandLineParameter(Value: String): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+  begin
+    if CompareText(ParamStr(I), Value) = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+end;
+
+function ShouldRelaunchSilentUpdate(): Boolean;
+begin
+  Result := WizardSilent and
+    (not HasCommandLineParameter('/FRAMESELFUPDATELAUNCHER'));
+end;

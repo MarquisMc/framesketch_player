@@ -76,7 +76,8 @@ class _EditableFpsDisplay extends ConsumerStatefulWidget {
   const _EditableFpsDisplay();
 
   @override
-  ConsumerState<_EditableFpsDisplay> createState() => _EditableFpsDisplayState();
+  ConsumerState<_EditableFpsDisplay> createState() =>
+      _EditableFpsDisplayState();
 }
 
 class _EditableFpsDisplayState extends ConsumerState<_EditableFpsDisplay> {
@@ -218,11 +219,15 @@ class _EditableFpsDisplayState extends ConsumerState<_EditableFpsDisplay> {
 class PlaybackControls extends ConsumerWidget {
   final bool isFullscreen;
   final VoidCallback? onToggleFullscreen;
+  final bool fullscreenControlsLocked;
+  final ValueChanged<bool>? onFullscreenControlsLockedChanged;
 
   const PlaybackControls({
     super.key,
     this.isFullscreen = false,
     this.onToggleFullscreen,
+    this.fullscreenControlsLocked = false,
+    this.onFullscreenControlsLockedChanged,
   });
 
   @override
@@ -383,7 +388,8 @@ class PlaybackControls extends ConsumerWidget {
             const SizedBox(width: 24),
 
             // FPS display (click to edit) + reset button
-            if (hasVideo && playerState.metadata != null) const _EditableFpsDisplay(),
+            if (hasVideo && playerState.metadata != null)
+              const _EditableFpsDisplay(),
 
             const SizedBox(width: 12),
 
@@ -397,6 +403,27 @@ class PlaybackControls extends ConsumerWidget {
                   ? 'Exit Fullscreen (Esc)'
                   : 'Enter Fullscreen (F11)',
             ),
+            if (isFullscreen) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                icon: Icon(
+                  fullscreenControlsLocked
+                      ? Icons.lock
+                      : Icons.lock_open_outlined,
+                  color: fullscreenControlsLocked
+                      ? palette.accent
+                      : palette.textSecondary,
+                ),
+                onPressed: onFullscreenControlsLockedChanged == null
+                    ? null
+                    : () => onFullscreenControlsLockedChanged!(
+                        !fullscreenControlsLocked,
+                      ),
+                tooltip: fullscreenControlsLocked
+                    ? 'Unlock fullscreen controls'
+                    : 'Lock fullscreen controls',
+              ),
+            ],
           ],
         ),
       ),

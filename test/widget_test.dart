@@ -10,7 +10,11 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1440, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const ProviderScope(child: FrameSketchPlayerApp()));
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: FrameSketchPlayerApp(enableAutomaticUpdateChecks: false),
+      ),
+    );
     await tester.pump();
     // Allow the initial splash/startup animation to settle before assertions.
     await tester.pump(const Duration(milliseconds: 250));

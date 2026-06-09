@@ -77,6 +77,11 @@ class ExportOrchestrationPlanner {
       final activeKeyframeMs = timelineIndex?.activeKeyframeTimeMsAt(
         timestamp.inMilliseconds,
       );
+      final visibleStrokes = timelineIndex?.visibleStrokesAtPosition(
+            timestamp.inMilliseconds,
+            allStrokes: annotationData?.strokes ?? const [],
+          ) ??
+          const <Stroke>[];
       jobs.add(
         FrameRangeExportJob(
           frameNumber: frame,
@@ -86,9 +91,7 @@ class ExportOrchestrationPlanner {
             '${suggestedBaseName}_frame_${frame.toString().padLeft(6, '0')}.$frameExtension',
           ),
           activeKeyframeMs: activeKeyframeMs,
-          visibleStrokes: activeKeyframeMs == null
-              ? const []
-              : timelineIndex!.strokesAtKeyframe(activeKeyframeMs),
+          visibleStrokes: visibleStrokes,
         ),
       );
     }

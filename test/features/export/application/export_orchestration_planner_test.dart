@@ -69,6 +69,32 @@ void main() {
       expect(plan.jobs.every((job) => job.visibleStrokes.isEmpty), isTrue);
     });
 
+    test('includes whiteboard annotations over their visible ranges', () {
+      final keyframe = _stroke('keyframe', startTimeMs: 1000);
+      final whiteboard = _stroke(
+        'whiteboard',
+        startTimeMs: 1500,
+        endTimeMs: 2500,
+        timingMode: StrokeTimingMode.whiteboard,
+      );
+
+      final plan = planner.planFrameRange(
+        startFrame: 10,
+        endFrame: 30,
+        step: 10,
+        fps: 10,
+        outputDirectoryPath: path.join('tmp', 'frames'),
+        suggestedBaseName: 'clip',
+        frameExtension: 'png',
+        annotationData: _annotationData([keyframe, whiteboard]),
+      );
+
+      expect(plan.route, FrameRangeExportRoute.annotated);
+      expect(plan.jobs[0].visibleStrokes, [keyframe]);
+      expect(plan.jobs[1].visibleStrokes, [keyframe, whiteboard]);
+      expect(plan.jobs[2].visibleStrokes, [keyframe]);
+    });
+
     test('routes missing annotation data to unannotated export', () {
       final plan = planner.planFrameRange(
         startFrame: 42,
@@ -99,7 +125,12 @@ AnnotationData _annotationData(List<Stroke> strokes) {
   );
 }
 
-Stroke _stroke(String id, {required int startTimeMs}) {
+Stroke _stroke(
+  String id, {
+  required int startTimeMs,
+  int? endTimeMs,
+  StrokeTimingMode timingMode = StrokeTimingMode.keyframe,
+}) {
   return Stroke(
     id: id,
     tool: DrawingTool.pen,
@@ -107,6 +138,7 @@ Stroke _stroke(String id, {required int startTimeMs}) {
     strokeWidth: 2,
     points: const [StrokePoint(x: 0.1, y: 0.1), StrokePoint(x: 0.2, y: 0.2)],
     startTimeMs: startTimeMs,
-    endTimeMs: startTimeMs + 100,
+    endTimeMs: endTimeMs ?? startTimeMs + 100,
+    timingMode: timingMode,
   );
 }

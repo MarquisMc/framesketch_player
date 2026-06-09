@@ -33,6 +33,15 @@ enum DrawingTool {
   select,
 }
 
+/// How a stroke is placed on the video timeline.
+enum StrokeTimingMode {
+  /// Stroke belongs to a keyframe and remains visible until the next keyframe.
+  keyframe,
+
+  /// Stroke is visible across an explicit time range.
+  whiteboard,
+}
+
 /// A complete stroke (pen path or shape)
 @freezed
 class Stroke with _$Stroke {
@@ -45,6 +54,7 @@ class Stroke with _$Stroke {
     required List<StrokePoint> points,
     @Default(0) int startTimeMs,
     @Default(0) int endTimeMs,
+    @Default(StrokeTimingMode.keyframe) StrokeTimingMode timingMode,
     String? text,
     @Default(16.0) double fontSize,
     @Default(1.0) double scale,

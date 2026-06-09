@@ -218,6 +218,7 @@ mixin _$Stroke {
   List<StrokePoint> get points => throw _privateConstructorUsedError;
   int get startTimeMs => throw _privateConstructorUsedError;
   int get endTimeMs => throw _privateConstructorUsedError;
+  StrokeTimingMode get timingMode => throw _privateConstructorUsedError;
   String? get text => throw _privateConstructorUsedError;
   double get fontSize => throw _privateConstructorUsedError;
   double get scale => throw _privateConstructorUsedError;
@@ -244,6 +245,7 @@ abstract class $StrokeCopyWith<$Res> {
     List<StrokePoint> points,
     int startTimeMs,
     int endTimeMs,
+    StrokeTimingMode timingMode,
     String? text,
     double fontSize,
     double scale,
@@ -272,6 +274,7 @@ class _$StrokeCopyWithImpl<$Res, $Val extends Stroke>
     Object? points = null,
     Object? startTimeMs = null,
     Object? endTimeMs = null,
+    Object? timingMode = null,
     Object? text = freezed,
     Object? fontSize = null,
     Object? scale = null,
@@ -306,6 +309,10 @@ class _$StrokeCopyWithImpl<$Res, $Val extends Stroke>
                 ? _value.endTimeMs
                 : endTimeMs // ignore: cast_nullable_to_non_nullable
                       as int,
+            timingMode: null == timingMode
+                ? _value.timingMode
+                : timingMode // ignore: cast_nullable_to_non_nullable
+                      as StrokeTimingMode,
             text: freezed == text
                 ? _value.text
                 : text // ignore: cast_nullable_to_non_nullable
@@ -340,6 +347,7 @@ abstract class _$$StrokeImplCopyWith<$Res> implements $StrokeCopyWith<$Res> {
     List<StrokePoint> points,
     int startTimeMs,
     int endTimeMs,
+    StrokeTimingMode timingMode,
     String? text,
     double fontSize,
     double scale,
@@ -367,6 +375,7 @@ class __$$StrokeImplCopyWithImpl<$Res>
     Object? points = null,
     Object? startTimeMs = null,
     Object? endTimeMs = null,
+    Object? timingMode = null,
     Object? text = freezed,
     Object? fontSize = null,
     Object? scale = null,
@@ -401,6 +410,10 @@ class __$$StrokeImplCopyWithImpl<$Res>
             ? _value.endTimeMs
             : endTimeMs // ignore: cast_nullable_to_non_nullable
                   as int,
+        timingMode: null == timingMode
+            ? _value.timingMode
+            : timingMode // ignore: cast_nullable_to_non_nullable
+                  as StrokeTimingMode,
         text: freezed == text
             ? _value.text
             : text // ignore: cast_nullable_to_non_nullable
@@ -430,6 +443,7 @@ class _$StrokeImpl implements _Stroke {
     required final List<StrokePoint> points,
     this.startTimeMs = 0,
     this.endTimeMs = 0,
+    this.timingMode = StrokeTimingMode.keyframe,
     this.text,
     this.fontSize = 16.0,
     this.scale = 1.0,
@@ -462,6 +476,9 @@ class _$StrokeImpl implements _Stroke {
   @JsonKey()
   final int endTimeMs;
   @override
+  @JsonKey()
+  final StrokeTimingMode timingMode;
+  @override
   final String? text;
   @override
   @JsonKey()
@@ -472,7 +489,7 @@ class _$StrokeImpl implements _Stroke {
 
   @override
   String toString() {
-    return 'Stroke(id: $id, tool: $tool, color: $color, strokeWidth: $strokeWidth, points: $points, startTimeMs: $startTimeMs, endTimeMs: $endTimeMs, text: $text, fontSize: $fontSize, scale: $scale)';
+    return 'Stroke(id: $id, tool: $tool, color: $color, strokeWidth: $strokeWidth, points: $points, startTimeMs: $startTimeMs, endTimeMs: $endTimeMs, timingMode: $timingMode, text: $text, fontSize: $fontSize, scale: $scale)';
   }
 
   @override
@@ -490,6 +507,8 @@ class _$StrokeImpl implements _Stroke {
                 other.startTimeMs == startTimeMs) &&
             (identical(other.endTimeMs, endTimeMs) ||
                 other.endTimeMs == endTimeMs) &&
+            (identical(other.timingMode, timingMode) ||
+                other.timingMode == timingMode) &&
             (identical(other.text, text) || other.text == text) &&
             (identical(other.fontSize, fontSize) ||
                 other.fontSize == fontSize) &&
@@ -507,6 +526,7 @@ class _$StrokeImpl implements _Stroke {
     const DeepCollectionEquality().hash(_points),
     startTimeMs,
     endTimeMs,
+    timingMode,
     text,
     fontSize,
     scale,
@@ -536,6 +556,7 @@ abstract class _Stroke implements Stroke {
     required final List<StrokePoint> points,
     final int startTimeMs,
     final int endTimeMs,
+    final StrokeTimingMode timingMode,
     final String? text,
     final double fontSize,
     final double scale,
@@ -558,6 +579,8 @@ abstract class _Stroke implements Stroke {
   int get startTimeMs;
   @override
   int get endTimeMs;
+  @override
+  StrokeTimingMode get timingMode;
   @override
   String? get text;
   @override

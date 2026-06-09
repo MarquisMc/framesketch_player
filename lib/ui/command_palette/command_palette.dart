@@ -498,7 +498,7 @@ class _CommandPaletteState extends State<CommandPalette> {
       child: Row(
         children: [
           _footerHint(
-            isStep ? 'enter' : '↑ ↓',
+            isStep ? 'enter' : 'up/down',
             isStep ? 'confirm' : 'navigate',
             palette,
           ),

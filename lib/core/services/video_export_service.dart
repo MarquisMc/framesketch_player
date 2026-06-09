@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
+import '../../features/annotations/models/annotation_timeline_index.dart';
 import '../../features/annotations/models/stroke.dart';
 import '../models/annotation_data.dart';
 import 'annotation_overlay_renderer_service.dart';
@@ -787,46 +788,59 @@ class VideoExportService {
       return (frame * frameMs).round();
     }
 
-    final grouped = <int, List<Stroke>>{};
-    for (final stroke in annotationData.strokes) {
-      final keyframeMs = snap(stroke.startTimeMs);
-      grouped.putIfAbsent(keyframeMs, () => <Stroke>[]).add(stroke);
+    final timelineIndex = AnnotationTimelineIndex.build(
+      strokes: annotationData.strokes,
+      markers: annotationData.markers,
+      fps: fps,
+    );
+    final breakpoints = <int>{startMs, endMs};
+    for (final keyframeMs in timelineIndex.sortedKeyframeTimesMs) {
+      if (keyframeMs > startMs && keyframeMs < endMs) {
+        breakpoints.add(keyframeMs);
+      }
     }
 
-    if (grouped.isEmpty) return const [];
-
-    final keyframes = grouped.keys.toList()..sort();
-    final frames = <VideoOverlayFramePlan>[];
-    var cursorMs = startMs;
-
-    for (int i = 0; i < keyframes.length; i++) {
-      final keyframeMs = keyframes[i];
-      final nextKeyframeMs = i + 1 < keyframes.length
-          ? keyframes[i + 1]
-          : endMs;
-
-      final intervalStartMs = keyframeMs > startMs ? keyframeMs : startMs;
-      final intervalEndMs = nextKeyframeMs < endMs ? nextKeyframeMs : endMs;
-      if (intervalEndMs <= intervalStartMs) continue;
-
-      if (intervalStartMs > cursorMs) {
-        frames.add(
-          VideoOverlayFramePlan(
-            startMs: cursorMs,
-            endMs: intervalStartMs,
-            strokes: const [],
-          ),
-        );
+    for (final stroke in annotationData.strokes) {
+      if (stroke.timingMode != StrokeTimingMode.whiteboard) {
+        continue;
       }
+
+      final rangeStartMs = snap(stroke.startTimeMs);
+      final rangeEndMs = snap(stroke.endTimeMs);
+      if (rangeEndMs <= startMs || rangeStartMs >= endMs) {
+        continue;
+      }
+      if (rangeStartMs > startMs && rangeStartMs < endMs) {
+        breakpoints.add(rangeStartMs);
+      }
+      if (rangeEndMs > startMs && rangeEndMs < endMs) {
+        breakpoints.add(rangeEndMs);
+      }
+    }
+
+    if (breakpoints.length < 2) return const [];
+
+    final sortedBreakpoints = breakpoints.toList()..sort();
+    final frames = <VideoOverlayFramePlan>[];
+    for (int i = 0; i < sortedBreakpoints.length - 1; i++) {
+      final intervalStartMs = sortedBreakpoints[i];
+      final intervalEndMs = sortedBreakpoints[i + 1];
+      if (intervalEndMs <= intervalStartMs) continue;
 
       frames.add(
         VideoOverlayFramePlan(
           startMs: intervalStartMs,
           endMs: intervalEndMs,
-          strokes: List<Stroke>.unmodifiable(grouped[keyframeMs]!),
+          strokes: timelineIndex.visibleStrokesAtPosition(
+            intervalStartMs,
+            allStrokes: annotationData.strokes,
+          ),
         ),
       );
-      cursorMs = intervalEndMs;
+    }
+
+    if (frames.every((frame) => frame.strokes.isEmpty)) {
+      return const [];
     }
 
     return frames;

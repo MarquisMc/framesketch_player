@@ -4,6 +4,7 @@ import '../core/theme/app_palette.dart';
 import '../features/annotations/models/stroke.dart';
 import '../features/annotations/providers/annotation_provider.dart';
 import '../features/annotations/widgets/annotation_size_control.dart';
+import '../features/annotations/widgets/eraser_tool_icon.dart';
 
 /// Preset colors matching the annotation tools panel.
 const _presetColors = <Color>[
@@ -28,7 +29,7 @@ class HorizontalToolsStrip extends ConsumerWidget {
   static const _entries = <_ToolEntry>[
     _ToolEntry(DrawingTool.select, Icons.near_me, 'Select (V)'),
     _ToolEntry(DrawingTool.pen, Icons.edit, 'Pen (P)'),
-    _ToolEntry(DrawingTool.eraser, Icons.auto_fix_high, 'Eraser (E)'),
+    _ToolEntry(DrawingTool.eraser, null, 'Eraser (E)'),
     _ToolEntry(DrawingTool.rectangle, Icons.crop_square, 'Rectangle (R)'),
     _ToolEntry(DrawingTool.filledSquare, Icons.square, 'Filled Rectangle'),
     _ToolEntry(DrawingTool.circle, Icons.circle_outlined, 'Circle (Shift+O)'),
@@ -46,6 +47,9 @@ class HorizontalToolsStrip extends ConsumerWidget {
     );
     final currentColor = ref.watch(
       annotationProvider.select((s) => s.currentColor),
+    );
+    final keyframeMode = ref.watch(
+      annotationProvider.select((s) => s.keyframeCreationMode),
     );
     final activeSizingTool = ref.watch(activeAnnotationSizingToolProvider);
     final strokeWidth = ref.watch(activeAnnotationStrokeWidthProvider);
@@ -65,11 +69,29 @@ class HorizontalToolsStrip extends ConsumerWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          _KeyframeModeMenu(
+            mode: keyframeMode,
+            onChanged: notifier.setKeyframeCreationMode,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: SizedBox(
+              height: 28,
+              child: VerticalDivider(width: 1, color: palette.border),
+            ),
+          ),
           // Tool buttons
           for (var i = 0; i < _entries.length; i++) ...[
             if (i > 0) const SizedBox(width: 2),
             _StripButton(
               icon: _entries[i].icon,
+              customIcon: _entries[i].tool == DrawingTool.eraser
+                  ? EraserToolIcon(
+                      color: currentTool == DrawingTool.eraser
+                          ? palette.accentBright
+                          : palette.textSecondary,
+                    )
+                  : null,
               tooltip: _entries[i].tooltip,
               selected: currentTool == _entries[i].tool,
               onTap: () => notifier.setTool(_entries[i].tool),
@@ -182,19 +204,107 @@ class HorizontalToolsStrip extends ConsumerWidget {
 
 class _ToolEntry {
   final DrawingTool tool;
-  final IconData icon;
+  final IconData? icon;
   final String tooltip;
   const _ToolEntry(this.tool, this.icon, this.tooltip);
 }
 
+class _KeyframeModeMenu extends StatelessWidget {
+  final KeyframeCreationMode mode;
+  final ValueChanged<KeyframeCreationMode> onChanged;
+
+  const _KeyframeModeMenu({required this.mode, required this.onChanged});
+
+  static const _modes = <KeyframeCreationMode>[
+    KeyframeCreationMode.automatic,
+    KeyframeCreationMode.manual,
+    KeyframeCreationMode.whiteboard,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
+
+    return PopupMenuButton<KeyframeCreationMode>(
+      tooltip: 'Keyframe Mode (M)',
+      initialValue: mode,
+      onSelected: onChanged,
+      color: palette.panelElevated,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      itemBuilder: (context) => _modes
+          .map((entry) {
+            final selected = entry == mode;
+            return PopupMenuItem<KeyframeCreationMode>(
+              value: entry,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 18,
+                    child: selected
+                        ? Icon(
+                            Icons.check,
+                            size: 16,
+                            color: palette.accentBright,
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _keyframeModeLabel(entry),
+                    style: TextStyle(color: palette.textPrimary, fontSize: 13),
+                  ),
+                ],
+              ),
+            );
+          })
+          .toList(growable: false),
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: palette.accentSoft,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: palette.accent, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _keyframeModeLabel(mode),
+              style: TextStyle(
+                color: palette.accentBright,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.expand_more, size: 16, color: palette.accentBright),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _keyframeModeLabel(KeyframeCreationMode mode) {
+    return switch (mode) {
+      KeyframeCreationMode.automatic => 'Automatic',
+      KeyframeCreationMode.manual => 'Manual',
+      KeyframeCreationMode.whiteboard => 'Whiteboard',
+    };
+  }
+}
+
 class _StripButton extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? customIcon;
   final String tooltip;
   final bool selected;
   final VoidCallback onTap;
 
   const _StripButton({
-    required this.icon,
+    this.icon,
+    this.customIcon,
     required this.tooltip,
     required this.selected,
     required this.onTap,
@@ -220,11 +330,13 @@ class _StripButton extends StatelessWidget {
                 ? Border.all(color: palette.accent, width: 1)
                 : null,
           ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: selected ? palette.accentBright : palette.textSecondary,
-          ),
+          child:
+              customIcon ??
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? palette.accentBright : palette.textSecondary,
+              ),
         ),
       ),
     );

@@ -1,13 +1,18 @@
 import 'dart:async';
 import 'dart:io' show File;
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'core/models/project_library_entry.dart';
+import 'core/services/app_update_installer_service.dart';
+import 'core/services/github_release_update_service.dart';
 import 'features/player/providers/player_provider.dart';
 import 'features/annotations/providers/annotation_provider.dart';
 import 'features/annotations/models/stroke.dart';
+import 'features/annotations/widgets/frame_marker_panel.dart';
 import 'core/models/annotation_data.dart';
 import 'core/models/keyboard_shortcuts.dart';
 import 'features/projects/providers/project_library_provider.dart';
@@ -16,6 +21,7 @@ import 'features/projects/widgets/project_browser.dart';
 import 'features/settings/providers/auto_save_provider.dart';
 import 'features/settings/providers/keyboard_shortcuts_provider.dart';
 import 'features/settings/widgets/settings_actions.dart';
+import 'features/settings/widgets/update_download_dialog.dart';
 import 'features/export/widgets/export_actions.dart';
 import 'features/loop/providers/loop_provider.dart';
 import 'features/crop/providers/crop_provider.dart';
@@ -29,8 +35,13 @@ import 'ui/command_palette/editor_command_factory.dart';
 /// Main application widget
 class FrameSketchPlayerApp extends ConsumerStatefulWidget {
   final String? initialVideoPath;
+  final bool enableAutomaticUpdateChecks;
 
-  const FrameSketchPlayerApp({super.key, this.initialVideoPath});
+  const FrameSketchPlayerApp({
+    super.key,
+    this.initialVideoPath,
+    this.enableAutomaticUpdateChecks = true,
+  });
 
   @override
   ConsumerState<FrameSketchPlayerApp> createState() =>
@@ -43,6 +54,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
   late final ExportActions _exportActions;
+  late final GitHubReleaseUpdateService _updateService;
+  late final AppUpdateInstallerService _updateInstallerService;
   late final ProviderSubscription<(bool, DateTime?)> _autoSaveSubscription;
   late final ProviderSubscription<({int strokeCount, int undoCount})>
   _historyFeedbackSubscription;
@@ -64,6 +77,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   bool _showExportHourglassBottom = false;
   bool _showAutoSaveIndicator = false;
   bool _isHistoryFeedbackVisible = false;
+  bool _isDraggingVideoFile = false;
+  bool _isCheckingForUpdates = false;
+  bool _isUpdateAvailable = false;
   String? _historyFeedbackLabel;
   IconData? _historyFeedbackIcon;
   int _loadingOverlayDepth = 0;
@@ -79,6 +95,8 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   @override
   void initState() {
     super.initState();
+    _updateService = GitHubReleaseUpdateService();
+    _updateInstallerService = AppUpdateInstallerService();
     _exportActions = ExportActions(
       ref: ref,
       navigatorKey: _navigatorKey,
@@ -156,6 +174,9 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       // Auto-load video if provided via command-line
       if (widget.initialVideoPath != null) {
         _loadInitialVideo(widget.initialVideoPath!);
+      }
+      if (widget.enableAutomaticUpdateChecks) {
+        unawaited(_checkForUpdates());
       }
     });
   }
@@ -274,6 +295,39 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         );
   }
 
+  Future<void> _renameCurrentVideoFromToolbar(String newTitle) async {
+    final trimmedTitle = newTitle.trim();
+    if (trimmedTitle.isEmpty) return;
+
+    ref.read(playerProvider.notifier).renameCurrentDisplayLabel(trimmedTitle);
+
+    final annotationData = ref.read(annotationProvider).annotationData;
+    if (annotationData == null) return;
+
+    final projects = ref.read(projectLibraryProvider).projects;
+    ProjectLibraryEntry? currentProject;
+    for (final project in projects) {
+      if (project.id == annotationData.videoId) {
+        currentProject = project;
+        break;
+      }
+    }
+
+    if (currentProject == null || currentProject.title == trimmedTitle) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(projectLibraryProvider.notifier)
+          .renameProject(project: currentProject, newTitle: trimmedTitle);
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Error renaming video: $e');
+      }
+    }
+  }
+
   SourceOpenActions get _sourceOpenActions => SourceOpenActions(
     ref: ref,
     navigatorKey: _navigatorKey,
@@ -318,16 +372,35 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     return _projectLibraryActions.openProjectsDialog();
   }
 
-  Future<void> _renameProjectFromBrowser(ProjectLibraryEntry project) {
-    return _projectLibraryActions.renameProjectFromBrowser(project);
+  Future<void> _renameProjectFromBrowser(ProjectLibraryEntry project) async {
+    await _projectLibraryActions.renameProjectFromBrowser(project);
+    _syncCurrentPlayerTitleFromProject(project.id);
   }
 
   Future<void> _deleteProjectFromBrowser(ProjectLibraryEntry project) {
     return _projectLibraryActions.deleteProjectFromBrowser(project);
   }
 
-  Future<void> _revertProjectNameFromBrowser(ProjectLibraryEntry project) {
-    return _projectLibraryActions.revertProjectNameFromBrowser(project);
+  Future<void> _revertProjectNameFromBrowser(
+    ProjectLibraryEntry project,
+  ) async {
+    await _projectLibraryActions.revertProjectNameFromBrowser(project);
+    _syncCurrentPlayerTitleFromProject(project.id);
+  }
+
+  void _syncCurrentPlayerTitleFromProject(String projectId) {
+    final annotationData = ref.read(annotationProvider).annotationData;
+    if (annotationData?.videoId != projectId) return;
+
+    final projects = ref.read(projectLibraryProvider).projects;
+    for (final project in projects) {
+      if (project.id == projectId) {
+        ref
+            .read(playerProvider.notifier)
+            .renameCurrentDisplayLabel(project.title);
+        return;
+      }
+    }
   }
 
   Future<void> _pinProjectFromBrowser(ProjectLibraryEntry project) {
@@ -387,81 +460,110 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         onKeyEvent: (node, event) => _handleKeyEvent(event),
         child: Builder(
           builder: (context) => Scaffold(
-            body: Stack(
-              children: [
-                EditorScaffold(
-                  isFullscreen: _isFullscreen,
-                  showInspector: _showInspector,
-                  showToolsPanel: _showToolsPanel,
-                  showToolsStrip: _showToolsStrip,
-                  projectBrowser: ProjectBrowser(
-                    projects: projectLibraryState.projects,
-                    isLoading: projectLibraryState.isLoading,
-                    onOpenProject: (project) {
-                      unawaited(_openProject(project));
-                    },
-                    onRenameProject: _renameProjectFromBrowser,
-                    onRevertProjectName: _revertProjectNameFromBrowser,
-                    onDeleteProject: _deleteProjectFromBrowser,
-                    onPinProject: _pinProjectFromBrowser,
-                    onDuplicateProject: _duplicateProjectFromBrowser,
+            body: DropTarget(
+              onDragEntered: (_) {
+                if (!_isDraggingVideoFile) {
+                  setState(() => _isDraggingVideoFile = true);
+                }
+              },
+              onDragExited: (_) {
+                if (_isDraggingVideoFile) {
+                  setState(() => _isDraggingVideoFile = false);
+                }
+              },
+              onDragDone: (details) {
+                if (_isDraggingVideoFile) {
+                  setState(() => _isDraggingVideoFile = false);
+                }
+                unawaited(
+                  _openDroppedFiles(details.files.map((file) => file.path)),
+                );
+              },
+              child: Stack(
+                children: [
+                  EditorScaffold(
+                    isFullscreen: _isFullscreen,
+                    showInspector: _showInspector,
+                    showToolsPanel: _showToolsPanel,
+                    showToolsStrip: _showToolsStrip,
+                    projectBrowser: ProjectBrowser(
+                      projects: projectLibraryState.projects,
+                      isLoading: projectLibraryState.isLoading,
+                      onOpenProject: (project) {
+                        unawaited(_openProject(project));
+                      },
+                      onRenameProject: _renameProjectFromBrowser,
+                      onRevertProjectName: _revertProjectNameFromBrowser,
+                      onDeleteProject: _deleteProjectFromBrowser,
+                      onPinProject: _pinProjectFromBrowser,
+                      onDuplicateProject: _duplicateProjectFromBrowser,
+                      onOpenFile: _openFile,
+                      onOpenYouTube: _openYouTubeUrl,
+                      onRefresh: _loadProjects,
+                    ),
+                    onToggleFullscreen: _toggleFullscreenMode,
+                    onToggleInspector: _toggleInspectorVisibility,
+                    onToggleToolsPanel: _toggleToolsPanelVisibility,
+                    onToggleToolsStrip: _toggleToolsStrip,
                     onOpenFile: _openFile,
                     onOpenYouTube: _openYouTubeUrl,
-                    onRefresh: _loadProjects,
+                    onOpenAnnotation: _openAnnotationJson,
+                    onOpenProjects: _openProjectsDialog,
+                    onSaveAnnotations: _saveAnnotations,
+                    onSaveAnnotationsAs: _saveAnnotationsAs,
+                    onOpenSettings: () => _openSettings(context),
+                    onOpenThemeManager: () => _openThemeManager(context),
+                    onCheckForUpdates: () =>
+                        _checkForUpdates(notifyWhenCurrent: true),
+                    isUpdateAvailable: _isUpdateAvailable,
+                    isCheckingForUpdates: _isCheckingForUpdates,
+                    onRenameCurrentVideo: _renameCurrentVideoFromToolbar,
+                    onOpenCommandPalette: _openCommandPalette,
+                    commandPaletteShortcutLabel: formatShortcutLabel(
+                      shortcuts.openCommandPalette,
+                    ),
+                    onToggleCropExportPanel: _toggleCropExportPanel,
+                    isCropExportPanelOpen: _showCropExportPanel,
+                    onExportFrames: _exportFramesFromPanel,
+                    onMenuAction: _handleMenuAction,
                   ),
-                  onToggleFullscreen: _toggleFullscreenMode,
-                  onToggleInspector: _toggleInspectorVisibility,
-                  onToggleToolsPanel: _toggleToolsPanelVisibility,
-                  onToggleToolsStrip: _toggleToolsStrip,
-                  onOpenFile: _openFile,
-                  onOpenYouTube: _openYouTubeUrl,
-                  onOpenAnnotation: _openAnnotationJson,
-                  onOpenProjects: _openProjectsDialog,
-                  onSaveAnnotations: _saveAnnotations,
-                  onSaveAnnotationsAs: _saveAnnotationsAs,
-                  onOpenSettings: () => _openSettings(context),
-                  onOpenThemeManager: () => _openThemeManager(context),
-                  onOpenCommandPalette: _openCommandPalette,
-                  commandPaletteShortcutLabel: formatShortcutLabel(
-                    shortcuts.openCommandPalette,
+                  if (_loadingOverlayDepth > 0)
+                    _buildGlobalLoadingOverlay(context),
+                  _HistoryFeedbackOverlay(
+                    label: _historyFeedbackLabel,
+                    icon: _historyFeedbackIcon,
+                    isVisible: _isHistoryFeedbackVisible,
+                    palette: _activePalette,
                   ),
-                  onToggleCropExportPanel: _toggleCropExportPanel,
-                  isCropExportPanelOpen: _showCropExportPanel,
-                  onExportFrames: _exportFramesFromPanel,
-                  onMenuAction: _handleMenuAction,
-                ),
-                if (_loadingOverlayDepth > 0)
-                  _buildGlobalLoadingOverlay(context),
-                _HistoryFeedbackOverlay(
-                  label: _historyFeedbackLabel,
-                  icon: _historyFeedbackIcon,
-                  isVisible: _isHistoryFeedbackVisible,
-                  palette: _activePalette,
-                ),
-                _AutoSaveIndicator(
-                  isVisible: _showAutoSaveIndicator,
-                  palette: _activePalette,
-                ),
-                if (_showCommandPalette)
-                  CommandPalette(
-                    commands: EditorCommandFactory(
-                      ref: ref,
-                      shortcuts: _shortcuts,
-                      markerColor: _activePalette.accent,
-                      isFullscreen: _isFullscreen,
-                      onOpenFile: _openFile,
-                      onOpenRecent: _openRecentFromPalette,
-                      onSaveAnnotations: _saveAnnotations,
-                      onExportVideoFromTopBar: _exportVideoFromTopBar,
-                      onOpenThemeManager: () {
-                        final ctx = _navigatorKey.currentContext;
-                        if (ctx != null) _openThemeManager(ctx);
-                      },
-                      onToggleFullscreen: _toggleFullscreenMode,
-                    ).build(),
-                    onClose: _closeCommandPalette,
+                  _AutoSaveIndicator(
+                    isVisible: _showAutoSaveIndicator,
+                    palette: _activePalette,
                   ),
-              ],
+                  if (_isDraggingVideoFile)
+                    _VideoDropOverlay(palette: _activePalette),
+                  if (_showCommandPalette)
+                    CommandPalette(
+                      commands: EditorCommandFactory(
+                        ref: ref,
+                        shortcuts: _shortcuts,
+                        isFullscreen: _isFullscreen,
+                        onOpenFile: _openFile,
+                        onOpenRecent: _openRecentFromPalette,
+                        onSaveAnnotations: _saveAnnotations,
+                        onAddMarker: () async {
+                          _openMarkerEditorAtCurrentFrame();
+                        },
+                        onExportVideoFromTopBar: _exportVideoFromTopBar,
+                        onOpenThemeManager: () {
+                          final ctx = _navigatorKey.currentContext;
+                          if (ctx != null) _openThemeManager(ctx);
+                        },
+                        onToggleFullscreen: _toggleFullscreenMode,
+                      ).build(),
+                      onClose: _closeCommandPalette,
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -764,6 +866,22 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
         }
       }
 
+      if (matchesShortcut(_shortcuts.addMarker)) {
+        return _openMarkerEditorAtCurrentFrame()
+            ? KeyEventResult.handled
+            : KeyEventResult.ignored;
+      }
+
+      // Duplicate selected annotation (no repeat)
+      if (event.logicalKey == LogicalKeyboardKey.keyD &&
+          isCtrl &&
+          !isShift &&
+          !isAlt &&
+          annotationNotifier.canDuplicateSelectedStroke) {
+        annotationNotifier.duplicateSelectedStroke();
+        return KeyEventResult.handled;
+      }
+
       if (matchesShortcut(_shortcuts.nextMarker)) {
         unawaited(annotationNotifier.seekToNextMarker());
         return KeyEventResult.handled;
@@ -837,9 +955,11 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       // Toggle keyframe creation mode (no repeat)
       if (matchesShortcut(_shortcuts.toggleKeyframeMode)) {
         annotationNotifier.setKeyframeCreationMode(
-          annotationState.keyframeCreationMode == KeyframeCreationMode.manual
-              ? KeyframeCreationMode.automatic
-              : KeyframeCreationMode.manual,
+          switch (annotationState.keyframeCreationMode) {
+            KeyframeCreationMode.automatic => KeyframeCreationMode.manual,
+            KeyframeCreationMode.manual => KeyframeCreationMode.whiteboard,
+            KeyframeCreationMode.whiteboard => KeyframeCreationMode.automatic,
+          },
         );
         return KeyEventResult.handled;
       }
@@ -894,7 +1014,7 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
       }
       if (_showCropExportPanel) {
         setState(() => _showCropExportPanel = false);
-        ref.read(cropProvider.notifier).exitCropMode();
+        ref.read(cropProvider.notifier).exitCropExportMode();
         return KeyEventResult.handled;
       }
     }
@@ -925,6 +1045,28 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     setState(() => _showCommandPalette = true);
   }
 
+  bool _openMarkerEditorAtCurrentFrame() {
+    final playerState = ref.read(playerProvider);
+    final annotationState = ref.read(annotationProvider);
+    if (annotationState.annotationData == null ||
+        playerState.metadata == null ||
+        playerState.player == null) {
+      return false;
+    }
+    final context = _navigatorKey.currentContext;
+    if (context == null) {
+      return false;
+    }
+    unawaited(
+      openMarkerEditorDialog(
+        context: context,
+        ref: ref,
+        defaultColor: _activePalette.annotationSwatches.first,
+      ),
+    );
+    return true;
+  }
+
   void _closeCommandPalette() {
     if (!_showCommandPalette) return;
     setState(() => _showCommandPalette = false);
@@ -932,9 +1074,13 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
   }
 
   void _toggleCropExportPanel() {
-    setState(() => _showCropExportPanel = !_showCropExportPanel);
-    if (!_showCropExportPanel) {
-      ref.read(cropProvider.notifier).exitCropMode();
+    final willOpen = !_showCropExportPanel;
+    setState(() => _showCropExportPanel = willOpen);
+    final cropNotifier = ref.read(cropProvider.notifier);
+    if (willOpen) {
+      cropNotifier.enterCropExportMode();
+    } else {
+      cropNotifier.exitCropExportMode();
     }
     _focusNode.requestFocus();
   }
@@ -980,6 +1126,10 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
 
   Future<void> _loadInitialVideo(String filePath) {
     return _sourceOpenActions.loadInitialVideo(filePath);
+  }
+
+  Future<void> _openDroppedFiles(Iterable<String> filePaths) {
+    return _sourceOpenActions.openDroppedFiles(filePaths);
   }
 
   Future<void> _openFile() {
@@ -1164,6 +1314,123 @@ class _FrameSketchPlayerAppState extends ConsumerState<FrameSketchPlayerApp> {
     _settingsActions.openThemeManager(context);
   }
 
+  Future<void> _checkForUpdates({bool notifyWhenCurrent = false}) async {
+    if (_isCheckingForUpdates) return;
+    setState(() => _isCheckingForUpdates = true);
+
+    try {
+      final result = await _updateService.checkForUpdate();
+      if (!mounted) return;
+
+      if (_isUpdateAvailable != result.hasUpdate) {
+        setState(() => _isUpdateAvailable = result.hasUpdate);
+      }
+
+      if (result.hasUpdate) {
+        await _showUpdateAvailableDialog(result);
+      } else if (notifyWhenCurrent) {
+        final message = result.latestRelease == null
+            ? 'No published GitHub releases are available yet.\n\n'
+                  'Installed version: ${result.installedVersion}'
+            : 'You are running the latest release.\n\n'
+                  'Installed version: ${result.installedVersion}';
+        _showInfoDialog('No Update Available', message);
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Update check failed: $e');
+      debugPrint('$stackTrace');
+      if (notifyWhenCurrent && mounted) {
+        _showErrorDialog('Unable to check for updates right now.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCheckingForUpdates = false);
+      } else {
+        _isCheckingForUpdates = false;
+      }
+    }
+  }
+
+  Future<void> _showUpdateAvailableDialog(UpdateCheckResult result) async {
+    final context = _navigatorKey.currentContext;
+    final release = result.latestRelease;
+    if (context == null || release == null || !mounted) return;
+    final installerAsset = _updateInstallerService.supportsAutomaticInstallation
+        ? release.windowsInstallerAsset
+        : null;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Update Available'),
+        content: Text(
+          'FrameSketch ${release.displayVersion} is available.\n\n'
+          'Installed version: ${result.installedVersion}\n\n'
+          '${installerAsset == null ? 'Open the release page to download it.' : 'Save your work before installing. The app will restart during the update.'}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _focusNode.requestFocus();
+            },
+            child: const Text('Later'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              unawaited(_openReleasePage(release.pageUrl));
+            },
+            child: const Text('Open Release Page'),
+          ),
+          if (installerAsset != null)
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                unawaited(_downloadAndInstallUpdate(installerAsset));
+              },
+              child: const Text('Download and Install Update'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadAndInstallUpdate(GitHubReleaseAsset asset) async {
+    final context = _navigatorKey.currentContext;
+    if (context == null || !mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => UpdateDownloadDialog(
+        asset: asset,
+        installerService: _updateInstallerService,
+      ),
+    );
+    _focusNode.requestFocus();
+  }
+
+  Future<void> _openReleasePage(Uri pageUrl) async {
+    try {
+      final opened = await launchUrl(
+        pageUrl,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened && mounted) {
+        _showErrorDialog('Unable to open the GitHub release page.');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Opening release page failed: $e');
+      debugPrint('$stackTrace');
+      if (mounted) {
+        _showErrorDialog('Unable to open the GitHub release page.');
+      }
+    }
+    _focusNode.requestFocus();
+  }
+
   Future<void> _handleMenuAction(String action, BuildContext context) {
     return _settingsActions.handleMenuAction(action);
   }
@@ -1281,6 +1548,68 @@ class _HistoryFeedbackOverlay extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VideoDropOverlay extends StatelessWidget {
+  final AppPalette palette;
+
+  const _VideoDropOverlay({required this.palette});
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: palette.background.withValues(alpha: 0.78),
+            border: Border.all(color: palette.accentBright, width: 3),
+          ),
+          child: Center(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: palette.panelElevated.withValues(alpha: 0.98),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: palette.accentBright),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.file_download_outlined,
+                      size: 44,
+                      color: palette.accentBright,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Drop video to open',
+                      style: TextStyle(
+                        color: palette.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'MP4, MOV, MKV, AVI, WebM, WMV and more',
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

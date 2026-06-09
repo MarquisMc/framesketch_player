@@ -5,19 +5,157 @@ import 'package:uuid/uuid.dart';
 import '../models/annotation_timeline_index.dart';
 import '../models/frame_marker.dart';
 import '../models/stroke.dart';
-import '../controllers/annotation_geometry.dart' as geometry;
 import '../../../core/models/annotation_data.dart';
 import '../../../core/services/annotation_storage_service.dart';
 import '../../../core/utils/coordinate_transformer.dart';
+import '../../loop/providers/loop_provider.dart';
 import '../../player/providers/player_provider.dart';
 import '../widgets/annotation_hit_testing.dart';
-import 'annotation_state.dart';
 
-export 'annotation_selectors.dart';
-export 'annotation_state.dart';
+enum KeyframeCreationMode { automatic, manual, whiteboard }
 
 const double _textReferenceVideoHeight = 720.0;
 const double _fallbackTextReferenceAspectRatio = 16.0 / 9.0;
+
+/// Annotation state
+class AnnotationState {
+  final AnnotationData? annotationData;
+  final List<Stroke> undoStack;
+  final List<Stroke> redoStack;
+  final DrawingTool currentTool;
+  final Color currentColor;
+  final double currentStrokeWidth;
+  final Stroke? currentStroke;
+  final bool isDrawing;
+  final bool hasUnsavedChanges;
+  final String? selectedStrokeId;
+  final List<String> selectedStrokeIds;
+  final StrokePoint? dragStartPoint;
+  final StrokePoint? selectionBoxStartPoint;
+  final StrokePoint? selectionBoxEndPoint;
+  final bool isBoxSelecting;
+  final double currentFontSize;
+  final String? pendingTextStrokeId;
+  final bool isScaling;
+  final ResizeHandle? scalingCorner;
+  final KeyframeCreationMode keyframeCreationMode;
+  final AnnotationTimelineIndex timelineIndex;
+
+  const AnnotationState({
+    this.annotationData,
+    this.undoStack = const [],
+    this.redoStack = const [],
+    this.currentTool = DrawingTool.pen,
+    this.currentColor = const Color(0xFF58D3C4),
+    this.currentStrokeWidth = 3.0,
+    this.currentStroke,
+    this.isDrawing = false,
+    this.hasUnsavedChanges = false,
+    this.selectedStrokeId,
+    this.selectedStrokeIds = const [],
+    this.dragStartPoint,
+    this.selectionBoxStartPoint,
+    this.selectionBoxEndPoint,
+    this.isBoxSelecting = false,
+    this.currentFontSize = 32.0,
+    this.pendingTextStrokeId,
+    this.isScaling = false,
+    this.scalingCorner,
+    this.keyframeCreationMode = KeyframeCreationMode.automatic,
+    this.timelineIndex = const AnnotationTimelineIndex(
+      fps: 30.0,
+      sortedKeyframeTimesMs: [],
+      strokesByKeyframeTimeMs: {},
+      sortedMarkers: [],
+      sortedMarkerFrameTimesMs: [],
+      markersByFrameTimeMs: {},
+    ),
+  });
+
+  AnnotationState copyWith({
+    AnnotationData? annotationData,
+    List<Stroke>? undoStack,
+    List<Stroke>? redoStack,
+    DrawingTool? currentTool,
+    Color? currentColor,
+    double? currentStrokeWidth,
+    Stroke? currentStroke,
+    bool? isDrawing,
+    bool? hasUnsavedChanges,
+    String? selectedStrokeId,
+    List<String>? selectedStrokeIds,
+    StrokePoint? dragStartPoint,
+    StrokePoint? selectionBoxStartPoint,
+    StrokePoint? selectionBoxEndPoint,
+    bool? isBoxSelecting,
+    bool clearCurrentStroke = false,
+    bool clearSelectedStroke = false,
+    bool clearDragStartPoint = false,
+    bool clearSelectionBox = false,
+    double? currentFontSize,
+    String? pendingTextStrokeId,
+    bool clearPendingTextStrokeId = false,
+    bool? isScaling,
+    ResizeHandle? scalingCorner,
+    bool clearScalingCorner = false,
+    KeyframeCreationMode? keyframeCreationMode,
+  }) {
+    final nextAnnotationData = annotationData ?? this.annotationData;
+    return AnnotationState(
+      annotationData: nextAnnotationData,
+      undoStack: undoStack ?? this.undoStack,
+      redoStack: redoStack ?? this.redoStack,
+      currentTool: currentTool ?? this.currentTool,
+      currentColor: currentColor ?? this.currentColor,
+      currentStrokeWidth: currentStrokeWidth ?? this.currentStrokeWidth,
+      isDrawing: isDrawing ?? this.isDrawing,
+      hasUnsavedChanges: hasUnsavedChanges ?? this.hasUnsavedChanges,
+      selectedStrokeId: clearSelectedStroke
+          ? null
+          : (selectedStrokeId ?? this.selectedStrokeId),
+      selectedStrokeIds: clearSelectedStroke
+          ? const []
+          : (selectedStrokeIds ?? this.selectedStrokeIds),
+      dragStartPoint: clearDragStartPoint
+          ? null
+          : (dragStartPoint ?? this.dragStartPoint),
+      selectionBoxStartPoint: clearSelectionBox
+          ? null
+          : (selectionBoxStartPoint ?? this.selectionBoxStartPoint),
+      selectionBoxEndPoint: clearSelectionBox
+          ? null
+          : (selectionBoxEndPoint ?? this.selectionBoxEndPoint),
+      isBoxSelecting: isBoxSelecting ?? this.isBoxSelecting,
+      currentStroke: clearCurrentStroke
+          ? null
+          : (currentStroke ?? this.currentStroke),
+      currentFontSize: currentFontSize ?? this.currentFontSize,
+      pendingTextStrokeId: clearPendingTextStrokeId
+          ? null
+          : (pendingTextStrokeId ?? this.pendingTextStrokeId),
+      isScaling: isScaling ?? this.isScaling,
+      scalingCorner: clearScalingCorner
+          ? null
+          : (scalingCorner ?? this.scalingCorner),
+      keyframeCreationMode: keyframeCreationMode ?? this.keyframeCreationMode,
+      timelineIndex: annotationData == null
+          ? timelineIndex
+          : AnnotationTimelineIndex.build(
+              strokes: nextAnnotationData?.strokes ?? const [],
+              markers: nextAnnotationData?.markers ?? const [],
+              fps: nextAnnotationData?.fps ?? 30.0,
+            ),
+    );
+  }
+
+  List<Stroke> get allStrokes {
+    return annotationData?.strokes ?? [];
+  }
+
+  List<FrameMarker> get allMarkers {
+    return annotationData?.markers ?? [];
+  }
+}
 
 /// Annotation notifier
 class AnnotationNotifier extends StateNotifier<AnnotationState> {
@@ -63,6 +201,19 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   int _snapToFrameTimeMs(int positionMs, double fps) {
     return AnnotationTimelineIndex.snapToFrameTimeMs(positionMs, fps);
+  }
+
+  StrokePoint _squareConstrainedPoint(StrokePoint start, StrokePoint point) {
+    final dx = point.x - start.x;
+    final dy = point.y - start.y;
+    final side = dx.abs() < dy.abs() ? dx.abs() : dy.abs();
+    final signedDx = dx < 0 ? -side : side;
+    final signedDy = dy < 0 ? -side : side;
+    return StrokePoint(
+      x: start.x + signedDx,
+      y: start.y + signedDy,
+      timestampMs: point.timestampMs,
+    );
   }
 
   Set<String> _selectedStrokeIdSet() {
@@ -220,6 +371,108 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     return _withTextBounds(stroke, Rect.fromLTRB(left, top, right, bottom));
   }
 
+  Rect? _resizeRectFromHandle(
+    Rect rect,
+    ResizeHandle handle,
+    StrokePoint currentPoint, {
+    double minWidth = 0.005,
+    double minHeight = 0.005,
+  }) {
+    var left = rect.left;
+    var right = rect.right;
+    var top = rect.top;
+    var bottom = rect.bottom;
+
+    final adjustLeft =
+        handle == ResizeHandle.left ||
+        handle == ResizeHandle.topLeft ||
+        handle == ResizeHandle.bottomLeft;
+    final adjustRight =
+        handle == ResizeHandle.right ||
+        handle == ResizeHandle.topRight ||
+        handle == ResizeHandle.bottomRight;
+    final adjustTop =
+        handle == ResizeHandle.top ||
+        handle == ResizeHandle.topLeft ||
+        handle == ResizeHandle.topRight;
+    final adjustBottom =
+        handle == ResizeHandle.bottom ||
+        handle == ResizeHandle.bottomLeft ||
+        handle == ResizeHandle.bottomRight;
+
+    if (adjustLeft) {
+      left = currentPoint.x.clamp(0.0, right - minWidth).toDouble();
+    }
+    if (adjustRight) {
+      right = currentPoint.x.clamp(left + minWidth, 1.0).toDouble();
+    }
+    if (adjustTop) {
+      top = currentPoint.y.clamp(0.0, bottom - minHeight).toDouble();
+    }
+    if (adjustBottom) {
+      bottom = currentPoint.y.clamp(top + minHeight, 1.0).toDouble();
+    }
+
+    if (right - left < minWidth) {
+      return null;
+    }
+    if (bottom - top < minHeight) {
+      return null;
+    }
+
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  Stroke _resizeStrokeToBounds(
+    Stroke stroke, {
+    required Rect originalBounds,
+    required Rect newBounds,
+  }) {
+    if (stroke.tool == DrawingTool.text) {
+      return _withTextBounds(stroke, newBounds);
+    }
+
+    const epsilon = 0.000001;
+    final originalWidth = originalBounds.width.abs();
+    final originalHeight = originalBounds.height.abs();
+    final centerX = originalBounds.center.dx;
+    final centerY = originalBounds.center.dy;
+    final pointCount = stroke.points.length;
+
+    final resizedPoints = <StrokePoint>[];
+    for (var i = 0; i < pointCount; i++) {
+      final point = stroke.points[i];
+
+      final relativeX = originalWidth < epsilon
+          ? pointCount <= 1
+                ? 0.5
+                : i / (pointCount - 1)
+          : (point.x - originalBounds.left) / originalWidth;
+      final relativeY = originalHeight < epsilon
+          ? pointCount <= 1
+                ? 0.5
+                : i / (pointCount - 1)
+          : (point.y - originalBounds.top) / originalHeight;
+
+      final fallbackX = point.x <= centerX ? 0.0 : 1.0;
+      final fallbackY = point.y <= centerY ? 0.0 : 1.0;
+      final normalizedX = (originalWidth < epsilon ? fallbackX : relativeX)
+          .clamp(0.0, 1.0);
+      final normalizedY = (originalHeight < epsilon ? fallbackY : relativeY)
+          .clamp(0.0, 1.0);
+
+      resizedPoints.add(
+        StrokePoint(
+          x: newBounds.left + (newBounds.width * normalizedX),
+          y: newBounds.top + (newBounds.height * normalizedY),
+          timestampMs: point.timestampMs,
+        ),
+      );
+    }
+
+    return stroke.copyWith(points: resizedPoints, scale: 1.0);
+  }
+
   Rect _textBoundsRect(Stroke stroke) {
     final anchor = stroke.points.first;
     if (stroke.points.length >= 2) {
@@ -251,9 +504,39 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       return _snapToFrameTimeMs(currentPositionMs, _effectiveFps);
     }
 
+    if (state.keyframeCreationMode == KeyframeCreationMode.whiteboard) {
+      return _whiteboardStrokeRange().startMs;
+    }
+
     final activeKeyframeMs = _activeKeyframeTimeMsAt(currentPositionMs);
     return activeKeyframeMs ??
         _snapToFrameTimeMs(currentPositionMs, _effectiveFps);
+  }
+
+  ({int startMs, int endMs}) _whiteboardStrokeRange() {
+    final fps = _effectiveFps;
+    final loopState = ref.read(loopProvider);
+    if (loopState.isSectionLoopValid) {
+      return (
+        startMs: _snapToFrameTimeMs(loopState.loopStartMs!, fps),
+        endMs: _snapToFrameTimeMs(loopState.loopEndMs!, fps),
+      );
+    }
+
+    final playerState = ref.read(playerProvider);
+    final durationMs = playerState.duration.inMilliseconds > 0
+        ? playerState.duration.inMilliseconds
+        : playerState.metadata?.duration.inMilliseconds ?? 0;
+    return (
+      startMs: 0,
+      endMs: durationMs > 0 ? _snapToFrameTimeMs(durationMs, fps) : 0,
+    );
+  }
+
+  StrokeTimingMode _newStrokeTimingMode() {
+    return state.keyframeCreationMode == KeyframeCreationMode.whiteboard
+        ? StrokeTimingMode.whiteboard
+        : StrokeTimingMode.keyframe;
   }
 
   List<int> _sortedKeyframeTimesMs() {
@@ -262,10 +545,6 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   int? _activeKeyframeTimeMsAt(int positionMs) {
     return state.timelineIndex.activeKeyframeTimeMsAt(positionMs);
-  }
-
-  List<Stroke> _strokesAtKeyframe(int keyframeMs) {
-    return state.timelineIndex.strokesAtKeyframe(keyframeMs);
   }
 
   List<FrameMarker> _sortedMarkers([List<FrameMarker>? markers]) {
@@ -292,6 +571,14 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   bool _isStrokeVisibleAtCurrentPosition(Stroke stroke) {
     final currentPositionMs = ref.read(playerProvider).position.inMilliseconds;
+    if (stroke.timingMode == StrokeTimingMode.whiteboard) {
+      return AnnotationTimelineIndex.isWhiteboardStrokeVisibleAt(
+        stroke,
+        _snapToFrameTimeMs(currentPositionMs, _effectiveFps),
+        _effectiveFps,
+      );
+    }
+
     final activeKeyframeMs = _activeKeyframeTimeMsAt(currentPositionMs);
     if (activeKeyframeMs == null) return false;
 
@@ -535,7 +822,14 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Set current drawing tool
   void setTool(DrawingTool tool) {
-    state = state.copyWith(currentTool: tool, clearCurrentStroke: true);
+    final shouldClearSelection = tool != DrawingTool.select;
+    state = state.copyWith(
+      currentTool: tool,
+      clearCurrentStroke: true,
+      clearSelectedStroke: shouldClearSelection,
+      clearSelectionBox: shouldClearSelection,
+      isBoxSelecting: shouldClearSelection ? false : null,
+    );
   }
 
   /// Toggle whether keyframes are created automatically while drawing.
@@ -819,6 +1113,12 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   /// Start drawing a new stroke
   void startStroke(StrokePoint point) {
     final currentTimeMs = _strokeFrameTimeMs();
+    final timingMode = _newStrokeTimingMode();
+    final whiteboardRange = timingMode == StrokeTimingMode.whiteboard
+        ? _whiteboardStrokeRange()
+        : null;
+    final strokeStartTimeMs = whiteboardRange?.startMs ?? currentTimeMs;
+    final strokeEndTimeMs = whiteboardRange?.endMs ?? currentTimeMs;
 
     // If eraser tool, start erasing strokes instead of drawing
     if (state.currentTool == DrawingTool.eraser) {
@@ -883,8 +1183,9 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
             timestampMs: point.timestampMs,
           ),
         ],
-        startTimeMs: currentTimeMs,
-        endTimeMs: currentTimeMs,
+        startTimeMs: strokeStartTimeMs,
+        endTimeMs: strokeEndTimeMs,
+        timingMode: timingMode,
         text: '',
         fontSize: state.currentFontSize,
       );
@@ -913,8 +1214,9 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       color: state.currentColor,
       strokeWidth: state.currentStrokeWidth,
       points: [point],
-      startTimeMs: currentTimeMs,
-      endTimeMs: currentTimeMs,
+      startTimeMs: strokeStartTimeMs,
+      endTimeMs: strokeEndTimeMs,
+      timingMode: timingMode,
     );
 
     state = state.copyWith(currentStroke: newStroke, isDrawing: true);
@@ -958,7 +1260,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       // Replace the last point for shapes (start point stays, end point updates)
       final start = state.currentStroke!.points.first;
       final constrainedPoint = state.currentTool == DrawingTool.filledSquare
-          ? geometry.squareConstrainedPoint(start, point)
+          ? _squareConstrainedPoint(start, point)
           : point;
       updatedPoints = [start, constrainedPoint];
     } else {
@@ -1181,13 +1483,12 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
   /// Erase parts of strokes at a given point (for eraser tool)
   void _eraseStrokesAtPoint(StrokePoint point) {
     if (state.annotationData == null) return;
-    final activeKeyframeMs = _activeKeyframeTimeMsAt(
-      ref.read(playerProvider).position.inMilliseconds,
-    );
-    if (activeKeyframeMs == null) return;
+    final currentPositionMs = ref.read(playerProvider).position.inMilliseconds;
+    final activeKeyframeMs = _activeKeyframeTimeMsAt(currentPositionMs);
 
-    // Eraser radius (in normalized coordinates)
-    const eraserRadius = 0.02;
+    // Eraser radius (in normalized coordinates), matched to the visible
+    // cursor and driven by the stroke width control.
+    final eraserRadius = state.currentStrokeWidth / 3.0 * 0.02;
 
     // Process each stroke and split/remove affected parts
     final updatedStrokes = <Stroke>[];
@@ -1196,7 +1497,14 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     for (final stroke in state.allStrokes) {
       final strokeKeyframeMs = _snapToFrameTimeMs(stroke.startTimeMs, fps);
-      if (strokeKeyframeMs != activeKeyframeMs) {
+      final isVisibleStroke = stroke.timingMode == StrokeTimingMode.whiteboard
+          ? AnnotationTimelineIndex.isWhiteboardStrokeVisibleAt(
+              stroke,
+              _snapToFrameTimeMs(currentPositionMs, fps),
+              fps,
+            )
+          : activeKeyframeMs != null && strokeKeyframeMs == activeKeyframeMs;
+      if (!isVisibleStroke) {
         updatedStrokes.add(stroke);
         continue;
       }
@@ -1242,11 +1550,8 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     // Mark which points should be erased
     final shouldErase = List<bool>.generate(
       stroke.points.length,
-      (i) => geometry.pointIntersectsEraser(
-        stroke.points[i],
-        eraserPoint,
-        eraserRadius,
-      ),
+      (i) =>
+          _pointIntersectsEraser(stroke.points[i], eraserPoint, eraserRadius),
     );
 
     // If no points are erased, return original stroke
@@ -1294,24 +1599,159 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
       points: points,
       startTimeMs: original.startTimeMs,
       endTimeMs: original.endTimeMs,
+      timingMode: original.timingMode,
       text: original.text,
       fontSize: original.fontSize,
       scale: original.scale,
     );
   }
 
+  /// Check if a point intersects with the eraser
+  bool _pointIntersectsEraser(
+    StrokePoint point,
+    StrokePoint eraserPoint,
+    double radius,
+  ) {
+    final dx = point.x - eraserPoint.x;
+    final dy = point.y - eraserPoint.y;
+    final distanceSquared = dx * dx + dy * dy;
+    return distanceSquared <= radius * radius;
+  }
+
   /// Find a stroke at the given point
   Stroke? _findStrokeAtPoint(StrokePoint point) {
-    final activeKeyframeMs = _activeKeyframeTimeMsAt(
-      ref.read(playerProvider).position.inMilliseconds,
-    );
-    if (activeKeyframeMs == null) return null;
+    const selectionRadius =
+        0.02; // Selection tolerance in normalized coordinates
+    final visibleStrokes = getVisibleStrokes();
+    if (visibleStrokes.isEmpty) return null;
 
-    return geometry.findStrokeAtPoint(
-      _strokesAtKeyframe(activeKeyframeMs),
-      point,
-      textBoundsForStroke: _textBoundsRect,
-    );
+    // Search in reverse order to select the topmost stroke
+    for (int i = visibleStrokes.length - 1; i >= 0; i--) {
+      final stroke = visibleStrokes[i];
+
+      // For shape tools, check if point is near the shape boundary
+      if (stroke.tool == DrawingTool.rectangle ||
+          stroke.tool == DrawingTool.filledSquare) {
+        if (_isPointNearRectangle(stroke, point, selectionRadius)) {
+          return stroke;
+        }
+      } else if (stroke.tool == DrawingTool.circle ||
+          stroke.tool == DrawingTool.filledCircle) {
+        if (_isPointNearCircle(stroke, point, selectionRadius)) {
+          return stroke;
+        }
+      } else if (stroke.tool == DrawingTool.line ||
+          stroke.tool == DrawingTool.arrow) {
+        if (_isPointNearLine(stroke, point, selectionRadius)) {
+          return stroke;
+        }
+      } else if (stroke.tool == DrawingTool.text) {
+        if (_isPointNearText(stroke, point, selectionRadius)) {
+          return stroke;
+        }
+      } else {
+        // For pen strokes, check if point is near any part of the path
+        for (final strokePoint in stroke.points) {
+          if (_pointIntersectsEraser(strokePoint, point, selectionRadius)) {
+            return stroke;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Check if point is near a rectangle stroke
+  bool _isPointNearRectangle(
+    Stroke stroke,
+    StrokePoint point,
+    double threshold,
+  ) {
+    if (stroke.points.length < 2) return false;
+
+    final p1 = stroke.points.first;
+    final p2 = stroke.points.last;
+
+    final left = p1.x < p2.x ? p1.x : p2.x;
+    final right = p1.x > p2.x ? p1.x : p2.x;
+    final top = p1.y < p2.y ? p1.y : p2.y;
+    final bottom = p1.y > p2.y ? p1.y : p2.y;
+
+    // Check if point is inside the rectangle bounds (with some tolerance)
+    return point.x >= left - threshold &&
+        point.x <= right + threshold &&
+        point.y >= top - threshold &&
+        point.y <= bottom + threshold;
+  }
+
+  /// Check if point is near a circle/ellipse stroke
+  bool _isPointNearCircle(Stroke stroke, StrokePoint point, double threshold) {
+    if (stroke.points.length < 2) return false;
+
+    final p1 = stroke.points.first;
+    final p2 = stroke.points.last;
+
+    final centerX = (p1.x + p2.x) / 2;
+    final centerY = (p1.y + p2.y) / 2;
+    final radiusX = (p2.x - p1.x).abs() / 2;
+    final radiusY = (p2.y - p1.y).abs() / 2;
+
+    // Check if point is inside the ellipse bounds
+    final dx = point.x - centerX;
+    final dy = point.y - centerY;
+
+    if (radiusX == 0 || radiusY == 0) return false;
+
+    final distance =
+        (dx * dx) / (radiusX * radiusX) + (dy * dy) / (radiusY * radiusY);
+    return distance <=
+        1.2; // Slightly larger than the ellipse for easier selection
+  }
+
+  /// Check if point is near a line/arrow stroke
+  bool _isPointNearLine(Stroke stroke, StrokePoint point, double threshold) {
+    if (stroke.points.length < 2) return false;
+
+    final p1 = stroke.points.first;
+    final p2 = stroke.points.last;
+
+    // Calculate distance from point to line segment
+    final lineLength =
+        ((p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y));
+
+    if (lineLength == 0) {
+      // Line is actually a point
+      return _pointIntersectsEraser(p1, point, threshold);
+    }
+
+    // Project point onto line
+    final t =
+        ((point.x - p1.x) * (p2.x - p1.x) + (point.y - p1.y) * (p2.y - p1.y)) /
+        lineLength;
+    final tClamped = t.clamp(0.0, 1.0);
+
+    final projX = p1.x + tClamped * (p2.x - p1.x);
+    final projY = p1.y + tClamped * (p2.y - p1.y);
+
+    final dx = point.x - projX;
+    final dy = point.y - projY;
+    final distance = (dx * dx + dy * dy);
+
+    return distance <= threshold * threshold;
+  }
+
+  /// Check if point is near a text stroke bounding box
+  bool _isPointNearText(Stroke stroke, StrokePoint point, double threshold) {
+    if (stroke.points.isEmpty || stroke.text == null || stroke.text!.isEmpty) {
+      return false;
+    }
+
+    final bounds = _textBoundsRect(stroke);
+
+    return point.x >= bounds.left - threshold &&
+        point.x <= bounds.right + threshold &&
+        point.y >= bounds.top - threshold &&
+        point.y <= bounds.bottom + threshold;
   }
 
   /// Move the selected stroke by the drag offset
@@ -1321,12 +1761,10 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     final selectedSet = state.selectedStrokeIds.toSet();
     final requestedDx = currentPoint.x - state.dragStartPoint!.x;
     final requestedDy = currentPoint.y - state.dragStartPoint!.y;
-    final clampedDelta = geometry.clampedDragDeltaForSelectedStrokes(
-      state.allStrokes,
+    final clampedDelta = _clampedDragDeltaForSelectedStrokes(
       selectedSet,
       requestedDx,
       requestedDy,
-      textBoundsForStroke: _textBoundsRect,
     );
     final dx = clampedDelta.dx;
     final dy = clampedDelta.dy;
@@ -1367,6 +1805,87 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     );
   }
 
+  Offset _clampedDragDeltaForSelectedStrokes(
+    Set<String> selectedSet,
+    double requestedDx,
+    double requestedDy,
+  ) {
+    final selectedBounds = _selectedStrokeBounds(selectedSet);
+    if (selectedBounds == null) {
+      return Offset(requestedDx, requestedDy);
+    }
+
+    final minDx = -selectedBounds.left;
+    final maxDx = 1.0 - selectedBounds.right;
+    final minDy = -selectedBounds.top;
+    final maxDy = 1.0 - selectedBounds.bottom;
+
+    return Offset(
+      _clampDragAxis(requestedDx, minDx, maxDx),
+      _clampDragAxis(requestedDy, minDy, maxDy),
+    );
+  }
+
+  double _clampDragAxis(
+    double requestedDelta,
+    double minDelta,
+    double maxDelta,
+  ) {
+    if (minDelta > maxDelta) {
+      return 0.0;
+    }
+    return requestedDelta.clamp(minDelta, maxDelta).toDouble();
+  }
+
+  Rect? _selectedStrokeBounds(Set<String> selectedSet) {
+    Rect? selectedBounds;
+    for (final stroke in state.allStrokes) {
+      if (!selectedSet.contains(stroke.id)) continue;
+
+      final bounds = _strokeBounds(stroke);
+      if (bounds == null) continue;
+
+      selectedBounds = selectedBounds == null
+          ? bounds
+          : selectedBounds.expandToInclude(bounds);
+    }
+
+    return selectedBounds;
+  }
+
+  Offset _duplicateOffsetForSelection(Set<String> selectedSet) {
+    const preferredOffset = 0.025;
+    final bounds = _selectedStrokeBounds(selectedSet);
+    if (bounds == null) {
+      return const Offset(preferredOffset, preferredOffset);
+    }
+
+    final dx = bounds.right + preferredOffset <= 1.0
+        ? preferredOffset
+        : bounds.left - preferredOffset >= 0.0
+        ? -preferredOffset
+        : 0.0;
+    final dy = bounds.bottom + preferredOffset <= 1.0
+        ? preferredOffset
+        : bounds.top - preferredOffset >= 0.0
+        ? -preferredOffset
+        : 0.0;
+
+    return Offset(dx, dy);
+  }
+
+  Stroke _duplicateStroke(Stroke stroke, Offset offset) {
+    return stroke.copyWith(
+      id: _uuid.v4(),
+      points: stroke.points.map((point) {
+        return point.copyWith(
+          x: (point.x + offset.dx).clamp(0.0, 1.0).toDouble(),
+          y: (point.y + offset.dy).clamp(0.0, 1.0).toDouble(),
+        );
+      }).toList(),
+    );
+  }
+
   void _updateBoxSelection(StrokePoint currentPoint) {
     final start = state.selectionBoxStartPoint;
     if (start == null) return;
@@ -1378,10 +1897,7 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     final selectedIds = <String>[];
     for (final stroke in getVisibleStrokes()) {
-      final bounds = geometry.strokeBounds(
-        stroke,
-        textBoundsForStroke: _textBoundsRect,
-      );
+      final bounds = _strokeBounds(stroke);
       if (bounds == null) continue;
 
       final intersects =
@@ -1402,12 +1918,73 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
     );
   }
 
+  Rect? _strokeBounds(Stroke stroke) {
+    if (stroke.points.isEmpty) return null;
+
+    if (stroke.tool == DrawingTool.text) {
+      return _textBoundsRect(stroke);
+    }
+
+    double minX = double.infinity;
+    double minY = double.infinity;
+    double maxX = double.negativeInfinity;
+    double maxY = double.negativeInfinity;
+
+    for (final point in stroke.points) {
+      if (point.x < minX) minX = point.x;
+      if (point.y < minY) minY = point.y;
+      if (point.x > maxX) maxX = point.x;
+      if (point.y > maxY) maxY = point.y;
+    }
+
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
   /// Deselect the currently selected stroke
   void deselectStroke() {
     state = state.copyWith(
       clearSelectedStroke: true,
       clearSelectionBox: true,
       isBoxSelecting: false,
+    );
+  }
+
+  bool get canDuplicateSelectedStroke => _selectedStrokeIdSet().isNotEmpty;
+
+  /// Duplicate the currently selected annotations and select the duplicates.
+  void duplicateSelectedStroke() {
+    if (state.annotationData == null) return;
+
+    final selectedIds = _selectedStrokeIdSet();
+    if (selectedIds.isEmpty) return;
+
+    final selectedStrokes = state.allStrokes
+        .where((stroke) => selectedIds.contains(stroke.id))
+        .toList();
+    if (selectedStrokes.isEmpty) return;
+
+    final offset = _duplicateOffsetForSelection(selectedIds);
+    final duplicatedStrokes = selectedStrokes
+        .map((stroke) => _duplicateStroke(stroke, offset))
+        .toList();
+    final duplicatedIds = duplicatedStrokes.map((stroke) => stroke.id).toList();
+    final updatedStrokes = [...state.allStrokes, ...duplicatedStrokes];
+    final updatedData = state.annotationData!.copyWith(
+      strokes: updatedStrokes,
+      updatedAt: DateTime.now(),
+    );
+
+    _recordUndoSnapshot(state.allStrokes);
+    _clearRedoSnapshots();
+
+    state = state.copyWith(
+      annotationData: updatedData,
+      selectedStrokeId: duplicatedIds.first,
+      selectedStrokeIds: duplicatedIds,
+      clearSelectionBox: true,
+      isBoxSelecting: false,
+      hasUnsavedChanges: true,
+      redoStack: const [],
     );
   }
 
@@ -1463,26 +2040,22 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
     final stroke = state.allStrokes[strokeIndex];
 
-    final originalBounds = geometry.strokeBounds(
-      stroke,
-      textBoundsForStroke: _textBoundsRect,
-    );
+    final originalBounds = _strokeBounds(stroke);
     if (originalBounds == null) {
       return;
     }
 
-    final resizedBounds = geometry.resizeRectFromHandle(
+    final resizedBounds = _resizeRectFromHandle(
       originalBounds,
       state.scalingCorner!,
       currentPoint,
     );
     if (resizedBounds == null) return;
 
-    final updatedStroke = geometry.resizeStrokeToBounds(
+    final updatedStroke = _resizeStrokeToBounds(
       stroke,
       originalBounds: originalBounds,
       newBounds: resizedBounds,
-      updateTextBounds: _withTextBounds,
     );
     final updatedStrokes = List<Stroke>.from(state.allStrokes);
     updatedStrokes[strokeIndex] = updatedStroke;
@@ -1717,9 +2290,11 @@ class AnnotationNotifier extends StateNotifier<AnnotationState> {
 
   /// Visible annotation strokes for the active keyframe at a playback position.
   List<Stroke> getVisibleStrokes([Duration? position]) {
-    final keyframeMs = getActiveKeyframeTimeMs(position);
-    if (keyframeMs == null) return const [];
-    return _strokesAtKeyframe(keyframeMs);
+    final targetPosition = position ?? ref.read(playerProvider).position;
+    return state.timelineIndex.visibleStrokesAtPosition(
+      targetPosition.inMilliseconds,
+      allStrokes: state.allStrokes,
+    );
   }
 }
 
@@ -1728,3 +2303,135 @@ final annotationProvider =
     StateNotifierProvider<AnnotationNotifier, AnnotationState>((ref) {
       return AnnotationNotifier(AnnotationStorageService(), ref);
     });
+
+List<Stroke> _resolveSelectedAnnotationStrokes(AnnotationState state) {
+  final targetIds = state.pendingTextStrokeId != null
+      ? {state.pendingTextStrokeId!}
+      : state.selectedStrokeIds.isNotEmpty
+      ? state.selectedStrokeIds.toSet()
+      : <String>{if (state.selectedStrokeId != null) state.selectedStrokeId!};
+
+  if (targetIds.isEmpty) return const [];
+
+  return state.allStrokes
+      .where((stroke) => targetIds.contains(stroke.id))
+      .toList();
+}
+
+final annotationKeyframeModeProvider = Provider<KeyframeCreationMode>((ref) {
+  return ref.watch(
+    annotationProvider.select((state) => state.keyframeCreationMode),
+  );
+});
+
+final selectedAnnotationStrokesProvider = Provider<List<Stroke>>((ref) {
+  final state = ref.watch(annotationProvider);
+  return _resolveSelectedAnnotationStrokes(state);
+});
+
+final selectedAnnotationStrokeProvider = Provider<Stroke?>((ref) {
+  final selectedStrokes = ref.watch(selectedAnnotationStrokesProvider);
+  return selectedStrokes.isEmpty ? null : selectedStrokes.first;
+});
+
+final activeAnnotationSizingToolProvider = Provider<DrawingTool>((ref) {
+  final selectedStrokes = ref.watch(selectedAnnotationStrokesProvider);
+  final currentTool = ref.watch(
+    annotationProvider.select((state) => state.currentTool),
+  );
+  if (selectedStrokes.isEmpty) {
+    return currentTool;
+  }
+
+  final firstNonTextStroke = selectedStrokes
+      .where((stroke) => stroke.tool != DrawingTool.text)
+      .firstOrNull;
+  if (firstNonTextStroke != null) {
+    return firstNonTextStroke.tool;
+  }
+
+  return DrawingTool.text;
+});
+
+final activeAnnotationStrokeWidthProvider = Provider<double>((ref) {
+  final selectedStrokes = ref.watch(selectedAnnotationStrokesProvider);
+  final currentStrokeWidth = ref.watch(
+    annotationProvider.select((state) => state.currentStrokeWidth),
+  );
+  final firstNonTextStroke = selectedStrokes
+      .where((stroke) => stroke.tool != DrawingTool.text)
+      .firstOrNull;
+  if (firstNonTextStroke == null) {
+    return currentStrokeWidth;
+  }
+  return firstNonTextStroke.strokeWidth;
+});
+
+final activeAnnotationFontSizeProvider = Provider<double>((ref) {
+  final selectedStrokes = ref.watch(selectedAnnotationStrokesProvider);
+  final currentFontSize = ref.watch(
+    annotationProvider.select((state) => state.currentFontSize),
+  );
+  final firstTextStroke = selectedStrokes
+      .where((stroke) => stroke.tool == DrawingTool.text)
+      .firstOrNull;
+  final hasOnlyTextSelection =
+      firstTextStroke != null &&
+      selectedStrokes.every((stroke) => stroke.tool == DrawingTool.text);
+  if (!hasOnlyTextSelection) {
+    return currentFontSize;
+  }
+  return firstTextStroke.fontSize;
+});
+
+/// Sorted keyframes that contain at least one annotation stroke.
+final annotationKeyframeTimesProvider = Provider<List<int>>((ref) {
+  ref.watch(annotationProvider);
+  return ref.read(annotationProvider.notifier).getSortedKeyframeTimesMs();
+});
+
+/// Sorted frame markers for the current source.
+final annotationMarkersProvider = Provider<List<FrameMarker>>((ref) {
+  ref.watch(annotationProvider);
+  return ref.read(annotationProvider.notifier).getSortedMarkers();
+});
+
+/// The active keyframe (latest keyframe at or before playback position).
+final activeAnnotationKeyframeProvider = Provider<int?>((ref) {
+  ref.watch(annotationProvider);
+  final position = ref.watch(playerProvider.select((state) => state.position));
+  return ref
+      .read(annotationProvider.notifier)
+      .getActiveKeyframeTimeMs(position);
+});
+
+/// The marker that matches the current frame, if any.
+final currentAnnotationMarkerProvider = Provider<FrameMarker?>((ref) {
+  ref.watch(annotationProvider);
+  final position = ref.watch(playerProvider.select((state) => state.position));
+  return ref.read(annotationProvider.notifier).getCurrentFrameMarker(position);
+});
+
+/// The strokes visible for the current active annotation keyframe.
+final visibleAnnotationStrokesProvider = Provider<List<Stroke>>((ref) {
+  ref.watch(annotationProvider);
+  final position = ref.watch(playerProvider.select((state) => state.position));
+  return ref.read(annotationProvider.notifier).getVisibleStrokes(position);
+});
+
+/// The frame that new drawing actions will target.
+final drawingTargetAnnotationKeyframeProvider = Provider<int>((ref) {
+  ref.watch(annotationProvider);
+  final position = ref.watch(playerProvider.select((state) => state.position));
+  return ref
+      .read(annotationProvider.notifier)
+      .getDrawingTargetKeyframeTimeMs(position);
+});
+
+/// Whether the manual "new keyframe" action is currently available.
+final canCreateManualKeyframeProvider = Provider<bool>((ref) {
+  ref.watch(annotationProvider);
+  return ref
+      .read(annotationProvider.notifier)
+      .canCreateManualKeyframeAtCurrentFrame();
+});

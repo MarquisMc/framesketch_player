@@ -24,6 +24,22 @@ Map<String, dynamic> _$$KeyboardShortcutImplToJson(
   'altPressed': instance.altPressed,
 };
 
+_$MouseShortcutImpl _$$MouseShortcutImplFromJson(Map<String, dynamic> json) =>
+    _$MouseShortcutImpl(
+      button:
+          $enumDecodeNullable(_$MouseShortcutButtonEnumMap, json['button']) ??
+          MouseShortcutButton.middle,
+    );
+
+Map<String, dynamic> _$$MouseShortcutImplToJson(_$MouseShortcutImpl instance) =>
+    <String, dynamic>{'button': _$MouseShortcutButtonEnumMap[instance.button]!};
+
+const _$MouseShortcutButtonEnumMap = {
+  MouseShortcutButton.primary: 'primary',
+  MouseShortcutButton.middle: 'middle',
+  MouseShortcutButton.secondary: 'secondary',
+};
+
 _$KeyboardShortcutsImpl _$$KeyboardShortcutsImplFromJson(
   Map<String, dynamic> json,
 ) => _$KeyboardShortcutsImpl(
@@ -47,6 +63,9 @@ _$KeyboardShortcutsImpl _$$KeyboardShortcutsImplFromJson(
       : KeyboardShortcut.fromJson(
           json['toggleFullscreen'] as Map<String, dynamic>,
         ),
+  panZoomedView: json['panZoomedView'] == null
+      ? const MouseShortcut()
+      : MouseShortcut.fromJson(json['panZoomedView'] as Map<String, dynamic>),
   openCommandPalette: json['openCommandPalette'] == null
       ? const KeyboardShortcut(
           key: LogicalKeyboardKey.keyP,
@@ -62,6 +81,9 @@ _$KeyboardShortcutsImpl _$$KeyboardShortcutsImplFromJson(
   ),
   undo: KeyboardShortcut.fromJson(json['undo'] as Map<String, dynamic>),
   redo: KeyboardShortcut.fromJson(json['redo'] as Map<String, dynamic>),
+  addMarker: json['addMarker'] == null
+      ? const KeyboardShortcut(key: LogicalKeyboardKey.keyB, ctrlPressed: true)
+      : KeyboardShortcut.fromJson(json['addMarker'] as Map<String, dynamic>),
   nextMarker: KeyboardShortcut.fromJson(
     json['nextMarker'] as Map<String, dynamic>,
   ),
@@ -131,11 +153,13 @@ Map<String, dynamic> _$$KeyboardShortcutsImplToJson(
   'jumpForward': instance.jumpForward,
   'jumpBackward': instance.jumpBackward,
   'toggleFullscreen': instance.toggleFullscreen,
+  'panZoomedView': instance.panZoomedView,
   'openCommandPalette': instance.openCommandPalette,
   'openFile': instance.openFile,
   'saveAnnotations': instance.saveAnnotations,
   'undo': instance.undo,
   'redo': instance.redo,
+  'addMarker': instance.addMarker,
   'nextMarker': instance.nextMarker,
   'previousMarker': instance.previousMarker,
   'selectSelectionTool': instance.selectSelectionTool,

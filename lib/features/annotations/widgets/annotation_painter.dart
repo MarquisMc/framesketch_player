@@ -26,6 +26,7 @@ class AnnotationPainter extends CustomPainter {
   final Size? videoSize;
   final DrawingTool currentTool;
   final Offset? eraserPosition;
+  final double eraserRadius;
   final String? selectedStrokeId;
   final List<String> selectedStrokeIds;
   final StrokePoint? selectionBoxStartPoint;
@@ -41,6 +42,7 @@ class AnnotationPainter extends CustomPainter {
     this.videoSize,
     required this.currentTool,
     this.eraserPosition,
+    this.eraserRadius = 0.02,
     this.selectedStrokeId,
     this.selectedStrokeIds = const [],
     this.selectionBoxStartPoint,
@@ -516,7 +518,7 @@ class AnnotationPainter extends CustomPainter {
       ..color = Colors.red.withValues(alpha: 0.5)
       ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke;
-    final eraserRadiusPx = viewportSize.width * 0.02;
+    final eraserRadiusPx = viewportSize.width * eraserRadius;
 
     canvas.drawCircle(position, eraserRadiusPx, eraserPaint);
 
@@ -544,6 +546,7 @@ class AnnotationPainter extends CustomPainter {
         oldDelegate.textDirection != textDirection ||
         oldDelegate.currentTool != currentTool ||
         oldDelegate.eraserPosition != eraserPosition ||
+        oldDelegate.eraserRadius != eraserRadius ||
         oldDelegate.selectedStrokeId != selectedStrokeId ||
         oldDelegate.selectedStrokeIds != selectedStrokeIds ||
         oldDelegate.selectionBoxStartPoint != selectionBoxStartPoint ||
