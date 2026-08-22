@@ -4,7 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:io' show Platform;
 import '../core/theme/app_palette.dart';
 import '../core/theme/theme_provider.dart';
-import '../features/crop/widgets/crop_controls.dart';
+import '../features/crop/widgets/crop_mode_toggle_button.dart';
 import '../features/player/providers/player_provider.dart';
 
 /// Top editor toolbar — branding, file menu, view toggles.

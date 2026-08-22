@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/annotation_data.dart';
 import '../../../core/models/video_metadata.dart';
+import '../../../core/utils/output_file_naming.dart';
 import '../../../core/services/annotation_overlay_renderer_service.dart';
 import '../../../core/services/ffprobe_service.dart';
 import '../../../core/theme/app_palette.dart';
@@ -24,12 +25,6 @@ typedef ExportLoadingOverlayRunner =
       VoidCallback? onCancel,
     });
 
-typedef ExportSuggestedBaseNameBuilder =
-    String Function({
-      required AnnotationData annotationData,
-      required String? playerSourceLabel,
-    });
-
 class ExportActions {
   ExportActions({
     required this.ref,
@@ -40,7 +35,6 @@ class ExportActions {
     required this.activePalette,
     required this.runWithLoadingOverlay,
     required this.showErrorDialog,
-    required this.buildSuggestedAnnotationFileBaseName,
     required this.setLoadingOverlayMessage,
     ExportOrchestrationPlanner planner = const ExportOrchestrationPlanner(),
     FFprobeService? ffprobeService,
@@ -57,7 +51,6 @@ class ExportActions {
   final AppPalette Function() activePalette;
   final ExportLoadingOverlayRunner runWithLoadingOverlay;
   final void Function(String message) showErrorDialog;
-  final ExportSuggestedBaseNameBuilder buildSuggestedAnnotationFileBaseName;
   final void Function(String message) setLoadingOverlayMessage;
   final ExportOrchestrationPlanner _planner;
   final FFprobeService _ffprobeService;
